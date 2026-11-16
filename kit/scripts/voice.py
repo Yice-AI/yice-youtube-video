@@ -55,20 +55,98 @@ def parse_script(path):
     return chapters
 
 
-def generate_raw(chapters, output, brand):
+def generate_jobs(jobs, brand):
+    import random
     sys.path[:0] = [str(TOOLKIT / "local/tools"), str(TOOLKIT / "tools")]
     from local_voiceover import MLXBackend, load_clone
     backend = MLXBackend("8bit", load_clone(brand))
-    for chapter in chapters:
-        target = output / f"chapter-{chapter['id']}-raw.wav"
-        backend.generate(text=chapter["text"], model=backend.model,
+    for job in jobs:
+        target = Path(job["path"])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.exists():
+            raise ValueError(f"拒绝覆盖已有原音：{target}")
+        backend.mx.random.seed(job["seed"])
+        random.seed(job["seed"])
+        backend.generate(text=job["text"], model=backend.model,
                          ref_audio=backend.clone["audio"], ref_text=backend.clone["text"],
                          lang_code=backend.clone["language"], stt_model=None,
-                         output_path=str(output), file_prefix=target.stem,
+                         output_path=str(target.parent), file_prefix=target.stem,
                          audio_format="wav", join_audio=True, verbose=False,
                          max_tokens=4096, split_pattern="")
         if not target.is_file() or target.stat().st_size <= 44:
             raise RuntimeError(f"MLX 未生成有效 WAV：{target}")
+
+
+def generate_raw(chapters, output, brand, seeds=(42, 43)):
+    jobs = [dict(text=chapter["text"], seed=seed,
+                 path=str(output / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
+            for chapter in chapters for seed in seeds]
+    generate_jobs(jobs, brand)
+
+
+def make_generator(brand, folder, reuse=None):
+    import shutil
+    folder = Path(folder)
+    cached = json.loads(Path(reuse).read_text()) if reuse else []
+    if not isinstance(cached, list):
+        raise ValueError("候选缓存须为 text/seed/path/sha256/brand 记录列表")
+    index = {}
+    for item in cached:
+        key = (item["text"], item["seed"])
+        if key in index or item.get("brand") != brand:
+            raise ValueError("候选缓存身份重复或品牌不匹配")
+        index[key] = item
+    def generate(jobs):
+        folder.mkdir(parents=True, exist_ok=True)
+        pending, reused = [], []
+        for job in jobs:
+            target = Path(job["path"])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists():
+                raise ValueError(f"拒绝覆盖候选原音：{target}")
+            previous = index.get((job["text"], job["seed"]))
+            if previous:
+                source = Path(previous["path"])
+                if hashlib.sha256(source.read_bytes()).hexdigest() != previous["sha256"]:
+                    raise ValueError("候选缓存哈希不匹配")
+                shutil.copy2(source, target)
+                reused.append(dict(text=job["text"], seed=job["seed"], sha256=previous["sha256"], source=str(source), path=str(target)))
+            else:
+                pending.append(job)
+        serial = len(list(folder.glob("jobs-*.json"))) + 1
+        request = folder / f"jobs-{serial:03}.json"
+        write_json(request, dict(generated=pending, reused=reused))
+        if pending:
+            worker_jobs = folder / f"worker-{serial:03}.json"
+            write_json(worker_jobs, pending)
+            python = os.environ.get("YICE_TTS_PYTHON", str(TOOLKIT / "local/tts-venv/bin/python"))
+            env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1"}
+            with (folder / f"generation-{serial:03}.log").open("w") as log:
+                subprocess.run([python, str(Path(__file__).resolve()), str(request), "--output", str(folder),
+                                "--brand", brand, "--generation-jobs", str(worker_jobs)],
+                               env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
+    return generate
+
+
+def make_transcriber(model, prompt, folder):
+    folder = Path(folder)
+    def transcribe(audio):
+        os.environ.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1")
+        sha = hashlib.sha256(Path(audio).read_bytes()).hexdigest()
+        settings = hashlib.sha256(json.dumps(dict(model=model, prompt=prompt, temperature=0), sort_keys=True).encode()).hexdigest()[:12]
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / f"{sha}-{settings}.json"
+        if path.exists():
+            value = json.loads(path.read_text())
+            if value["sha256"] != sha:
+                raise ValueError("ASR 缓存不属于当前音频")
+            return value["transcript"]
+        import mlx_whisper
+        result = mlx_whisper.transcribe(str(audio), path_or_hf_repo=model, language="zh",
+                                       initial_prompt=prompt or None, temperature=0, word_timestamps=True, verbose=False)
+        write_json(path, dict(sha256=sha, model=model, prompt=prompt, transcript=result))
+        return result
+    return transcribe
 
 
 def chars(text):
@@ -89,7 +167,7 @@ def align_characters(text, transcription, duration, normalizations):
     if not heard:
         raise ValueError("Whisper 没有可对齐的字级时间；原音保留，未输出虚构时间轴")
     # 配置键为原稿、值为 ASR 别写，与 T61 审查记录一致。
-    for intended, recognized in normalizations.items():
+    for intended, recognized in sorted(normalizations.items(), key=lambda pair: -len(pair[1])):
         old, new = "".join(ch for _, ch in chars(recognized)), "".join(ch for _, ch in chars(intended))
         if not old or not new:
             raise ValueError("归一化短语不能只含标点")
@@ -213,14 +291,20 @@ def load_voice_tool(name):
 
 
 def finish_chapter(chapter, raw, output, transcription, normalizations, silence, offset, anchors,
-                   *, skip_post=False, post_options=None):
-    """Generate final timing from edited audio; every chapter gets a mandatory check."""
+                   *, skip_post=False, post_options=None, asr_threshold=.97):
+    """Generate final timing and reject content/prosody failures before export."""
     check_tool = load_voice_tool("voice-check")
+    quality = load_voice_tool("voice-quality")
+    audit = quality.audit(chapter["text"], transcription, normalizations, asr_threshold)
     with wave.open(str(raw), "rb") as source:
         original_duration = source.getnframes() / source.getframerate()
-    mapped, ratio, clamps = align_characters(chapter["text"], transcription, original_duration, normalizations)
+    mapped, ratio, clamps = align_characters(chapter["text"], transcription, original_duration, audit["normalizations"])
+    audit["alignment_ratio"] = ratio
+    audit["ok"] = audit["ok"] and ratio >= asr_threshold
+    write_json(output / "analysis" / f"asr-audit-{chapter['id']}.json", audit)
     aligned = dict(text=chapter["text"], mapped=mapped, matched_ratio=ratio, monotonic_clamps=clamps)
     audio = raw
+    options = dict(post_options or {})
     if not skip_post:
         post_tool = load_voice_tool("voice-post")
         boundaries, cursor = [], 0
@@ -232,50 +316,94 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
         processed.mkdir(exist_ok=True)
         audio = processed / f"chapter-{chapter['id']}.wav"
         aligned = post_tool.postprocess(raw, aligned, audio, scene_boundaries=boundaries,
-                                        scene_padding=silence, **(post_options or {}))
+                                        scene_padding=silence, **options)
     write_json(output / "analysis" / f"post-alignment-{chapter['id']}.json", aligned)
     record, timing, scenes, captions, analysis = prepare_chapter(
-        chapter, audio, output, transcription, normalizations, silence, offset, anchors, aligned=aligned)
-    final_alignment = dict(text=chapter["text"], mapped=analysis["output_mapped"])
+        chapter, audio, output, transcription, audit["normalizations"], silence, offset, anchors, aligned=aligned)
+    padding = record["added_boundary_silence"]
+    final_alignment = dict(text=chapter["text"], mapped=analysis["output_mapped"], matched_ratio=ratio)
+    if not skip_post:
+        # Close pauses against the ACTUAL padded waveform; never add padding twice.
+        current = output / record["path"]
+        final_edits = []
+        for attempt in range(4):
+            destination = output / "analysis" / f"final-semantic-{chapter['id']}-{attempt}.wav"
+            final_alignment, edits = post_tool.regularize(
+                current, final_alignment, destination, destination.with_suffix(".npz"))
+            final_edits.extend(edits)
+            current = destination
+            if not edits:
+                break
+        normalized = output / "analysis" / f"final-normalized-{chapter['id']}.wav"
+        levels = post_tool.normalize_lufs(current, normalized, options.get("lufs", -16.))
+        record, timing, scenes, captions, analysis = prepare_chapter(
+            chapter, normalized, output, {}, audit["normalizations"], 0, offset, anchors, aligned=final_alignment)
+        record.update(loudness=levels, added_boundary_silence=padding,
+                      final_semantic_pause_edits=final_edits, retiming_additional_silence=0)
+        final_alignment = dict(text=chapter["text"], mapped=analysis["output_mapped"], matched_ratio=ratio)
     write_json(output / "analysis" / f"final-alignment-{chapter['id']}.json", final_alignment)
-    check = check_tool.check_chapter(output / record["path"], final_alignment, chapter=chapter["id"],
+    check = check_tool.check_chapter(output / record["path"] , final_alignment, chapter=chapter["id"],
                                     cache=output / "analysis" / f"voice-check-{chapter['id']}.npz")
+    check.update(prosody_ok=check["ok"], asr=audit, ok=check["ok"] and audit["ok"])
     write_json(output / "analysis" / f"voice-check-{chapter['id']}.json", check)
-    record["generated_duration"] = original_duration
-    record["postprocessing"] = not skip_post
-    record["prosody_alert_count"] = len(check["alerts"])
+    record.update(generated_duration=original_duration, postprocessing=not skip_post,
+                  prosody_alert_count=len(check["alerts"]), asr_matched_ratio=audit["ratio"], asr_passed=audit["ok"])
     return record, timing, scenes, captions, analysis, check
 
 
 def main():
+    import shutil
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("script", type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--brand", default="yice")
     parser.add_argument("--anchors", type=Path)
-    parser.add_argument("--normalizations", type=Path, help='JSON：原稿短语→ASR 别写')
+    parser.add_argument("--normalizations", type=Path, help="分类的 ASR 例外：number_unit/english_name/homophone")
     parser.add_argument("--silence", type=float, default=.2)
     parser.add_argument("--asr-model", default="mlx-community/whisper-large-v3-turbo")
+    parser.add_argument("--asr-prompt", default="", help="领域词表；不要提供完整台词诱导识别")
+    parser.add_argument("--asr-threshold", type=float, default=.97)
+    parser.add_argument("--seeds", default="42,43")
+    parser.add_argument("--chapters", help="只处理指定章号，如 00,01")
+    parser.add_argument("--reuse-candidates", type=Path, help="显式哈希候选缓存；复跑时保留原始生成证据")
+    parser.add_argument("--max-repair-rounds", type=int, default=3)
+    parser.add_argument("--generation-jobs", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--generate-only", action="store_true", help=argparse.SUPPRESS)
-    parser.add_argument("--skip-post", action="store_true", help="保留原音；韵律检测仍强制执行")
+    parser.add_argument("--skip-post", action="store_true", help="保留原音；ASR/韵律仍必须通过")
     parser.add_argument("--speed", type=float, default=1.08)
     parser.add_argument("--breath-db", type=float, default=-12.)
     parser.add_argument("--breath-cut-ms", type=float, default=250.)
     parser.add_argument("--breath-target-ms", type=float, default=150.)
     parser.add_argument("--fade-ms", type=float, default=10.)
+    parser.add_argument("--lufs", type=float, default=-16.)
     args = parser.parse_args()
-    if not 0 <= args.silence <= 2:
-        parser.error("换幕静音须在 0–2 秒之间")
+    quality = load_voice_tool("voice-quality")
+    try:
+        seeds = quality.seeds(args.seeds)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if not 0 <= args.silence <= 2 or not 0 < args.asr_threshold <= 1 or not 0 <= args.max_repair_rounds <= 3:
+        parser.error("换幕静音须为0–2秒，ASR阈值须为(0,1]，修复轮数须为0–3")
+    if args.generation_jobs:
+        generate_jobs(json.loads(args.generation_jobs.read_text()), args.brand)
+        return
     chapters, output = parse_script(args.script), args.output.resolve()
+    if args.chapters:
+        requested = set(args.chapters.split(","))
+        if requested - {chapter["id"] for chapter in chapters}:
+            parser.error("存在未知章号")
+        chapters = [chapter for chapter in chapters if chapter["id"] in requested]
     if args.generate_only:
-        generate_raw(chapters, output / "raw", args.brand)
+        generate_raw(chapters, output / "raw", args.brand, seeds)
         return
     if output.exists() and any(output.iterdir()):
         parser.error(f"输出目录不是空目录，拒绝覆盖：{output}")
     anchors_path = args.anchors or args.script.parent / "anchors.json"
     anchors = json.loads(anchors_path.read_text()) if anchors_path.exists() else []
     normalization = json.loads(args.normalizations.read_text()) if args.normalizations else {}
-    known = {s["id"]: s["text"] for c in chapters for s in c["scenes"]}
+    known = {scene["id"]: scene["text"] for chapter in chapters for scene in chapter["scenes"]}
+    if args.chapters:
+        anchors = [anchor for anchor in anchors if anchor["scene"] in known]
     for anchor in anchors:
         phrase = anchor.get("spoken_phrase", anchor["phrase"])
         if anchor["scene"] not in known or phrase not in known[anchor["scene"]]:
@@ -283,34 +411,38 @@ def main():
     (output / "raw").mkdir(parents=True, exist_ok=True)
     (output / "analysis").mkdir()
     write_json(output / "analysis/script-manifest.json", {"chapters": chapters})
-    env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1"}
-    tts_python = os.environ.get("YICE_TTS_PYTHON", str(TOOLKIT / "local/tts-venv/bin/python"))
-    with (output / "analysis/voice-generation.log").open("w") as log:
-        subprocess.run([tts_python, str(Path(__file__).resolve()), str(args.script.resolve()),
-                        "--output", str(output), "--brand", args.brand, "--generate-only"],
-                       env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
-    os.environ.update({k: env[k] for k in ["HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY"]})
-    import mlx_whisper
+    generate = make_generator(args.brand, output / "generation", args.reuse_candidates)
+    transcribe = make_transcriber(args.asr_model, args.asr_prompt, output / "analysis/asr")
+    jobs = [dict(chapter=chapter["id"], text=chapter["text"], seed=seed,
+                 path=str(output / "raw" / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
+            for chapter in chapters for seed in seeds]
+    generate(jobs)
+    flow = load_voice_tool("voice-repair")
     records, timings, scenes, subtitles, offset = [], [], [], [], 0
     failed = []
     for chapter in chapters:
-        raw = output / "raw" / f"chapter-{chapter['id']}-raw.wav"
-        transcription = mlx_whisper.transcribe(str(raw), path_or_hf_repo=args.asr_model,
-                                               language="zh", word_timestamps=True, verbose=False)
-        write_json(output / "analysis" / f"whisper-{chapter['id']}.json", transcription)
-        record, timing, scene, captions, analysis, check = finish_chapter(
-            chapter, raw, output, transcription, normalization, args.silence, offset, anchors,
-            skip_post=args.skip_post, post_options={
-                "speed": args.speed, "breath_db": args.breath_db,
-                "breath_cut_ms": args.breath_cut_ms, "breath_target_ms": args.breath_target_ms,
-                "fade_ms": args.fade_ms})
-        if not check["ok"]:
+        result = flow.process_chapter(chapter, [job for job in jobs if job["chapter"] == chapter["id"]],
+            output / "candidates" / chapter["id"], generate, transcribe, exceptions=normalization,
+            threshold=args.asr_threshold, silence=args.silence, offset=offset, anchors=anchors,
+            skip_post=args.skip_post, max_rounds=args.max_repair_rounds, post_options=dict(
+                speed=args.speed, breath_db=args.breath_db, breath_cut_ms=args.breath_cut_ms,
+                breath_target_ms=args.breath_target_ms, fade_ms=args.fade_ms, lufs=args.lufs))
+        record = result["record"]
+        if not result["check"]["ok"] or not result["asr"]["ok"]:
             failed.append(chapter["id"])
-        write_json(output / "analysis" / f"aligned-characters-{chapter['id']}.json", analysis)
-        records.append(record); timings.extend(timing); scenes.extend(scene); subtitles.extend(captions)
+        target = output / f"chapter-{chapter['id']}.wav"
+        shutil.copy2(result["audio"], target)
+        record.update(path=target.name, audio=target.name, sha256=hashlib.sha256(target.read_bytes()).hexdigest(),
+                      repair_rounds=result.get("repair_rounds", []))
+        for name, value in [("aligned-characters", result["analysis"]), ("final-alignment", result["alignment"]),
+                            ("voice-check", result["check"]), ("asr-audit", result["asr"])]:
+            write_json(output / "analysis" / f"{name}-{chapter['id']}.json", value)
+        records.append(record)
+        timings.extend(result["timing"]); scenes.extend(result["scenes"]); subtitles.extend(result["captions"])
         offset = record["end"]
     if failed:
-        raise SystemExit("配音检测未通过，停止组装：" + ", ".join(failed) + "；查看 analysis/voice-check-*.json")
+        write_json(output / "analysis/failures.json", dict(chapters=failed, max_repair_rounds=args.max_repair_rounds))
+        raise SystemExit("ASR/配音检测未通过，最多修复3轮后停止组装：" + ", ".join(failed))
     sys.path.insert(0, str(TOOLKIT / "tools"))
     from captions import export_subtitles
     (output / "voice.srt").write_text(export_subtitles(subtitles, max_words=1))
@@ -319,11 +451,12 @@ def main():
                 "total_duration": offset, "chapters": records, "scene_timing": scenes,
                 "scene_count": len(scenes), "sentence_count": len(timings), "subtitle_count": len(subtitles),
                 "anchor_count": sum(len(t["anchors"]) for t in timings),
-                "raw_voice_duration": round(sum(c["generated_duration"] for c in records), 5),
-                "boundary_silence_duration": round(sum(c["added_boundary_silence"] for c in records), 5),
+                "raw_voice_duration": round(sum(record["generated_duration"] for record in records), 5),
+                "boundary_silence_duration": round(sum(record["added_boundary_silence"] for record in records), 5),
                 "source_script_sha256": hashlib.sha256(args.script.read_bytes()).hexdigest(),
-                "postprocessing": not args.skip_post, "prosody_check": "passed",
-                "alignment_note": "Whisper字时间经后期剪切/保音高提速映射，再插入已预算的换幕静音；最终章音频必须通过韵律检测。"}
+                "postprocessing": not args.skip_post, "prosody_check": "passed", "asr_check": "passed",
+                "seeds": seeds, "asr_threshold": args.asr_threshold, "max_repair_rounds": args.max_repair_rounds,
+                "alignment_note": "最终波形经LUFS归一化、整章ASR和韵律复扫；整句修复后重算字时间、字幕和锚点。"}
     write_json(output / "voice-manifest.json", manifest)
     print(json.dumps({"output": str(output), "duration": offset, "chapters": len(records),
                       "sentences": len(timings), "anchors": manifest["anchor_count"]}, ensure_ascii=False))

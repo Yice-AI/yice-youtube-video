@@ -200,9 +200,48 @@ def attenuate_breaths(samples, rate, alignment, acoustic, *, gain_db=-12., cut_m
     return result, updated, events, edits
 
 
+def loudness(path, target=-16.):
+    result = subprocess.run(['ffmpeg', '-hide_banner', '-nostats', '-i', str(path),
+                             '-af', f'loudnorm=I={target}:TP=-1.2:LRA=11:print_format=json',
+                             '-f', 'null', '-'], capture_output=True, text=True, check=True)
+    return json.JSONDecoder().raw_decode(result.stderr[result.stderr.rfind('{'):])[0]
+
+
+def normalize_lufs(source, destination, target=-16.):
+    if not np.isfinite(target) or not -30 <= target <= -5:
+        raise ValueError('LUFS target must be between -30 and -5')
+    if Path(source).resolve() == Path(destination).resolve():
+        raise ValueError('Keep the original audio when normalizing')
+    measured = loudness(source, target)
+    if not np.isfinite(float(measured['input_i'])):
+        raise ValueError('Cannot normalize silent or invalid audio')
+    info = sf.info(source)
+    filt = (f"loudnorm=I={target}:TP=-1.2:LRA=11:linear=true:"
+            f"measured_I={measured['input_i']}:measured_TP={measured['input_tp']}:"
+            f"measured_LRA={measured['input_lra']}:measured_thresh={measured['input_thresh']}:"
+            f"offset={measured['target_offset']}")
+    subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(source), '-af', filt,
+                    '-ar', str(info.samplerate), '-ac', '1', '-c:a', 'pcm_s24le', str(destination)],
+                   check=True, capture_output=True)
+    if sf.info(destination).frames != info.frames:
+        raise ValueError('LUFS normalization changed sample count')
+    levels = loudness(destination, target)
+    delta = target - float(levels['input_i'])
+    if abs(delta) > .1 and float(levels['input_tp']) + delta <= -1.1:
+        adjusted = Path(destination).with_name(Path(destination).stem + '-gain.wav')
+        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(destination),
+                        '-af', f'volume={delta}dB', '-c:a', 'pcm_s24le', str(adjusted)],
+                       check=True, capture_output=True)
+        if sf.info(adjusted).frames != info.frames:
+            raise ValueError('Gain changed sample count')
+        adjusted.replace(destination)
+        levels = loudness(destination, target)
+    return dict(target_lufs=target, measured_lufs=float(levels['input_i']),
+                true_peak_dbtp=float(levels['input_tp']), samples=info.frames)
+
 def postprocess(audio, alignment, output, *, speed=1.08, breath_db=-12.,
                 breath_cut_ms=250., breath_target_ms=150., fade_ms=10.,
-                thresholds=None, scene_boundaries=(), scene_padding=0.):
+                thresholds=None, scene_boundaries=(), scene_padding=0., lufs=-16.):
     if not np.isfinite([speed, breath_db, breath_cut_ms, breath_target_ms, fade_ms, scene_padding]).all():
         raise ValueError('Postprocessing parameters must be finite')
     if (not .5 <= speed <= 2 or breath_db > 0 or fade_ms <= 0 or scene_padding < 0 or
@@ -236,7 +275,8 @@ def postprocess(audio, alignment, output, *, speed=1.08, breath_db=-12.,
         destination = temp / 'semantic.wav'
         updated, pauses = regularize(prepared, updated, destination, temp / 'breaths.npz',
                                     scene_boundaries, scene_padding, fade_ms, thresholds)
-        samples, rate = sf.read(destination)
+        levels = normalize_lufs(destination, temp / 'normalized.wav', lufs)
+        samples, rate = sf.read(temp / 'normalized.wav')
         temporary = output.with_name(output.stem + '.tmp.wav')
         sf.write(temporary, samples, rate, subtype='PCM_24')
         temporary.replace(output)
@@ -245,7 +285,8 @@ def postprocess(audio, alignment, output, *, speed=1.08, breath_db=-12.,
                                     semantic_pause_edits=pauses, fade_ms=fade_ms,
                                     scene_padding_s=scene_padding,
                                     scene_boundaries=list(scene_boundaries),
-                                    duration_s=len(samples) / rate)
+                                    duration_s=len(samples) / rate, loudness=levels)
+    updated['post_check'] = pd.check_chapter(output, updated, thresholds=thresholds)
     return updated
 
 
@@ -261,6 +302,7 @@ def main(argv=None):
     parser.add_argument('--breath-cut-ms', type=float, default=250.)
     parser.add_argument('--breath-target-ms', type=float, default=150.)
     parser.add_argument('--fade-ms', type=float, default=10.)
+    parser.add_argument('--lufs', type=float, default=-16.)
     parser.add_argument('--scene-boundaries', type=Path, help='JSON list of character boundaries before scene padding')
     parser.add_argument('--scene-padding', type=float, default=0.)
     pd.add_threshold_arguments(parser)
@@ -271,6 +313,7 @@ def main(argv=None):
                              breath_db=args.breath_db, breath_cut_ms=args.breath_cut_ms,
                              breath_target_ms=args.breath_target_ms, fade_ms=args.fade_ms,
                              scene_padding=args.scene_padding,
+                             lufs=args.lufs,
                              scene_boundaries=json.loads(args.scene_boundaries.read_text()) if args.scene_boundaries else [],
                              thresholds=pd.threshold_arguments(args))
         pd.write_json(args.output_alignment, result)
@@ -280,7 +323,7 @@ def main(argv=None):
     print(json.dumps(dict(duration_s=result['postprocessing']['duration_s'],
                           breath_events=len(result['postprocessing']['breath_events']),
                           pause_edits=len(result['semantic_pause_edits'])), ensure_ascii=False))
-    return 0
+    return 0 if result['post_check']['ok'] else 1
 
 
 if __name__ == '__main__':

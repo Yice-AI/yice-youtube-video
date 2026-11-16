@@ -1,6 +1,6 @@
 # 配音生成、后期和韵律检测
 
-`voice.sh` 按章生成 → Whisper 字级对齐 → 后期处理 → 预算内的换幕静音 → **最终章音频检测**。只有全部章节零告警，才输出可供组装的 `voice-manifest.json`、`voice-timing.json` 和 SRT。规则解释见 [配音规则](../../references/voice.md)。
+`voice.sh` 每章多 seed 生成 → post → ASR 与韵律 check → 不通过就整句 repair（最多 3 轮）。只有全部章节匹配率达到阈值、差异已明确登记且零告警，才输出可组装的 `voice-manifest.json`、`voice-timing.json` 和 SRT。规则解释见 [配音规则](../../references/voice.md)。
 
 ## 环境
 
@@ -15,25 +15,52 @@ bash install.sh --check
 ## 从脚本生成
 
 ```bash
-bash kit/scripts/voice.sh episode/script.md --output episode/voice --anchors episode/anchors.json
+bash kit/scripts/voice.sh episode/script.md --output episode/voice \
+  --anchors episode/anchors.json --seeds 42,43
 ```
 
 默认后期：保音高提速 `1.08`；宽频低能量的呼吸候选压低 `12dB`，超过 `250ms` 缩到 `150ms`；剪切及补停顿边缘淡化 `10ms`。逗号停顿 `180–300ms`，转折和句末 `300–450ms`，已经在区间内的保留。声学候选不等于人工确认的呼吸声，日志保留原区间及实际操作。
 
-`--speed`、`--breath-db`、`--breath-cut-ms`、`--breath-target-ms`、`--fade-ms` 可调整这些参数。`--skip-post` 只跳过后期，**没有跳过检测的开关**。内部生成子进程仅输出 raw 文件，不能产生已通过检测的组装清单。出现告警后应整句重生成、筛选并复查；不自动把异常压成“通过”。
+`--speed`、`--breath-db`、`--breath-cut-ms`、`--breath-target-ms`、`--fade-ms` 可调整初始后期参数；整句拼接固定 10ms。`--skip-post` 只跳过初始后期，**没有跳过检测的开关**，后续修复仍按标准后期处理。内部生成子进程仅输出 raw 文件，不能产生已通过检测的组装清单。
 
-默认 `--silence 0.2` 先计入语义停顿预算，再插入换幕静音，避免后期和组装各加一次长停顿。每章输出后期字时间、实际最终字时间及 `analysis/voice-check-章号.json`；SRT、章节和锚点由处理后的时间重新生成。后期不替代全片混音：章配音约 −16 LUFS，成片 −14 LUFS、真峰值 ≤ −1 dBTP 仍须在混音后测量。
+`--seeds` 默认 `42,43`，每章每个 seed 连续生成一次，不逐句生成原章；保留所有候选。优先选择 ASR 与韵律都通过的候选，再按内容差异数、告警数、匹配率、seed 排序。`--asr-threshold` 默认 `0.97`；即使匹配率很高，未登记的中文差异仍不放行。`--chapters 00,01` 可只处理指定章节。
+
+检测不通过时，定位有问题的整句，每句生成 3 个新 seed，筛选 ASR、韵律、音色代理余弦 ≥0.94 和音高中位数偏差 ≤3.5 半音；只在已验证的自然低能量句间替换，匹配有效发声 RMS，接缝 10ms 交叉淡化。每轮保留原片、所有候选、连续性指标和修改前后 1–2 秒切片，再整章 ASR/韵律重扫。`--max-repair-rounds` 默认 3、最大 3；无法安全定位或三轮仍不过就报失败，不导出组装清单。代理指标不代替试听。
+
+默认 `--silence 0.2` 先计入语义停顿预算，再插入换幕静音，并对实际波形闭环校正；重算时间时不再次插静音。默认 `--lufs -16` 执行两遍响度归一化，保留采样数，归一化后必须重扫。每章输出最终字时间及 `analysis/voice-check-章号.json`、`asr-audit-章号.json`；SRT、章节和锚点由最终时间重新生成。成片 −14 LUFS、真峰值 ≤ −1 dBTP 仍须在混音后测量。
+
+## ASR 例外与复跑
+
+数字和单位只接受同值写法，先替换完整长短语，避免 `3` 破坏 `30`。数字后的“兆”转写成 `Mbps` 作为转写差异登记，不修改朗读文本；数字后的“照→兆”明确登记为单位同音字，不替换“照片”的“照”。英文专名与同音别字独立留档，没有一般模糊匹配。额外规则可用 `--normalizations exceptions.json`：
+
+```json
+{"number_unit":{},"english_name":{"Example":"Example name"},"homophone":{"张数":"章数"}}
+```
+
+键是朗读原文，值是明确接受的 ASR 别写。每项分别写入审计；不同数值不会因为例外表就被放过。兼容旧的平面原文→别写对象，也会分类记录。`--asr-prompt` 仅用于提供领域词表，不把整段台词喂给识别器。原始和最终转写都保留，ASR 缓存绑定音频 SHA-256 与模型/词表设置。
+
+要用已有原始候选重跑同一流程，传 `--reuse-candidates cache.json`。缓存为记录列表，每项必须含 `text`、`seed`、`brand`、`path`、`sha256`；只有原文、seed、品牌和文件哈希全部匹配才复用，复制到新输出目录，保留原文件。没有匹配项才本地生成；这不是跳过检测或直接接受旧的成片。示例：
+
+```json
+[{"text":"示例原文。","seed":42,"brand":"example","path":"/absolute/raw.wav","sha256":"填写原音的完整SHA256"}]
+```
+
+`raw/seed42/` 保存原始候选，`candidates/章号/selection.json` 保存选择依据，`repair/round-N/` 保存修复候选、接缝和切片，`repair-report.json` 保存每轮结果。输出目录须为空，不覆盖旧交付。
 
 ## 独立处理已有章音频
 
 ```bash
-python kit/scripts/voice-post.py --audio episode/raw.wav \
+python3 kit/scripts/workspace.py voice-post.py --audio episode/raw.wav \
   --alignment episode/alignment.json --text-file episode/reading.txt \
   --output episode/post.wav --output-alignment episode/post-alignment.json
 
 bash kit/scripts/voice-check.sh --audio episode/post.wav \
   --alignment episode/post-alignment.json --text-file episode/reading.txt \
   --chapter 01 --output episode/check.json --cache episode/acoustic.npz
+
+bash kit/scripts/voice-repair.sh --audio episode/post.wav \
+  --alignment episode/post-alignment.json --text-file episode/reading.txt \
+  --output episode/repair
 ```
 
 所有路径都由参数传入；`--timing` 是 `--alignment` 的别名。输入必须是**单字时间**，不能用只有句起止时间的字幕或句级 `voice-timing.json` 冒充字级对齐：

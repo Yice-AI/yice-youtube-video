@@ -49,3 +49,18 @@ EP01 v6 的教训：ASR 核对全过、静音也压得很干净，用户一听�
 - 呼吸声压低 12dB，超过 250ms 的截到 150ms。
 - 交叉淡化 10ms，整体保音高提速 1.08 倍。
 - 每章约 −16 LUFS；成片 −14 LUFS，真峰值 ≤ −1 dBTP。
+
+## 6. 命令
+
+```bash
+bash kit/scripts/voice.sh episode/script.md --output episode/voice --seeds 42,43
+
+# 已有后期音频的整句修复：
+bash kit/scripts/voice-repair.sh --audio episode/post.wav \
+  --alignment episode/post-alignment.json --text-file episode/reading.txt \
+  --output episode/repair
+```
+
+默认流程为生成 → post → check，不通过自动整句 repair，最多 3 轮后仍不通过才报失败。每章每个 seed 各生成一条，自动选 ASR 与检测更好的候选；ASR 阈值默认 `--asr-threshold 0.97`，后期默认 `--lufs -16`，归一化后重新检测。修复固定 10ms 交叉淡化，音色代理余弦 ≥0.94、音高偏差 ≤3.5 半音，保留修改前后切片并整章重扫。
+
+命令把数字和单位写法、英文专名、同音别字分别留档。数字后的“兆”被 ASR 写成 `Mbps` 属于已登记的转写差异，不为此改朗读文本；其他同音别字通过 `--normalizations` 逐项明确登记。可用 `--asr-prompt` 提供领域词表，不提供完整台词。`--chapters 00` 配合带原文、seed、品牌、路径和 SHA-256 的 `--reuse-candidates` 可复跑已有原始候选，仍经过全部检测。参数与产物详见 [配音命令说明](../kit/docs/voice.md)。

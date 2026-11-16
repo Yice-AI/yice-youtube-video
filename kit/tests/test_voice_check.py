@@ -135,7 +135,7 @@ class VoiceCheckTests(unittest.TestCase):
         chapter = dict(id="00", text=aligned["text"], scenes=[dict(id="0-1", text="甲乙。"), dict(id="0-2", text="丙丁戊己。")])
         (self.root / "analysis").mkdir()
         with patch.object(voice, "align_characters", return_value=(aligned["mapped"], 1., 0)):
-            record, _, _, _, _, checked = voice.finish_chapter(chapter, audio, self.root, {}, {}, .2, 0, [])
+            record, _, _, _, _, checked = voice.finish_chapter(chapter, audio, self.root, {"text": aligned["text"]}, {}, .2, 0, [])
         self.assertTrue(checked["ok"], checked["alerts"])
         boundary = next(b for b in checked["measurement"]["boundaries"] if b["kind"] == "sentence")
         self.assertGreaterEqual(boundary["pause_ms"], 300)
@@ -147,7 +147,7 @@ class VoiceCheckTests(unittest.TestCase):
         chapter = dict(id="00", text=aligned["text"], scenes=[dict(id="0-1", text=aligned["text"])])
         (self.root / "analysis").mkdir()
         with patch.object(voice, "align_characters", return_value=(aligned["mapped"], 1., 0)):
-            record, _, _, _, _, checked = voice.finish_chapter(chapter, audio, self.root, {}, {}, 0, 0, [], skip_post=True)
+            record, _, _, _, _, checked = voice.finish_chapter(chapter, audio, self.root, {"text": aligned["text"]}, {}, 0, 0, [], skip_post=True)
         self.assertFalse(checked["ok"])
         self.assertGreater(record["prosody_alert_count"], 0)
         self.assertTrue((self.root / "analysis/voice-check-00.json").is_file())
@@ -176,13 +176,19 @@ class VoiceCheckTests(unittest.TestCase):
         script, output = self.root / "script.md", self.root / "delivery"
         script.write_text("## 00 示例\n| 0-1 | " + aligned["text"] + " |\n")
 
-        def fake_generation(*args, **kwargs):
-            shutil.copyfile(audio, output / "raw/chapter-00-raw.wav")
+        def fake_generation(jobs):
+            for job in jobs:
+                target = Path(job['path'])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(audio, target)
 
-        argv = ["voice.py", str(script), "--output", str(output), "--skip-post", "--silence", "0"]
-        with patch.object(sys, "argv", argv), patch.object(voice.subprocess, "run", side_effect=fake_generation), \
-                patch.dict(sys.modules, {"mlx_whisper": types.SimpleNamespace(transcribe=lambda *a, **k: {})}), \
-                patch.object(voice, "align_characters", return_value=(aligned["mapped"], 1., 0)):
+        flow = voice.load_voice_tool('voice-repair')
+        original_loader = voice.load_voice_tool
+        argv = ["voice.py", str(script), "--output", str(output), "--skip-post", "--silence", "0", '--max-repair-rounds', '0']
+        with patch.object(sys, "argv", argv), patch.object(voice, 'make_generator', return_value=fake_generation), \
+                patch.object(voice, 'make_transcriber', return_value=lambda _: {'text': aligned['text']}), \
+                patch.object(voice, 'load_voice_tool', side_effect=lambda name: flow if name == 'voice-repair' else original_loader(name)), \
+                patch.object(flow.v, "align_characters", return_value=(aligned["mapped"], 1., 0)):
             with self.assertRaisesRegex(SystemExit, "配音检测未通过"):
                 voice.main()
         self.assertFalse((output / "voice-manifest.json").exists())
