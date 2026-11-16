@@ -1,0 +1,5 @@
+recipe: photo-word 照片/实物特写 + 大字 + 测量标注
+主物件（实物 PNG 或照片）占画面 >60% 的特写，宋体大字压在物件上或旁边；蓝色测量引线把等宽小签连到物件上的点；
+可选一条证据剪报（m1）贴在角落。镜头最后缓推到细节。
+spec: { obj:{x,y,w,rot,at,photo}, word:{text,at,x,y,size}, notes:[{text,at,ox,oy,lx,ly}], push:{at,s,x,y}, clip:{x,y,w,rot,at} }
+media m0: 主物件；m1: 证据剪报（可选）

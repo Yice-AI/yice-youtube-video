@@ -1,0 +1,5 @@
+.r-doc .skel { position:absolute; inset:0; padding:56px 70px; background:#fff; }
+.r-doc .skel i { display:block; background:#E9EAEE; border-radius:8px; margin-bottom:22px; }
+.r-doc .skel .btn { background:#1E1F22; border-radius:999px; width:330px; height:74px; margin-top:34px; }
+.r-doc .clipping { position:absolute; background:#fff; padding:28px 34px; box-shadow:0 1px 2px rgba(0,0,0,.18), 0 26px 50px -16px rgba(20,14,8,.45); }
+.r-doc .clipping img { display:block; width:100%; }

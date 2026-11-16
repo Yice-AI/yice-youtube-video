@@ -1,0 +1,11 @@
+{
+  "items": [
+    {
+      "id": "plain-envelope",
+      "prompt": "A single realistic unbranded kraft paper envelope, fully visible, flat lay, soft window lighting, natural paper fibers, short soft contact shadow. No text, numbers, logos or illustrations. Isolated with generous transparent padding. Native transparent alpha PNG background, no backdrop, no checkerboard.",
+      "candidates": 2,
+      "width": 1536,
+      "height": 1024
+    }
+  ]
+}

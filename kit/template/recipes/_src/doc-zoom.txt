@@ -1,0 +1,5 @@
+recipe: doc-zoom 官方页面截图推近 + 荧光
+官方页面截图装进浏览器窗口（或作为剪报纸条 bar:false），放在舞台上微斜；镜头按关键帧推近，荧光扫过关键词，可选蓝圈/红章。
+截图缺失时（mediaFallback[0]）画出骨架页面并标注"待截图"。
+spec: { page:{x,y,w,rot}, aspect, bar, url, keys:[{at,x,y,z}](页面%), hls:[{at,x,y,w,h}], circle, stamp:{text,at,x,y}, title:{text,at,side,sub}, ph }
+media m0: 页面截图

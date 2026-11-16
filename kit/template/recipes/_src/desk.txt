@@ -1,0 +1,4 @@
+recipe: desk 全景桌面（≥5 件物件）
+一张大桌面上摆多件物件：实物、冲印照片、截屏、纸卡、标签，部分出画、互相压住；物件依次落下，镜头从全景平移/推近到焦点物件。
+spec: { items:[{m,kind:"prop"|"photo"|"screen"|"card"|"label",text,sub,x,y,w,h,rot,at,z}], keys:[{at,x,y,s}], title:{text,at,side,sub} }
+media m0..mN: 物件图

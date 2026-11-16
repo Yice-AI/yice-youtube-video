@@ -1,0 +1,14 @@
+node_modules/
+renders/
+**/assets/media/
+__pycache__/
+**/.serena/cache/
+**/.serena/project.local.yml
+project.local.yml
+*.mp4
+*.mov
+*.wav
+.DS_Store
+.env
+.env.*
+**/evidence/

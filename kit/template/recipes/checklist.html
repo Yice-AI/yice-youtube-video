@@ -1,0 +1,55 @@
+<!doctype html>
+<!--
+recipe: checklist 清单卡 + 实物
+纸卡上 01/02/03 逐条写入（宋体），每条写完画一道蓝墨下划线；侧边实物先落下、胶带固定。镜头随条目下移。
+spec: { card:{x,y,w,rot}, kicker, title, items:[{text,at,sub}], side:{x,y,w,rot,at}, tone:"card"|"sticky" }
+media m0: 侧边实物（可选）
+-->
+<html><head><meta charset="UTF-8" /></head><body><template>
+<style>
+.r-check .cc { padding:50px 60px 40px; }
+.r-check .sticky { background-color:#F3E3A0 !important; }
+.r-check .kick { font-family:var(--f-mono); font-size:28px; letter-spacing:.14em; color:#7a6f60; text-transform:uppercase; }
+.r-check .ti { font-family:var(--f-song); font-weight:900; font-size:76px; line-height:1.05; margin:14px 0 26px; white-space:nowrap; }
+.r-check .it { position:relative; display:flex; align-items:center; gap:28px; padding:6px 0 10px; }
+.r-check .it .n { font-family:var(--f-song); font-weight:900; font-size:64px; color:var(--stamp); width:70px; flex:none; }
+.r-check .it .tx { font-family:var(--f-song); font-weight:700; font-size:72px; font-weight:900; line-height:1.1; white-space:nowrap; }
+.r-check .it .sb { font-family:var(--f-mono); font-size:28px; color:#7a6f60; letter-spacing:.06em; margin-top:8px; }
+.r-check .ul { position:absolute; left:98px; height:5px; bottom:10px; background:var(--blue); border-radius:3px; transform-origin:0 50%; opacity:.85; }
+</style>
+<div id="__SID__-root" data-composition-id="__SID__" data-width="1920" data-height="1080">
+  <div id="__SID__-holder">__MEDIA__</div>
+  <script type="application/json" id="__SID__-spec">__SPEC__</script>
+</div>
+<script>
+(function () {
+var Y = YF, c = Y.ctx("__SID__", document.querySelector('[data-composition-id="__SID__"]')), s = c.spec, tl = c.tl, W = 1920, H = 1080;
+  c.root.classList.add("r-check");
+  Y.stage(c);
+  var cd = s.card || { x: 180, y: 120, w: 980, rot: -1 };
+  if (s.sides) Y.props(c, c.cam, s.sides, tl);
+  var card = Y.card(c.cam, { x: cd.x, y: cd.y, w: cd.w }); card.classList.add("cc"); card.style.height = "auto";
+  if (s.tone === "sticky") card.classList.add("sticky");
+  Y.drop(tl, card, 0.15, { rot: cd.rot || -1, y: -50, spin: 2.5 });
+  Y.tape(card, 60, -22, -5, 160);
+  if (s.kicker) Y.el("div", "kick", card, s.kicker);
+  var ti = Y.el("div", "ti", card); Y.write(tl, ti, s.title || "", 0.2);
+  var keys = [{ at: 0, x: 960, y: 540, s: 1 }];
+  (s.items || []).forEach(function (it, i) {
+    var row = Y.el("div", "it", card), n = Y.el("div", "n", row, "✓"), col = Y.el("div", "", row), tx = Y.el("div", "tx", col);
+    if (it.sub) Y.el("div", "sb", col, it.sub);
+    var t = c.at(it.at, 1.2 + i);
+    row.style.overflow = "hidden";
+    tl.fromTo(row, { height: 0, opacity: 0 }, { height: it.sub ? 150 : 124, opacity: 1, duration: 0.4, ease: "power2.out" }, t - 0.3);
+    tl.fromTo(n, { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, t);
+    Y.write(tl, tx, it.text, t);
+    var ul = Y.el("div", "ul", row); Y.css(ul, { width: Math.min(700, 72 * Array.from(it.text).length) });
+    tl.fromTo(ul, { scaleX: 0 }, { scaleX: 1, duration: 0.4, ease: "power2.inOut" }, t + 0.5);
+    keys.push({ at: t - 0.3, x: cd.x + cd.w * 0.55, y: cd.y + 300 + i * 140, s: 1.04, d: 0.9, ease: "sine.inOut" });
+  });
+  Y.camera(c, keys);
+  Y.hud(c);
+  Y.finish(c);
+})();
+</script>
+</template></body></html>

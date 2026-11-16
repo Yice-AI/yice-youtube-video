@@ -1,0 +1,3 @@
+recipe: chapter 章节转场
+深炭桌面：巨大的等宽章号，宋体章名逐字写入，细线画出；右侧目录列出全部章节、当前章荧光；一道柔和窗光扫过一次（改造自 registry light-sweep-pass 的思路）。
+spec: { no, title, sub, list:[{no,title}], current }

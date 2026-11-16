@@ -1,0 +1,43 @@
+<!doctype html>
+<!--
+recipe: desk 全景桌面（≥5 件物件）
+一张大桌面上摆多件物件：实物、冲印照片、截屏、纸卡、标签，部分出画、互相压住；物件依次落下，镜头从全景平移/推近到焦点物件。
+spec: { items:[{m,kind:"prop"|"photo"|"screen"|"card"|"label",text,sub,x,y,w,h,rot,at,z}], keys:[{at,x,y,s}], title:{text,at,side,sub} }
+media m0..mN: 物件图
+-->
+<html><head><meta charset="UTF-8" /></head><body><template>
+<style>
+.r-desk .ph { position:absolute; background:#F7F4EE; padding:16px 16px 44px; box-shadow:0 1px 2px rgba(0,0,0,.2), 0 24px 46px -14px rgba(0,0,0,.45); }
+.r-desk .ph img { display:block; width:100%; height:100%; object-fit:cover; }
+.r-desk .dc { padding:26px 34px 30px; width:auto !important; height:auto !important; }
+.r-desk .dc .tx { font-family:var(--f-song); font-weight:900; font-size:58px; line-height:1.05; white-space:nowrap; }
+.r-desk .dc .sb { font-family:var(--f-mono); font-size:28px; letter-spacing:.06em; color:#7a6f60; margin-top:10px; white-space:nowrap; }
+.r-desk .lbl { position:absolute; font-family:var(--f-mono); font-size:28px; letter-spacing:.06em; color:var(--paper-ink); background:var(--card); padding:10px 18px; box-shadow:0 1px 2px rgba(0,0,0,.2), 0 10px 20px -8px rgba(0,0,0,.35); white-space:nowrap; }
+</style>
+<div id="__SID__-root" data-composition-id="__SID__" data-width="1920" data-height="1080">
+  <div id="__SID__-holder">__MEDIA__</div>
+  <script type="application/json" id="__SID__-spec">__SPEC__</script>
+</div>
+<script>
+(function () {
+var Y = YF, c = Y.ctx("__SID__", document.querySelector('[data-composition-id="__SID__"]')), s = c.spec, tl = c.tl, W = 1920, H = 1080;
+  c.root.classList.add("r-desk");
+  Y.stage(c);
+  (s.items || []).forEach(function (it, i) {
+    var e, t = c.at(it.at, 0.1 + i * 0.18), im = it.m != null ? c.m(it.m) : null;
+    if (it.kind === "prop") { e = im; e.classList.add("yf-prop"); if (it.round) e.style.borderRadius = "50%"; c.cam.appendChild(e); Y.css(e, { left: it.x, top: it.y, width: it.w }); }
+    else if (it.kind === "photo") { e = Y.el("div", "ph", c.cam); Y.css(e, { left: it.x, top: it.y, width: it.w, height: it.h }); e.appendChild(im); }
+    else if (it.kind === "screen") { e = Y.el("div", "yf-screen", c.cam); Y.css(e, { left: it.x, top: it.y, width: it.w, height: it.h }); var g = Y.el("div", "glass", e); g.appendChild(im); Y.el("div", "glare", e); }
+    else if (it.kind === "card") { e = Y.card(c.cam, { x: it.x, y: it.y }); e.classList.add("dc"); Y.el("div", "tx", e, it.text); if (it.sub) Y.el("div", "sb", e, it.sub); }
+    else { e = Y.el("div", "lbl", c.cam, it.text); Y.css(e, { left: it.x, top: it.y }); if (it.size) e.style.fontSize = it.size + "px"; if (it.font === "song") { e.style.fontFamily = "var(--f-song)"; e.style.fontWeight = 900; } }
+    e.style.zIndex = it.z || (5 + i);
+    if (it.tape) Y.tape(e, (it.w || 300) * 0.35, -20, (i % 2 ? 4 : -5), 140);
+    Y.drop(tl, e, t, { rot: it.rot || 0, y: -60 - (i % 3) * 20, spin: (i % 2 ? -3 : 3) });
+  });
+  Y.camera(c, s.keys || [{ at: 0, x: 960, y: 540, s: 0.86 }, { at: 1.2, x: 960, y: 540, s: 1.0, d: Math.max(1.5, c.dur - 1.4), ease: "sine.inOut" }], { cover: false });
+  if (s.title) Y.label(c, s.title);
+  Y.hud(c);
+  Y.finish(c);
+})();
+</script>
+</template></body></html>

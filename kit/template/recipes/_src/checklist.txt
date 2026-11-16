@@ -1,0 +1,4 @@
+recipe: checklist 清单卡 + 实物
+纸卡上 01/02/03 逐条写入（宋体），每条写完画一道蓝墨下划线；侧边实物先落下、胶带固定。镜头随条目下移。
+spec: { card:{x,y,w,rot}, kicker, title, items:[{text,at,sub}], side:{x,y,w,rot,at}, tone:"card"|"sticky" }
+media m0: 侧边实物（可选）

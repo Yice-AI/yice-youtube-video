@@ -1,0 +1,4 @@
+recipe: num-split 数字对开
+两张不同尺寸的纸卡对开：左大右小，宋体大数字计数滚动，下方标签；中间等宽关系符；底部一把比例尺显示两者关系（如 11.5 / 16 GB），蓝圈圈出重点。
+数字可换成文字（text 字段），用于"装上了 / 还缺"一类对照。
+spec: { left:{num,dec,pre,suf,text,label,sub,at}, right:{...}, rel:{text,at}, bar:{a,b,max,at,unit}, circle:{side,at}, note:{text,at} }

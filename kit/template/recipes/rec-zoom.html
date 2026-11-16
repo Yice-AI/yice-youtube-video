@@ -1,0 +1,96 @@
+<!doctype html>
+<!--
+  recipe: rec-zoom 录屏推近（主力）
+  录屏/截屏铺满（frame:"full"）或放进真实屏幕（frame:"device"），按关键帧推近到指定区域；
+  焦点外 backdrop 虚化 + 压暗，荧光按锚点扫过关键句，可选蓝圈、红章、等宽文件签、关键词纸签。
+  spec: { frame, keys:[{at,x,y,z,d}](媒体%), hls:[{at,x,y,w,h}](媒体%), circle:{at,x,y,w,h}, stamp:{text,at,x,y},
+          tag:{text,at}, title:{text,at,side}, dof:true, placeholder:"待录：…" }
+  media m0: <video> 或 <img>（build 注入静态元素）
+-->
+<html><head><meta charset="UTF-8" /></head><body><template>
+<style>
+  .r-rec .media-box { position:absolute; overflow:hidden; background:#0d0e10; }
+  .r-rec .media-box > video, .r-rec .media-box > img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+  .r-rec .world { position:absolute; left:0; top:0; width:1920px; height:1080px; }
+  .r-rec .dof { position:absolute; inset:0; pointer-events:none; backdrop-filter: blur(7px) brightness(.9) saturate(.85); -webkit-backdrop-filter: blur(7px) brightness(.9) saturate(.85); opacity:0; z-index:20; }
+  .r-rec .vig { position:absolute; inset:0; pointer-events:none; z-index:21; background: radial-gradient(130% 120% at 50% 45%, transparent 55%, rgba(10,10,12,.32) 100%); }
+  .r-rec .label { position:absolute; z-index:40; padding:26px 40px 30px; }
+  .r-rec .label .k { font-family:var(--f-song); font-weight:900; font-size:96px; line-height:1; color:var(--paper-ink); white-space:nowrap; }
+  .r-rec .label .s { font-family:var(--f-mono); font-size:28px; letter-spacing:.08em; color:#6b6358; margin-top:14px; white-space:nowrap; }
+  .r-rec .tag { position:absolute; z-index:40; padding:14px 22px; font-family:var(--f-mono); font-size:28px; letter-spacing:.04em; color:var(--paper-ink); white-space:nowrap; }
+  .r-rec .yf-hl:not(.under) { mix-blend-mode:normal !important; background:rgba(242,207,62,.42) !important; }
+  .r-rec .yf-stamp { mix-blend-mode:normal !important; }
+  .r-rec .ph { position:absolute; z-index:41; left:116px; top:96px; font-family:var(--f-mono); font-size:28px; letter-spacing:.1em; color:#fff; background:rgba(30,26,21,.78); padding:10px 16px; border-left:4px solid var(--hl); }
+</style>
+<div id="__SID__-root" data-composition-id="__SID__" data-width="1920" data-height="1080">
+  <div id="__SID__-holder">__MEDIA__</div>
+  <script type="application/json" id="__SID__-spec">__SPEC__</script>
+</div>
+<script>
+(function () {
+  var Y = YF, c = Y.ctx("__SID__", document.querySelector('[data-composition-id="__SID__"]')), s = c.spec, tl = c.tl, W = 1920, H = 1080;
+  c.root.classList.add("r-rec");
+  var full = s.frame !== "device";
+  var box;
+  if (full) { box = { x: 0, y: 0, w: W, h: H }; }
+  else { Y.stage(c); box = s.box || { x: 214, y: 120, w: 1492, h: 839 }; }
+  var world = Y.el("div", "world", c.cam);
+  var holderBox, scr;
+  if (full) { holderBox = Y.el("div", "media-box", world); Y.css(holderBox, { left: 0, top: 0, width: W, height: H }); }
+  else {
+    scr = Y.el("div", "yf-screen", world); Y.css(scr, { left: box.x - 14, top: box.y - 14, width: box.w + 28, height: box.h + 28 });
+    holderBox = Y.el("div", "media-box", world); Y.css(holderBox, { left: box.x, top: box.y, width: box.w, height: box.h, borderRadius: 8 });
+  }
+  holderBox.appendChild(c.m(0));
+  if (!full) { var gl = Y.el("div", "glare", scr); }
+  function P(x, y) { return { x: box.x + x / 100 * box.w, y: box.y + y / 100 * box.h }; }
+  function R(r) { var a = P(r.x, r.y); return { x: a.x, y: a.y, w: r.w / 100 * box.w, h: r.h / 100 * box.h }; }
+  // entrance for device framing: the screen settles onto the desk
+  if (!full) tl.fromTo(world, { y: 26, scale: 0.985, transformOrigin: "50% 60%" }, { y: 0, scale: 1, duration: 0.8, ease: "power3.out" }, 0);
+  // camera keys in media % -> stage px
+  var dof = Y.el("div", "dof", c.wrap);
+  Y.el("div", "vig", c.wrap);
+  var keys = (s.keys || [{ at: 0, x: 50, y: 50, z: 1 }]).map(function (k) {
+    var p = P(k.x, k.y), z = k.z || 1;
+    if (!full) { // keep the view inside the recording: never show the black media-box edge
+      var hw = W / 2 / z, hh = H / 2 / z, lx = box.x + hw, rx = box.x + box.w - hw, ly = box.y + hh, ry = box.y + box.h - hh;
+      p = { x: lx <= rx ? Math.min(rx, Math.max(lx, p.x)) : box.x + box.w / 2, y: ly <= ry ? Math.min(ry, Math.max(ly, p.y)) : box.y + box.h / 2 };
+    }
+    return { at: k.at, x: p.x, y: p.y, s: z, d: k.d || 1.1, ease: k.ease }; });
+  Y.camera(c, keys, { cover: full, onApply: function (sc, tx, ty, fx, fy) {
+    var o = s.dof === false ? 0 : Math.max(0, Math.min(1, (sc - 1.08) / 0.5));
+    dof.style.opacity = o.toFixed(3);
+    var cx = fx.toFixed(0), cy = fy.toFixed(0), rx = 520 + 140 / sc, ry = 210 + 90 / sc;
+    var m = "radial-gradient(ellipse " + rx.toFixed(0) + "px " + ry.toFixed(0) + "px at " + cx + "px " + cy + "px, transparent 58%, #000 100%)";
+    dof.style.webkitMaskImage = m; dof.style.maskImage = m;
+  } });
+  // highlights ride the camera (world space)
+  var marks = Y.el("div", "", world); Y.css(marks, { position: "absolute", left: 0, top: 0, width: W, height: H });
+  (s.hls || []).forEach(function (h) { Y.hl(marks, tl, R(h), c.at(h.at), { under: h.under }); });
+  var sv = Y.svg(world);
+  if (s.circle) Y.ellipse(sv, tl, R(s.circle), c.at(s.circle.at), { w: 6 });
+  if (s.stamp) { var sp = P(s.stamp.x, s.stamp.y); Y.stamp(world, tl, s.stamp.text, sp, c.at(s.stamp.at), { size: s.stamp.size || 64 }); }
+  // screen-space paper labels (stay legible while zooming)
+  if (s.title) {
+    var right = s.title.side === "right";
+    var lb = Y.card(c.wrap, { x: right ? 1180 : 140, y: 790, w: null, h: null }); lb.classList.add("yf-label");
+    lb.style.width = "auto"; lb.style.height = "auto"; lb.style.transform = "rotate(" + (right ? 1.4 : -1.6) + "deg)";
+    var k = Y.el("div", "k", lb); if (s.title.sub) Y.el("div", "s", lb, s.title.sub);
+    Y.tape(lb, right ? 30 : 230, -24, right ? -5 : 4, 150);
+    var ta = c.at(s.title.at, 0.5);
+    tl.fromTo(lb, { opacity: 0, y: 40, rotation: right ? 5 : -6 }, { opacity: 1, y: 0, rotation: right ? 1.4 : -1.6, duration: 0.55, ease: "back.out(1.3)" }, ta);
+    Y.write(tl, k, s.title.text, ta + 0.25);
+    if (right) { lb.style.left = "auto"; lb.style.right = "150px"; }
+    if (s.title.top != null) lb.style.top = s.title.top + "px";
+  }
+  if (s.tag) {
+    var tg = Y.card(c.wrap, { x: 0, y: 0, w: null, h: null }); tg.classList.add("tag"); tg.style.width = "auto"; tg.style.height = "auto";
+    if (s.tag.side === "left") { tg.style.left = "150px"; tg.style.right = "auto"; } else { tg.style.left = "auto"; tg.style.right = "150px"; } tg.style.top = "110px"; tg.innerHTML = s.tag.text;
+    tl.fromTo(tg, { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.45, ease: "power3.out" }, c.at(s.tag.at, 0.4));
+  }
+  if (s.props) Y.props(c, c.wrap, s.props, tl);
+  Y.hud(c, { onMedia: full });
+  Y.finish(c);
+})();
+</script>
+</template></body></html>

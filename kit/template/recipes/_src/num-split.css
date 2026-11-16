@@ -1,0 +1,12 @@
+.r-num .nc { padding:50px 60px; display:flex; flex-direction:column; justify-content:space-between; }
+.r-num .nc .kick { font-family:var(--f-mono); font-size:28px; letter-spacing:.14em; color:#7a6f60; text-transform:uppercase; }
+.r-num .nc .big { font-family:var(--f-song); font-weight:900; line-height:1; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.r-num .nc .big small { font-size:.36em; margin-left:12px; }
+.r-num .nc .lab { font-family:var(--f-sans); font-weight:700; font-size:40px; white-space:nowrap; }
+.r-num .nc .sb { font-family:var(--f-mono); font-size:28px; color:#7a6f60; letter-spacing:.06em; margin-top:8px; white-space:nowrap; }
+.r-num .rel { position:absolute; font-family:var(--f-mono); font-size:64px; color:var(--sub); z-index:5; }
+.r-num .bar { position:absolute; left:170px; top:900px; width:1580px; height:16px; border:2px solid var(--ink); border-radius:2px; }
+.r-num .bar .fill { position:absolute; left:0; top:0; bottom:0; background:var(--hl); transform-origin:0 50%; }
+.r-num .bar .tk { position:absolute; top:-30px; font-family:var(--f-mono); font-size:28px; color:var(--sub); transform:translateX(-50%); white-space:nowrap; }
+.r-num .bar .mk { position:absolute; top:-10px; width:3px; height:34px; background:var(--stamp); }
+.r-num .note { position:absolute; left:170px; top:960px; font-family:var(--f-mono); font-size:28px; letter-spacing:.06em; color:var(--ink); white-space:nowrap; }

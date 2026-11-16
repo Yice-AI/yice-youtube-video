@@ -1,0 +1,67 @@
+<!doctype html>
+<!--
+recipe: num-split 数字对开
+两张不同尺寸的纸卡对开：左大右小，宋体大数字计数滚动，下方标签；中间等宽关系符；底部一把比例尺显示两者关系（如 11.5 / 16 GB），蓝圈圈出重点。
+数字可换成文字（text 字段），用于"装上了 / 还缺"一类对照。
+spec: { left:{num,dec,pre,suf,text,label,sub,at}, right:{...}, rel:{text,at}, bar:{a,b,max,at,unit}, circle:{side,at}, note:{text,at} }
+-->
+<html><head><meta charset="UTF-8" /></head><body><template>
+<style>
+.r-num .nc { padding:50px 60px; display:flex; flex-direction:column; justify-content:space-between; }
+.r-num .nc .kick { font-family:var(--f-mono); font-size:28px; letter-spacing:.14em; color:#7a6f60; text-transform:uppercase; }
+.r-num .nc .big { font-family:var(--f-song); font-weight:900; line-height:1; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.r-num .nc .big small { font-size:.36em; margin-left:12px; }
+.r-num .nc .lab { font-family:var(--f-sans); font-weight:700; font-size:40px; white-space:nowrap; }
+.r-num .nc .sb { font-family:var(--f-mono); font-size:28px; color:#7a6f60; letter-spacing:.06em; margin-top:8px; white-space:nowrap; }
+.r-num .rel { position:absolute; font-family:var(--f-mono); font-size:64px; color:var(--sub); z-index:5; }
+.r-num .bar { position:absolute; left:170px; top:900px; width:1580px; height:16px; border:2px solid var(--ink); border-radius:2px; }
+.r-num .bar .fill { position:absolute; left:0; top:0; bottom:0; background:var(--hl); transform-origin:0 50%; }
+.r-num .bar .tk { position:absolute; top:-30px; font-family:var(--f-mono); font-size:28px; color:var(--sub); transform:translateX(-50%); white-space:nowrap; }
+.r-num .bar .mk { position:absolute; top:-10px; width:3px; height:34px; background:var(--stamp); }
+.r-num .note { position:absolute; left:170px; top:960px; font-family:var(--f-mono); font-size:28px; letter-spacing:.06em; color:var(--ink); white-space:nowrap; }
+</style>
+<div id="__SID__-root" data-composition-id="__SID__" data-width="1920" data-height="1080">
+  <div id="__SID__-holder">__MEDIA__</div>
+  <script type="application/json" id="__SID__-spec">__SPEC__</script>
+</div>
+<script>
+(function () {
+var Y = YF, c = Y.ctx("__SID__", document.querySelector('[data-composition-id="__SID__"]')), s = c.spec, tl = c.tl, W = 1920, H = 1080;
+  c.root.classList.add("r-num");
+  Y.stage(c);
+  var L = s.left || {}, R = s.right || {}, hasBar = !!s.bar;
+  var boxes = [{ x: 150, y: hasBar ? 120 : 150, w: 820, h: hasBar ? 600 : 700, rot: -1.2 }, { x: 1060, y: hasBar ? 200 : 250, w: 640, h: hasBar ? 470 : 540, rot: 1.4 }];
+  var cards = [L, R].map(function (d, i) {
+    var b = boxes[i], cd = Y.card(c.cam, { x: b.x, y: b.y, w: b.w, h: b.h }); cd.classList.add("nc"); cd.style.transform = "rotate(" + b.rot + "deg)";
+    Y.el("div", "kick", cd, d.kicker || (i ? "B" : "A"));
+    var big = Y.el("div", "big", cd); big.style.fontSize = (d.size || (i ? 170 : 220)) + "px";
+    var foot = Y.el("div", "", cd); Y.el("div", "lab", foot, d.label || ""); if (d.sub) Y.el("div", "sb", foot, d.sub);
+    var t = c.at(d.at, 0.3 + i * 1.2);
+    var e0 = (c.spec.enter && c.spec.enter !== "cut" ? 0.3 : 0.05);
+    Y.drop(tl, cd, i === 0 ? e0 : Math.max(e0 + 0.2, t - 0.3), { rot: b.rot, y: -60, d: 0.55 });
+    if (d.text != null) Y.write(tl, big, d.text, t);
+    else { big.style.position = "relative"; var dash = Y.el("span", "", big, "— —"); Y.css(dash, { position: "absolute", left: 0, top: 0, color: "#b9ae9c" }); var sp = Y.el("span", "", big); tl.fromTo(dash, { opacity: 1 }, { opacity: 0, duration: 0.12 }, t); tl.fromTo(sp, { opacity: 0 }, { opacity: 1, duration: 0.12 }, t); var _u = 0, un = d.unit ? Y.el("small", "", big, d.unit) : null; Y.count(tl, sp, d.from || 0, d.num, t, { dec: d.dec || 0, pre: d.pre, suf: d.suf, d: 0.9 }); }
+    if (i === 0) Y.tape(cd, 40, -20, -6, 140); else Y.tape(cd, b.w - 180, -20, 5, 140);
+    return { el: cd, b: b, big: big, fs: (d.size || (i ? 170 : 220)), n: Array.from(d.text != null ? d.text : ((d.pre || "") + d.num + (d.suf || ""))).length };
+  });
+  if (s.rel) { var rl = Y.el("div", "rel", c.cam, s.rel.text); Y.css(rl, { left: 984, top: hasBar ? 360 : 440 }); Y.fadeUp(tl, rl, c.at(s.rel.at, 1.4), { y: 10 }); }
+  var keys = [{ at: 0, x: 960, y: 540, s: 1 }];
+  if (hasBar) {
+    var B = s.bar, bar = Y.el("div", "bar", c.cam), fill = Y.el("div", "fill", bar), tb = c.at(B.at, 2);
+    Y.css(fill, { width: (B.a / B.max * 100) + "%" });
+    var mk = Y.el("div", "mk", bar); Y.css(mk, { left: (B.b / B.max * 100) + "%" });
+    [[0, "0"], [B.a / B.max, B.a + " " + (B.unit || "")], [B.b / B.max, B.b + " " + (B.unit || "")]].forEach(function (q) { var tk = Y.el("div", "tk", bar, q[1]); Y.css(tk, { left: (q[0] * 100) + "%" }); });
+    tl.fromTo(bar, { opacity: 0 }, { opacity: 1, duration: 0.3 }, tb - 0.3);
+    tl.fromTo(fill, { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "power2.inOut" }, tb);
+    keys.push({ at: tb - 0.2, x: 960, y: 560, s: 1.03, d: 1.2, ease: "sine.inOut" });
+  }
+  if (s.circle) { var cc = cards[s.circle.side === "right" ? 1 : 0], sv = Y.svg(c.cam); sv.style.zIndex = 30; var ew = Math.min(cc.b.w - 40, cc.n * cc.fs * 0.62 + 80), eh = cc.fs * 1.35; Y.ellipse(sv, tl, { x: cc.b.x + 30, y: cc.b.y + cc.b.h * 0.47 - eh / 2, w: ew, h: eh }, c.at(s.circle.at), { color: "var(--stamp)", w: 6 }); }
+  if (s.note) { var nt = Y.el("div", "note", c.cam, s.note.text); Y.fadeUp(tl, nt, c.at(s.note.at), { y: 8 }); keys.push({ at: c.at(s.note.at) - 0.2, x: 960, y: 545, s: 1.03, d: 1.2 }); }
+  if (keys.length === 1) keys.push({ at: 1.2, x: 1000, y: 520, s: 1.05, d: Math.max(1.5, c.dur - 1.5), ease: "sine.inOut" });
+  if (s.extras) Y.props(c, c.cam, s.extras, tl);
+  Y.camera(c, keys);
+  Y.hud(c);
+  Y.finish(c);
+})();
+</script>
+</template></body></html>

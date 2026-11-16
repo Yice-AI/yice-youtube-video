@@ -1,0 +1,5 @@
+recipe: ledger 台账卡（含 io 模式：输入/处理/输出表单）
+纸质台账卡：眉标 + 宋体标题 + 表头 + 逐行写入（数值按锚点出现）+ 合计双线 + 红章；右侧实物/照片落下并贴胶带。
+镜头最后推近到合计行。
+spec: { card:{x,y,w}, kicker, title, cols:[a,b], rows:[{k,v,at,sub}], total:{k,v,at}, stamp:{text,at}, side:{x,y,w,rot,at}, mode:"ledger"|"io" }
+media m0: 侧边实物（可选）

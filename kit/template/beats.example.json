@@ -1,0 +1,137 @@
+{
+  "scenes": [
+    {
+      "id": "S0-1",
+      "sents": [
+        "0-1"
+      ],
+      "recipe": "photo-word",
+      "media": [
+        {
+          "src": [
+            "@assets/demo-prop-01.png",
+            "@media/demo-prop.png"
+          ]
+        }
+      ],
+      "spec": {
+        "obj": {
+          "x": 900,
+          "y": 150,
+          "w": 900,
+          "rot": -3,
+          "at": 0.05,
+          "static": true
+        },
+        "word": {
+          "text": "声音",
+          "static": true,
+          "x": 150,
+          "y": 330,
+          "size": 240
+        },
+        "push": {
+          "at": 1.2,
+          "s": 1.04,
+          "x": 1100,
+          "y": 470,
+          "d": 1.6
+        }
+      }
+    },
+    {
+      "id": "S0-2",
+      "sents": [
+        "0-2"
+      ],
+      "recipe": "ledger",
+      "enter": "cut",
+      "stage": "paper-warm",
+      "spec": {
+        "card": {
+          "x": 170,
+          "y": 130,
+          "w": 1100
+        },
+        "kicker": "示例 · 素材",
+        "title": "制作清单",
+        "cols": [
+          "项目",
+          "来源"
+        ],
+        "rows": [
+          {
+            "k": "配图",
+            "v": "实物道具",
+            "at": 0.3
+          }
+        ]
+      }
+    },
+    {
+      "id": "S0-3",
+      "sents": [
+        "0-3"
+      ],
+      "recipe": "chapter",
+      "enter": "cut",
+      "stage": "charcoal",
+      "spec": {
+        "no": "01",
+        "title": "写代码剪辑",
+        "sub": "四种配方 · 示例",
+        "current": 0,
+        "list": [
+          {
+            "no": "01",
+            "title": "写代码剪辑"
+          }
+        ]
+      }
+    },
+    {
+      "id": "S0-4",
+      "sents": [
+        "0-4"
+      ],
+      "recipe": "rec-zoom",
+      "enter": "cut",
+      "stage": "paper-cool",
+      "media": [
+        {
+          "src": [
+            "@media/demo-rec.mp4"
+          ],
+          "start": 6
+        }
+      ],
+      "spec": {
+        "frame": "full",
+        "keys": [
+          {
+            "at": 0,
+            "x": 50,
+            "y": 50,
+            "z": 1
+          },
+          {
+            "at": 0.9,
+            "x": 59,
+            "y": 15,
+            "z": 2.1,
+            "d": 1.2
+          }
+        ],
+        "title": {
+          "text": "用中文说",
+          "at": 0.6,
+          "sub": "真实录屏"
+        },
+        "tag": {
+          "text": "录屏 · 示例",
+          "at": 0.5
+        }
+      }
+    }
+  ]
+}

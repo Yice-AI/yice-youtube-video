@@ -1,0 +1,7 @@
+.r-rope .ctr { padding:40px 60px 46px; text-align:left; }
+.r-rope .ctr .tx { font-family:var(--f-mono); font-size:84px; letter-spacing:.02em; line-height:1; white-space:nowrap; color:var(--paper-ink); }
+.r-rope .ctr .sb { font-family:var(--f-mono); font-size:28px; letter-spacing:.12em; color:#7a6f60; margin-top:16px; }
+.r-rope .nd { padding:22px 36px 26px; width:auto !important; height:auto !important; }
+.r-rope .nd .tx { font-family:var(--f-song); font-weight:900; font-size:64px; line-height:1; white-space:nowrap; }
+.r-rope .nd .sb { font-family:var(--f-mono); font-size:28px; letter-spacing:.08em; color:#7a6f60; margin-top:10px; white-space:nowrap; }
+.r-rope .pin { position:absolute; width:22px; height:22px; margin:-11px 0 0 -11px; border-radius:50%; background: radial-gradient(circle at 35% 30%, #f07a6d, #a3261c 70%); box-shadow:0 3px 4px rgba(0,0,0,.35); z-index:30; }

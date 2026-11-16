@@ -1,0 +1,25 @@
+  c.root.classList.add("r-check");
+  Y.stage(c);
+  var cd = s.card || { x: 180, y: 120, w: 980, rot: -1 };
+  if (s.sides) Y.props(c, c.cam, s.sides, tl);
+  var card = Y.card(c.cam, { x: cd.x, y: cd.y, w: cd.w }); card.classList.add("cc"); card.style.height = "auto";
+  if (s.tone === "sticky") card.classList.add("sticky");
+  Y.drop(tl, card, 0.15, { rot: cd.rot || -1, y: -50, spin: 2.5 });
+  Y.tape(card, 60, -22, -5, 160);
+  if (s.kicker) Y.el("div", "kick", card, s.kicker);
+  var ti = Y.el("div", "ti", card); Y.write(tl, ti, s.title || "", 0.2);
+  var keys = [{ at: 0, x: 960, y: 540, s: 1 }];
+  (s.items || []).forEach(function (it, i) {
+    var row = Y.el("div", "it", card), n = Y.el("div", "n", row, "✓"), col = Y.el("div", "", row), tx = Y.el("div", "tx", col);
+    if (it.sub) Y.el("div", "sb", col, it.sub);
+    var t = c.at(it.at, 1.2 + i);
+    row.style.overflow = "hidden";
+    tl.fromTo(row, { height: 0, opacity: 0 }, { height: it.sub ? 150 : 124, opacity: 1, duration: 0.4, ease: "power2.out" }, t - 0.3);
+    tl.fromTo(n, { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, t);
+    Y.write(tl, tx, it.text, t);
+    var ul = Y.el("div", "ul", row); Y.css(ul, { width: Math.min(700, 72 * Array.from(it.text).length) });
+    tl.fromTo(ul, { scaleX: 0 }, { scaleX: 1, duration: 0.4, ease: "power2.inOut" }, t + 0.5);
+    keys.push({ at: t - 0.3, x: cd.x + cd.w * 0.55, y: cd.y + 300 + i * 140, s: 1.04, d: 0.9, ease: "sine.inOut" });
+  });
+  Y.camera(c, keys);
+  Y.hud(c);

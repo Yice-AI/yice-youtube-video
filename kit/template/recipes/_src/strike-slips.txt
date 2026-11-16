@@ -1,0 +1,4 @@
+recipe: strike-slips 划线纸签
+左侧宋体大字（如"不用"），右侧纸签按锚点依次滑入，红笔手绘划线划掉；可选留下一条"保留"长纸签（蓝下划线）。
+short 模式：一排小纸签逐个划掉，右边一整条长纸签留下（一句一句拼 vs 一整段）。
+spec: { lead:{text,at}, slips:[{text,at,strike}], keep:{text,at,sub}, short:{text,n,at,strike} }

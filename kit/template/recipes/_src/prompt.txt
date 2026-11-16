@@ -1,0 +1,4 @@
+recipe: prompt 需求输入框（录屏位的示意版）
+通用聊天输入框放在桌面上，需求原文逐字打入；按锚点把关键短语刷上荧光（逐字背景扫过，不需要测量）；最后按下发送。
+用于还没录屏的"说一句话给 Codex"镜头，角标标明"示意 · 待录屏替换"。
+spec: { kicker, text, at, rate, marks:[{phrase,at}], send:{at}, title:{text,at,side,sub}, ph }

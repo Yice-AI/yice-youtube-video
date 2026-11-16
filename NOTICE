@@ -1,0 +1,31 @@
+# 第三方许可说明
+
+本仓库自行编写的 skill、配方、脚本和文档采用根目录 MIT LICENSE。
+第三方文件保留其原始许可；MIT 不替代以下许可。
+
+## 字体：SIL Open Font License 1.1
+
+思源黑体（Source Han Sans）、思源宋体（Source Han Serif）、Source Code Pro
+来自 Adobe 开源字体项目。字体文件位于 kit/template/assets/fonts。
+原始许可随附：
+
+- kit/template/assets/fonts/LICENSE-SourceHan-OFL.txt
+- kit/template/assets/fonts/LICENSE-SourceCodePro-OFL.md
+
+来源：
+https://github.com/adobe-fonts/source-han-sans
+https://github.com/adobe-fonts/source-han-serif
+https://github.com/adobe-fonts/source-code-pro
+
+## HyperFrames registry 组件：Apache License 2.0
+
+kit/template/compositions/components 下 8 个组件来自 heygen-com/hyperframes。
+上游及许可：https://github.com/heygen-com/hyperframes/blob/main/LICENSE
+完整许可附于 licenses/HyperFrames-Apache-2.0.txt；保留组件已有署名与注释。
+
+本包运行 HyperFrames CLI 0.9.52，不捆绑 CLI 二进制。
+
+## 素材范围
+
+仓库不包含任何第三方图库素材，也不包含成片、录屏、配音、声音参考样本或账号凭证。
+示例只提供文字和参数；每期所需素材由使用者在本地准备并记录其许可。

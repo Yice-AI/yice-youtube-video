@@ -1,0 +1,66 @@
+<!doctype html>
+<!--
+recipe: step-ruler 步骤刻度尺（三步章节的回扣）
+深炭桌面上一把长刻度尺：次刻度/主刻度/等宽读数，三个步骤落在主刻度下；蓝色指针滑到当前步骤并画圈，已完成步骤打勾。镜头推向当前步骤。
+spec: { word:{text,at}, kicker, steps:[label], active, at, done:[idx], readout }
+-->
+<html><head><meta charset="UTF-8" /></head><body><template>
+<style>
+.r-ruler .word { position:absolute; left:150px; top:170px; font-family:var(--f-song); font-weight:900; font-size:150px; line-height:1; color:var(--ink); white-space:nowrap; }
+.r-ruler .kick { position:absolute; left:156px; top:130px; font-family:var(--f-mono); font-size:28px; letter-spacing:.16em; color:var(--sub); }
+.r-ruler .rl { position:absolute; left:170px; top:600px; width:1580px; height:150px; }
+.r-ruler .base { position:absolute; left:0; right:0; top:0; height:3px; background:var(--ink); transform-origin:0 50%; }
+.r-ruler .ticks { position:absolute; left:0; right:0; top:3px; height:18px; opacity:.6; transform-origin:0 50%;
+  background-image: repeating-linear-gradient(90deg, var(--ink) 0 1px, transparent 1px 20px), repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 100px);
+  background-size:100% 10px, 100% 18px; background-repeat:repeat-x; }
+.r-ruler .maj { position:absolute; top:3px; width:3px; height:54px; background:var(--ink); }
+.r-ruler .num { position:absolute; top:-46px; font-family:var(--f-mono); font-size:28px; letter-spacing:.08em; color:var(--sub); transform:translateX(-50%); }
+.r-ruler .lab { position:absolute; top:78px; font-family:var(--f-song); font-weight:900; font-size:62px; color:var(--sub); white-space:nowrap; }
+.r-ruler .lab.on { color:var(--ink); }
+.r-ruler .ptr { position:absolute; top:-30px; width:0; height:0; border-left:14px solid transparent; border-right:14px solid transparent; border-top:22px solid var(--blue); margin-left:-14px; }
+.r-ruler .chk { position:absolute; top:84px; font-family:var(--f-mono); font-size:34px; color:var(--stamp); }
+.r-ruler .read { position:absolute; right:170px; top:820px; font-family:var(--f-mono); font-size:28px; letter-spacing:.12em; color:var(--sub); }
+.st-charcoal .r-ruler .ptr, .r-ruler.st-charcoal .ptr { border-top-color:#7EA1FF; }
+.r-ruler.st-charcoal .lab:not(.on) { color:#BDBAB2; }
+.r-ruler.st-charcoal .read, .r-ruler.st-charcoal .kick { color:#BDBAB2; }
+</style>
+<div id="__SID__-root" data-composition-id="__SID__" data-width="1920" data-height="1080">
+  <div id="__SID__-holder">__MEDIA__</div>
+  <script type="application/json" id="__SID__-spec">__SPEC__</script>
+</div>
+<script>
+(function () {
+var Y = YF, c = Y.ctx("__SID__", document.querySelector('[data-composition-id="__SID__"]')), s = c.spec, tl = c.tl, W = 1920, H = 1080;
+  c.root.classList.add("r-ruler");
+  Y.stage(c);
+  if (s.kicker) { var kk = Y.el("div", "kick", c.cam, s.kicker); Y.fadeUp(tl, kk, 0.1, { y: 8 }); }
+  var wd = Y.el("div", "word", c.cam); if (s.word) Y.write(tl, wd, s.word.text, c.at(s.word.at, 0.2));
+  var rl = Y.el("div", "rl", c.cam), base = Y.el("div", "base", rl), tk = Y.el("div", "ticks", rl);
+  tl.fromTo([base, tk], { scaleX: 0 }, { scaleX: 1, duration: 0.7, ease: "power2.inOut", stagger: 0.08 }, 0.05);
+  var steps = s.steps || [], L = 1580, xs = steps.map(function (_, i) { return Math.round(L * (i * 2 + 1) / (steps.length * 2)); });
+  var labs = [];
+  steps.forEach(function (lab, i) {
+    var mj = Y.el("div", "maj", rl); Y.css(mj, { left: xs[i] - 1 });
+    var nm = Y.el("div", "num", rl, "0" + (i + 1)); Y.css(nm, { left: xs[i] });
+    var lb = Y.el("div", "lab" + (i === s.active ? " on" : ""), rl, lab); labs.push(lb);
+    tl.fromTo([mj, nm, lb], { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.4, ease: "power2.out", stagger: 0.05 }, 0.35 + i * 0.12);
+  });
+  // center labels under their tick after layout-independent estimate (font-size 62, CJK square glyphs)
+  labs.forEach(function (lb, i) { var w = Array.from(steps[i]).length * 62; Y.css(lb, { left: xs[i] - w / 2 }); });
+  (s.done || []).forEach(function (i) { var ck = Y.el("div", "chk", rl, "✓"); Y.css(ck, { left: xs[i] + Array.from(steps[i]).length * 31 + 14 }); Y.fadeUp(tl, ck, 0.9, { y: 6 }); });
+  (s.ticks || []).forEach(function (q) { var ck = Y.el("div", "chk", rl, "✓"); Y.css(ck, { left: xs[q.i] + Array.from(steps[q.i]).length * 31 + 14 }); Y.fadeUp(tl, ck, c.at(q.at, 1), { y: 6 }); });
+  var ta = c.at(s.at, 0.9), sv = Y.svg(rl); sv.style.overflow = "visible";
+  if (s.active != null) {
+    var ptr = Y.el("div", "ptr", rl);
+    tl.fromTo(ptr, { left: 0, opacity: 0 }, { left: xs[s.active], opacity: 1, duration: 0.8, ease: "power3.inOut" }, Math.max(0.2, ta - 0.6));
+    var w = Array.from(steps[s.active]).length * 62;
+    Y.ellipse(sv, tl, { x: xs[s.active] - w / 2, y: 80, w: w, h: 66 }, ta + 0.2, { color: c.stage === "charcoal" ? "#7EA1FF" : "var(--blue)" });
+    Y.camera(c, [{ at: 0, x: 960, y: 540, s: 1 }, { at: ta, x: 170 + xs[s.active] * 0.5 + 480, y: 560, s: 1.08, d: 1.4, ease: "sine.inOut" }]);
+  }
+  var rd = Y.el("div", "read", c.cam, s.readout || ("STEP 0" + ((s.active || 0) + 1) + " / 0" + steps.length));
+  Y.fadeUp(tl, rd, 0.9, { y: 6 });
+  Y.hud(c);
+  Y.finish(c);
+})();
+</script>
+</template></body></html>

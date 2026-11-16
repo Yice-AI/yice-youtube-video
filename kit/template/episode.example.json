@@ -1,0 +1,18 @@
+{
+  "id": "episode-demo",
+  "voiceDir": "voice",
+  "assetBase": ".",
+  "mediaRoots": {
+    "@media/": "assets/local",
+    "@assets/": "assets/props",
+    "@stock/": "assets/stock",
+    "@local/": "assets/local"
+  },
+  "chapters": {
+    "00": {
+      "title": "开场",
+      "stage": "charcoal"
+    }
+  },
+  "end": 20
+}

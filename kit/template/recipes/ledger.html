@@ -1,0 +1,66 @@
+<!doctype html>
+<!--
+recipe: ledger 台账卡（含 io 模式：输入/处理/输出表单）
+纸质台账卡：眉标 + 宋体标题 + 表头 + 逐行写入（数值按锚点出现）+ 合计双线 + 红章；右侧实物/照片落下并贴胶带。
+镜头最后推近到合计行。
+spec: { card:{x,y,w}, kicker, title, cols:[a,b], rows:[{k,v,at,sub}], total:{k,v,at}, stamp:{text,at}, side:{x,y,w,rot,at}, mode:"ledger"|"io" }
+media m0: 侧边实物（可选）
+-->
+<html><head><meta charset="UTF-8" /></head><body><template>
+<style>
+.r-ledger .lc { padding:56px 64px 60px; }
+.r-ledger .kick { font-family:var(--f-mono); font-size:28px; letter-spacing:.14em; color:#7a6f60; text-transform:uppercase; }
+.r-ledger .ti { font-family:var(--f-song); font-weight:900; font-size:78px; line-height:1.05; margin:14px 0 30px; white-space:nowrap; }
+.r-ledger .hd { display:flex; justify-content:space-between; font-family:var(--f-mono); font-size:28px; letter-spacing:.12em; color:#7a6f60; padding-bottom:12px; border-bottom:2px solid #2a241c; }
+.r-ledger .row { position:relative; display:flex; align-items:baseline; justify-content:space-between; height:104px; border-bottom:1px dashed rgba(42,36,28,.28); }
+.r-ledger .row .k { font-family:var(--f-sans); font-weight:700; font-size:40px; white-space:nowrap; }
+.r-ledger .row .k small { display:block; font-weight:400; font-family:var(--f-mono); font-size:28px; letter-spacing:.06em; color:#7a6f60; margin-top:4px; }
+.r-ledger .row .v { font-family:var(--f-song); font-weight:900; font-size:60px; white-space:nowrap; }
+.r-ledger .row { align-items:center; }
+.r-ledger .tot { border-bottom:none; border-top:5px double #2a241c; margin-top:10px; height:124px; }
+.r-ledger .tot .k { font-family:var(--f-song); font-weight:900; font-size:46px; }
+.r-ledger .io .row { justify-content:flex-start; gap:36px; height:auto; padding:22px 0; }
+.r-ledger .io .row .k { font-family:var(--f-mono); font-weight:400; font-size:28px; letter-spacing:.14em; color:#7a6f60; width:120px; }
+.r-ledger .io .row .v { font-family:var(--f-sans); font-weight:700; font-size:40px; }
+.r-ledger .io .arrow { font-family:var(--f-mono); font-size:30px; color:var(--blue); padding-left:150px; height:30px; line-height:30px; }
+</style>
+<div id="__SID__-root" data-composition-id="__SID__" data-width="1920" data-height="1080">
+  <div id="__SID__-holder">__MEDIA__</div>
+  <script type="application/json" id="__SID__-spec">__SPEC__</script>
+</div>
+<script>
+(function () {
+var Y = YF, c = Y.ctx("__SID__", document.querySelector('[data-composition-id="__SID__"]')), s = c.spec, tl = c.tl, W = 1920, H = 1080;
+  c.root.classList.add("r-ledger");
+  Y.stage(c);
+  var cd = s.card || { x: 170, y: 120, w: 1000 }, io = s.mode === "io";
+  if (s.sides) Y.props(c, c.cam, s.sides, tl);
+  var card = Y.card(c.cam, { x: cd.x, y: cd.y, w: cd.w }); card.classList.add("lc"); card.style.height = "auto";
+  if (io) card.classList.add("io");
+  card.style.transform = "rotate(" + (cd.rot || -0.8) + "deg)";
+  Y.drop(tl, card, 0.1, { rot: cd.rot || -0.8, y: -40, spin: 2 });
+  Y.tape(card, cd.w - 120, -20, 6, 150);
+  if (s.kicker) Y.el("div", "kick", card, s.kicker);
+  var ti = Y.el("div", "ti", card); Y.write(tl, ti, s.title || "", 0.2);
+  if (!io && s.cols) { var hd = Y.el("div", "hd", card, "<span>" + s.cols[0] + "</span><span>" + s.cols[1] + "</span>"); Y.fadeUp(tl, hd, 0.3, { y: 8 }); }
+  (s.rows || []).forEach(function (r, i) {
+    if (io && i > 0) { var ar = Y.el("div", "arrow", card, "↓"); Y.fadeUp(tl, ar, c.at(r.at, 1 + i) - 0.2, { y: -8 }); }
+    var row = Y.el("div", "row", card), k = Y.el("div", "k", row, r.k + (r.sub ? "<small>" + r.sub + "</small>" : "")), v = Y.el("div", "v", row);
+    var t = c.at(r.at, 1 + i * 0.6);
+    row.style.overflow = "hidden";
+    tl.fromTo(row, { opacity: 0, height: 0 }, { opacity: 1, height: io ? 112 : 104, duration: 0.45, ease: "power2.out" }, t - 0.3);
+    Y.write(tl, v, r.v, t, { y: 10 });
+  });
+  if (s.total) {
+    var tr = Y.el("div", "row tot", card), tk = Y.el("div", "k", tr, s.total.k), tv = Y.el("div", "v", tr), tt = c.at(s.total.at, c.dur - 1.6);
+    tr.style.overflow = "hidden";
+    tl.fromTo(tr, { opacity: 0, height: 0 }, { opacity: 1, height: 124, duration: 0.45 }, tt - 0.35);
+    Y.write(tl, tv, s.total.v, tt);
+  }
+  var cam = Y.camera(c, [{ at: 0, x: 960, y: 540, s: 1 }, { at: Math.max(1.4, (s.stamp ? c.at(s.stamp.at) : c.dur) - 0.9), x: cd.x + cd.w * 0.7, y: cd.y + 480, s: 1.03, d: 1.6, ease: "sine.inOut" }]);
+  if (s.stamp) Y.stamp(card, tl, s.stamp.text, { x: cd.w - 330, y: (s.stampY || 440) }, c.at(s.stamp.at), { size: 60 });
+  Y.hud(c);
+  Y.finish(c);
+})();
+</script>
+</template></body></html>

@@ -1,0 +1,110 @@
+/* 一策 frame.css — tokens + stage + shared objects. Source of truth: ../frame.md
+   Fonts are bundled in assets/fonts (SIL OFL 1.1, see assets/fonts/LICENSE-*). */
+@font-face { font-family: "Yice Song"; src: url("fonts/SourceHanSerifCN-Heavy.otf") format("opentype"); font-weight: 900; }
+@font-face { font-family: "Yice Song"; src: url("fonts/SourceHanSerifCN-Bold.otf") format("opentype"); font-weight: 700; }
+@font-face { font-family: "Yice Sans"; src: url("fonts/SourceHanSansCN-Regular.otf") format("opentype"); font-weight: 400; }
+@font-face { font-family: "Yice Sans"; src: url("fonts/SourceHanSansCN-Bold.otf") format("opentype"); font-weight: 700; }
+@font-face { font-family: "Yice Mono"; src: url("fonts/SourceHanSansCN-Regular.otf") format("opentype"); font-weight: 400; unicode-range: U+2E80-9FFF, U+3000-303F, U+FF00-FFEF, U+2018-201F, U+2026, U+00B7; }
+@font-face { font-family: "Yice Mono"; src: url("fonts/SourceCodePro-Regular.otf") format("opentype"); font-weight: 400; unicode-range: U+0000-2017, U+2020-2025, U+2027-2E7F, U+00B7; }
+
+:root {
+  --hl: #F2CF3E; --stamp: #C3362B; --blue: #2C57C9; --paper-ink: #1E1A15;
+  --f-song: "Yice Song", serif;
+  --f-sans: "Yice Sans", sans-serif;
+  --f-mono: "Yice Mono", monospace;
+  --fiber: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='520' height='520'><filter id='f'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' seed='11' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.32 0 0 0 0 0.27 0 0 0 0 0.2 0 0 0 0.9 -0.32'/></filter><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.012 0.32' numOctaves='2' seed='4' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.3 0 0 0 0 0.25 0 0 0 0 0.18 0 0 0 1.4 -0.78'/></filter><rect width='100%' height='100%' filter='url(%23f)'/><rect width='100%' height='100%' filter='url(%23g)'/></svg>");
+}
+
+.st-paper-cool { --st-light:#F4F5F2; --st-mid:#E4E6E2; --st-dark:#C9CDC9; --ink:#1C2024; --sub:#5C636A; --rule:rgba(28,32,36,.16); --card:#FBFBF8; --tex-op:.14; }
+.st-paper-warm { --st-light:#F1EADD; --st-mid:#E2D7C4; --st-dark:#C7B79C; --ink:#231D16; --sub:#6E6252; --rule:rgba(35,29,22,.17); --card:#FAF6EE; --tex-op:.2; }
+.st-paper-gray { --st-light:#ECECE9; --st-mid:#D9DAD6; --st-dark:#B9BBB7; --ink:#1F2124; --sub:#5E6166; --rule:rgba(31,33,36,.16); --card:#F9F9F6; --tex-op:.12; }
+.st-charcoal   { --st-light:#36363C; --st-mid:#232327; --st-dark:#121214; --ink:#EEE8DC; --sub:#A39C90; --rule:rgba(238,232,220,.11); --card:#F3EEE4; --tex-op:.18; }
+
+.yf-root { position:absolute; inset:0; overflow:hidden; font-family:var(--f-sans); color:var(--ink); }
+.yf-wrap { position:absolute; inset:0; overflow:hidden; will-change:transform; }
+.yf-cam  { position:absolute; left:0; top:0; width:1920px; height:1080px; transform-origin:0 0; }
+
+/* ---------- stage ---------- */
+.yf-stage { position:absolute; left:-480px; top:-270px; width:2880px; height:1620px; background: radial-gradient(120% 105% at 30% 22%, var(--st-light) 0%, var(--st-mid) 46%, var(--st-dark) 100%); }
+.yf-stage .tex { position:absolute; inset:0; background-image:var(--fiber); background-size:520px 520px; opacity:var(--tex-op); mix-blend-mode:multiply; }
+.st-charcoal .yf-stage .tex { mix-blend-mode:screen; filter:invert(1); }
+.yf-stage .grid { position:absolute; inset:0; opacity:.9;
+  background-image:
+    linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--rule) 45%, transparent) 1px, transparent 1px), linear-gradient(90deg, color-mix(in srgb, var(--rule) 45%, transparent) 1px, transparent 1px);
+  background-size:240px 240px,240px 240px,48px 48px,48px 48px; background-position:0 30px,0 30px,0 30px,0 30px;
+  -webkit-mask-image: radial-gradient(75% 70% at 45% 45%, #000 40%, rgba(0,0,0,.35) 100%); mask-image: radial-gradient(75% 70% at 45% 45%, #000 40%, rgba(0,0,0,.35) 100%); }
+.yf-stage .window { position:absolute; left:300px; top:80px; width:1700px; height:1300px; border-radius:50%;
+  background: radial-gradient(closest-side, rgba(255,248,228,.55), rgba(255,248,228,0)); mix-blend-mode:soft-light; }
+.st-charcoal .yf-stage .window { background: radial-gradient(closest-side, rgba(255,236,200,.16), rgba(255,236,200,0)); mix-blend-mode:screen; }
+.yf-stage .mullion { position:absolute; width:150px; height:2400px; top:-300px; background:rgba(40,30,20,.07); filter:blur(38px); transform:rotate(28deg); mix-blend-mode:multiply; }
+.st-charcoal .yf-stage .mullion { background:rgba(0,0,0,.25); }
+
+/* rulers + hud live in screen space (not scaled by the camera) */
+.yf-hud { position:absolute; inset:0; pointer-events:none; font-family:var(--f-mono); color:var(--sub); z-index:50; }
+.yf-hud .ruler-t { position:absolute; left:0; right:0; top:0; height:26px; opacity:.55;
+  background-image: repeating-linear-gradient(90deg, var(--sub) 0 1px, transparent 1px 12px), repeating-linear-gradient(90deg, var(--sub) 0 1px, transparent 1px 48px), repeating-linear-gradient(90deg, var(--sub) 0 2px, transparent 2px 240px);
+  background-size: 100% 7px, 100% 13px, 100% 22px; background-repeat:repeat-x; background-position: 0 0,0 0,0 0; }
+.yf-hud .ruler-l { position:absolute; top:0; bottom:0; left:0; width:26px; opacity:.55;
+  background-image: repeating-linear-gradient(0deg, var(--sub) 0 1px, transparent 1px 12px), repeating-linear-gradient(0deg, var(--sub) 0 1px, transparent 1px 48px), repeating-linear-gradient(0deg, var(--sub) 0 2px, transparent 2px 240px);
+  background-size: 7px 100%, 13px 100%, 22px 100%; background-repeat:repeat-y; }
+.yf-hud .rnum { position:absolute; top:6px; font-size:13px; letter-spacing:.08em; opacity:.7; }
+.yf-hud .reg { position:absolute; width:34px; height:34px; border-color:var(--sub); border-style:solid; opacity:.55; }
+.yf-hud .meta { position:absolute; font-size:18px; letter-spacing:.12em; text-transform:uppercase; opacity:.85; white-space:nowrap; }
+.yf-hud .tc { font-variant-numeric: tabular-nums; }
+.yf-hud.on-media { color: rgba(255,255,255,.82); }
+.yf-hud.on-media .meta { text-shadow: 0 1px 3px rgba(0,0,0,.45); }
+.yf-hud .dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--stamp); margin-right:10px; transform: translateY(-1px); }
+
+/* ---------- objects ---------- */
+.yf-card { position:absolute; background-color:var(--card); color:var(--paper-ink); border-radius:3px;
+  box-shadow: 0 0 0 1px rgba(60,45,30,.07), 0 1px 1px rgba(0,0,0,.10), 0 3px 6px rgba(0,0,0,.08), 0 22px 46px -14px rgba(20,14,8,.34); }
+.st-charcoal .yf-card { box-shadow: 0 0 0 1px rgba(0,0,0,.2), 0 2px 3px rgba(0,0,0,.4), 0 30px 60px -12px rgba(0,0,0,.65); }
+.yf-card::before { content:""; position:absolute; inset:0; pointer-events:none; border-radius:3px; background-image:var(--fiber); background-size:520px; opacity:.16; mix-blend-mode:multiply; }
+.yf-card::after { content:""; position:absolute; inset:0; pointer-events:none; border-radius:3px; box-shadow: inset 0 0 50px rgba(120,95,60,.10), inset 0 -1px 0 rgba(0,0,0,.06); }
+.yf-tape { position:absolute; width:170px; height:46px; background: rgba(232,222,196,.72); mix-blend-mode:multiply;
+  clip-path: polygon(0 8%,4% 0,9% 10%,14% 2%,20% 8%,100% 0,97% 14%,100% 28%,96% 44%,100% 60%,97% 78%,100% 100%,0 100%,3% 82%,0 64%,4% 46%,0 30%);
+  box-shadow: 0 1px 2px rgba(0,0,0,.1); }
+.st-charcoal .yf-tape { background: rgba(232,222,196,.85); mix-blend-mode:normal; }
+.yf-prop { position:absolute; filter: drop-shadow(0 2px 2px rgba(0,0,0,.28)) drop-shadow(0 24px 30px rgba(20,14,8,.32)); }
+.st-charcoal .yf-prop { filter: drop-shadow(0 2px 3px rgba(0,0,0,.55)) drop-shadow(0 30px 40px rgba(0,0,0,.6)); }
+.yf-screen { position:absolute; background:#151618; border-radius:20px; padding:14px; box-shadow: 0 0 0 1px rgba(255,255,255,.06) inset, 0 2px 4px rgba(0,0,0,.25), 0 40px 80px -20px rgba(10,8,6,.55); }
+.yf-screen .glass { position:absolute; inset:14px; border-radius:8px; overflow:hidden; background:#000; }
+.yf-screen .glass > img, .yf-screen .glass > video { width:100%; height:100%; object-fit:cover; display:block; }
+.yf-screen .glare { position:absolute; inset:14px; border-radius:8px; pointer-events:none; background: linear-gradient(118deg, rgba(255,255,255,.16) 0%, rgba(255,255,255,.04) 28%, rgba(255,255,255,0) 42%), radial-gradient(120% 90% at 50% 50%, transparent 60%, rgba(0,0,0,.18) 100%); }
+.yf-browser { position:absolute; background:#fff; border-radius:12px; overflow:hidden; box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.12), 0 36px 70px -18px rgba(20,14,8,.42); }
+.yf-browser .bar { height:52px; background:#ECEDEF; display:flex; align-items:center; gap:10px; padding:0 18px; border-bottom:1px solid #D9DADD; }
+.yf-browser .bar i { width:13px; height:13px; border-radius:50%; display:block; }
+.yf-browser .url { margin-left:22px; flex:1; height:40px; border-radius:8px; background:#fff; font:28px var(--f-mono); color:#5d6168; display:flex; align-items:center; padding-left:16px; letter-spacing:.02em; }
+.yf-browser .page { position:relative; overflow:hidden; background:#fff; }
+.yf-browser .page img { display:block; width:100%; }
+
+/* ---------- type ---------- */
+.yf-display { font-family:var(--f-song); font-weight:900; line-height:1; letter-spacing:-.01em; white-space:nowrap; }
+.yf-title { font-family:var(--f-song); font-weight:900; line-height:1.1; }
+.yf-body  { font-family:var(--f-sans); font-size:34px; line-height:1.45; }
+.yf-mono  { font-family:var(--f-mono); letter-spacing:.06em; }
+.yf-chip  { position:absolute; font-family:var(--f-mono); font-size:28px; letter-spacing:.06em; color:var(--sub); white-space:nowrap; }
+.yf-chip b { color:var(--ink); font-weight:400; }
+.yf-glyph { display:inline-block; }
+
+/* ---------- marks ---------- */
+.yf-hl.under { mix-blend-mode:normal; opacity:.95; border-radius:3px; }
+.yf-hl { position:absolute; background:var(--hl); mix-blend-mode:multiply; opacity:.86; border-radius:4px 10px 6px 12px / 10px 5px 12px 6px; transform-origin:0 50%; }
+.yf-svg { position:absolute; left:0; top:0; width:1920px; height:1080px; overflow:visible; pointer-events:none; }
+.yf-stamp { position:absolute; color:var(--stamp); border:7px solid var(--stamp); border-radius:12px; padding:6px 22px 10px; font-family:var(--f-song); font-weight:900; white-space:nowrap; mix-blend-mode:multiply;
+  -webkit-mask-image: var(--fiber), linear-gradient(#000,#000); -webkit-mask-composite: source-out; mask-image: linear-gradient(#000,#000); }
+.st-charcoal .yf-stamp { mix-blend-mode:normal; }
+.yf-leader { position:absolute; height:1px; background:currentColor; transform-origin:0 50%; }
+
+/* ---------- paper label (keyword chip on a taped card) ---------- */
+.yf-label { position:absolute; z-index:40; padding:26px 40px 30px; width:auto !important; height:auto !important; }
+.yf-label .k { font-family:var(--f-song); font-weight:900; font-size:96px; line-height:1; color:var(--paper-ink); white-space:nowrap; }
+.yf-label .s { font-family:var(--f-mono); font-size:28px; letter-spacing:.08em; color:#6b6358; margin-top:14px; white-space:nowrap; }
+.yf-ph { position:absolute; z-index:41; left:116px; top:96px; font-family:var(--f-mono); font-size:28px; letter-spacing:.1em; color:#fff; background:rgba(30,26,21,.78); padding:10px 16px; border-left:4px solid var(--hl); }
+
+/* placeholders are tracked in report/beats.json only, never on screen */
+.yf-ph { display:none !important; }
+/* light comes from top-left: shadows fall to the lower right */
+.yf-prop { filter: drop-shadow(5px 6px 4px rgba(30,22,12,.34)) drop-shadow(16px 26px 24px rgba(30,22,12,.26)) !important; }
+.st-charcoal .yf-prop { filter: drop-shadow(5px 6px 4px rgba(0,0,0,.5)) drop-shadow(18px 28px 26px rgba(0,0,0,.5)) !important; }

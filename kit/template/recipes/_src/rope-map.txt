@@ -1,0 +1,4 @@
+recipe: rope-map 关系连线
+中心是一件物件或标签纸（如模型名），四周的纸签用麻绳拉过来，图钉固定；绳子按锚点依次拉出。
+spec: { center:{text,sub,x,y,w}, nodes:[{text,sub,x,y,at}] }
+media m0: 中心实物（可选，替代 center 文字卡）

@@ -1,0 +1,3 @@
+recipe: editor 代码窗口（"画面是写代码剪出来的"）
+深色编辑器窗口放在桌面上，逐行打出这一期真实的 HyperFrames 代码；某一行被荧光标出，镜头推进到这一行；关键词纸签压在窗口上。
+spec: { file, lines:[string], hl:{line,at}, at, win:{x,y,w,h}, title:{text,at,side,sub} }

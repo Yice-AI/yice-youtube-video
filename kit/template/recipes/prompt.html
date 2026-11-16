@@ -1,0 +1,55 @@
+<!doctype html>
+<!--
+recipe: prompt 需求输入框（录屏位的示意版）
+通用聊天输入框放在桌面上，需求原文逐字打入；按锚点把关键短语刷上荧光（逐字背景扫过，不需要测量）；最后按下发送。
+用于还没录屏的"说一句话给 Codex"镜头，角标标明"示意 · 待录屏替换"。
+spec: { kicker, text, at, rate, marks:[{phrase,at}], send:{at}, title:{text,at,side,sub}, ph }
+-->
+<html><head><meta charset="UTF-8" /></head><body><template>
+<style>
+.r-prompt .box { position:absolute; left:250px; top:250px; width:1420px; background:#FFFFFF; border-radius:30px; padding:46px 54px 110px; box-shadow:0 0 0 1px rgba(0,0,0,.07), 0 2px 4px rgba(0,0,0,.06), 0 36px 70px -20px rgba(20,24,30,.30); }
+.r-prompt .tx { font-family:var(--f-sans); font-size:44px; line-height:1.55; color:#1E2126; }
+.r-prompt .tx .yf-glyph { background-image: linear-gradient(rgba(242,207,62,.92), rgba(242,207,62,.92)); background-repeat:no-repeat; background-position:0 78%; background-size:0% 46%; }
+.r-prompt .caret { display:inline-block; width:3px; height:46px; background:#1E2126; vertical-align:-8px; margin-left:2px; }
+.r-prompt .send { position:absolute; right:40px; bottom:30px; width:64px; height:64px; border-radius:50%; background:#16181C; display:flex; align-items:center; justify-content:center; color:#fff; font-size:34px; font-family:var(--f-sans); }
+.r-prompt .plus { position:absolute; left:50px; bottom:40px; font-family:var(--f-sans); font-size:40px; color:#7a7f87; }
+.r-prompt .kick { position:absolute; left:256px; top:180px; font-family:var(--f-mono); font-size:28px; letter-spacing:.14em; color:var(--sub); }
+
+.r-prompt .perm { position:absolute; left:132px; bottom:44px; font-family:var(--f-sans); font-size:28px; font-weight:700; color:#E0662A; }
+.r-prompt .model { position:absolute; right:130px; bottom:46px; font-family:var(--f-sans); font-size:28px; color:#6A7078; }
+.r-prompt .chips { position:absolute; left:22px; right:22px; top:100%; margin-top:-6px; z-index:-1; background:#E9EBEE; border-radius:0 0 24px 24px; padding:34px 34px 16px; font-family:var(--f-sans); font-size:28px; color:#3C4047; }
+</style>
+<div id="__SID__-root" data-composition-id="__SID__" data-width="1920" data-height="1080">
+  <div id="__SID__-holder">__MEDIA__</div>
+  <script type="application/json" id="__SID__-spec">__SPEC__</script>
+</div>
+<script>
+(function () {
+var Y = YF, c = Y.ctx("__SID__", document.querySelector('[data-composition-id="__SID__"]')), s = c.spec, tl = c.tl, W = 1920, H = 1080;
+  c.root.classList.add("r-prompt");
+  Y.stage(c);
+  if (s.kicker) { var kk = Y.el("div", "kick", c.cam, s.kicker); Y.fadeUp(tl, kk, 0.1, { y: 8 }); }
+  var box = Y.el("div", "box", c.cam); Y.el("div", "plus", box, "+");
+  var send = Y.el("div", "send", box, "↑");
+  Y.el("div", "perm", box, "◌ 完全访问"); Y.el("div", "model", box, "GPT-6 Astra Max ⌄"); Y.el("div", "chips", box, "▭ 我的视频　　▢ 文件　　◎ 插件");
+  tl.fromTo(box, { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0);
+  var tx = Y.el("div", "tx", box), gs = Y.glyphs(tx, s.text || ""), caret = Y.el("span", "caret", tx);
+  var t0 = c.at(s.at, 0.4), rate = s.rate || 14; // chars per second
+  gs.forEach(function (g, i) { tl.fromTo(g, { opacity: 0 }, { opacity: 1, duration: 0.01 }, t0 + i / rate); });
+  tl.fromTo(caret, { opacity: 1 }, { opacity: 0, duration: 0.01 }, t0 + gs.length / rate + 0.3);
+  var full = s.text || "";
+  (s.marks || []).forEach(function (m) {
+    var idx = full.indexOf(m.phrase); if (idx < 0) return;
+    var pre = Array.from(full.slice(0, idx)).length, n = Array.from(m.phrase).length;
+    tl.to(gs.slice(pre, pre + n), { backgroundSize: "100% 46%", duration: 0.08, stagger: 0.035, ease: "none" }, c.at(m.at));
+  });
+  var keys = [{ at: 0, x: 960, y: 520, s: 1 }, { at: t0 + 0.6, x: 960, y: 500, s: 1.04, d: Math.max(1, gs.length / rate), ease: "sine.inOut" }];
+  if (s.send) { var st = c.at(s.send.at); tl.to(send, { scale: 0.86, duration: 0.08, yoyo: true, repeat: 1, ease: "sine.inOut" }, st); tl.to(send, { backgroundColor: "#2C57C9", duration: 0.2 }, st); keys.push({ at: st - 0.6, x: 1240, y: 600, s: 1.08, d: 0.8 }); }
+  Y.camera(c, keys);
+  if (s.title) Y.label(c, s.title);
+  Y.el("div", "yf-ph", c.wrap, s.ph || "示意 · 待录屏替换");
+  Y.hud(c);
+  Y.finish(c);
+})();
+</script>
+</template></body></html>

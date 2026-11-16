@@ -1,0 +1,8 @@
+.r-strike .lead { position:absolute; left:150px; top:360px; font-family:var(--f-song); font-weight:900; font-size:220px; line-height:1; color:var(--ink); white-space:nowrap; }
+.r-strike .slip { padding:22px 46px 26px; width:auto !important; height:auto !important; }
+.r-strike .slip .tx { font-family:var(--f-song); font-weight:900; font-size:76px; line-height:1; white-space:nowrap; }
+.r-strike .keep { padding:30px 54px 34px; }
+.r-strike .keep .tx { font-size:84px; }
+.r-strike .keep .sb { font-family:var(--f-mono); font-size:28px; color:#7a6f60; letter-spacing:.08em; margin-top:14px; }
+.r-strike .mini { padding:16px 26px 18px; }
+.r-strike .mini .tx { font-size:46px; }

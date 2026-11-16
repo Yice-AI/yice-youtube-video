@@ -1,0 +1,42 @@
+<!doctype html>
+<!--
+recipe: chapter 章节转场
+深炭桌面：巨大的等宽章号，宋体章名逐字写入，细线画出；右侧目录列出全部章节、当前章荧光；一道柔和窗光扫过一次（改造自 registry light-sweep-pass 的思路）。
+spec: { no, title, sub, list:[{no,title}], current }
+-->
+<html><head><meta charset="UTF-8" /></head><body><template>
+<style>
+.r-chap .no { position:absolute; left:140px; top:180px; font-family:var(--f-mono); font-size:300px; line-height:1; color:transparent; -webkit-text-stroke:2px var(--sub); letter-spacing:-.02em; }
+.r-chap .ti { position:absolute; left:150px; top:520px; font-family:var(--f-song); font-weight:900; font-size:150px; line-height:1; color:var(--ink); white-space:nowrap; }
+.r-chap .rule { position:absolute; left:154px; top:705px; width:620px; height:3px; background:var(--hl); transform-origin:0 50%; }
+.r-chap .sub { position:absolute; left:154px; top:740px; font-family:var(--f-mono); font-size:28px; letter-spacing:.12em; color:var(--sub); white-space:nowrap; }
+.r-chap .toc { position:absolute; right:150px; top:300px; width:520px; border-top:1px solid var(--rule); }
+.r-chap .toc .r { display:flex; gap:28px; align-items:baseline; padding:16px 0; border-bottom:1px solid var(--rule); font-family:var(--f-mono); font-size:28px; color:var(--sub); letter-spacing:.06em; }
+.r-chap .toc .r b { font-weight:400; width:56px; }
+.r-chap .toc .r span { font-family:var(--f-song); font-weight:700; font-size:34px; letter-spacing:0; }
+.r-chap .toc .r.on { color:var(--ink); }
+.r-chap .toc .r.on span { background: linear-gradient(transparent 58%, rgba(242,207,62,.55) 58%); }
+.r-chap .sweep { position:absolute; top:-200px; width:520px; height:1500px; background:linear-gradient(90deg, transparent, rgba(255,240,210,.10), transparent); transform:rotate(18deg); mix-blend-mode:screen; }
+</style>
+<div id="__SID__-root" data-composition-id="__SID__" data-width="1920" data-height="1080">
+  <div id="__SID__-holder">__MEDIA__</div>
+  <script type="application/json" id="__SID__-spec">__SPEC__</script>
+</div>
+<script>
+(function () {
+var Y = YF, c = Y.ctx("__SID__", document.querySelector('[data-composition-id="__SID__"]')), s = c.spec, tl = c.tl, W = 1920, H = 1080;
+  c.root.classList.add("r-chap");
+  Y.stage(c);
+  var no = Y.el("div", "no", c.cam, s.no || ""); tl.fromTo(no, { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.6, ease: "power3.out" }, 0.0);
+  var ti = Y.el("div", "ti", c.cam); Y.write(tl, ti, s.title || "", 0.15, { per: 0.07 });
+  var ru = Y.el("div", "rule", c.cam); tl.fromTo(ru, { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power2.inOut" }, 0.45);
+  if (s.sub) { var sb = Y.el("div", "sub", c.cam, s.sub); Y.fadeUp(tl, sb, 0.6, { y: 8 }); }
+  var toc = Y.el("div", "toc", c.cam);
+  (s.list || []).forEach(function (r, i) { var e = Y.el("div", "r" + (i === s.current ? " on" : ""), toc, "<b>" + r.no + "</b><span>" + r.title + "</span>"); tl.fromTo(e, { opacity: 0, x: 30 }, { opacity: i === s.current ? 1 : 0.6, x: 0, duration: 0.35, ease: "power2.out" }, 0.1 + i * 0.05); });
+  var sw = Y.el("div", "sweep", c.cam); tl.fromTo(sw, { x: -700 }, { x: 2400, duration: Math.min(2.2, c.dur), ease: "sine.inOut" }, 0);
+  Y.camera(c, [{ at: 0, x: 960, y: 540, s: 1.0 }, { at: 0.1, x: 900, y: 560, s: 1.04, d: Math.max(1, c.dur - 0.2), ease: "none" }]);
+  Y.hud(c);
+  Y.finish(c);
+})();
+</script>
+</template></body></html>

@@ -1,0 +1,3 @@
+recipe: step-ruler 步骤刻度尺（三步章节的回扣）
+深炭桌面上一把长刻度尺：次刻度/主刻度/等宽读数，三个步骤落在主刻度下；蓝色指针滑到当前步骤并画圈，已完成步骤打勾。镜头推向当前步骤。
+spec: { word:{text,at}, kicker, steps:[label], active, at, done:[idx], readout }

@@ -1,0 +1,6 @@
+recipe: stock-shot 第三方照片/视频空镜 + 关键词
+满幅图库照片或视频，慢速 Ken Burns；一侧压暗，宋体关键词逐字写入，细线画出，等宽出处小字。
+图库素材还没到时（mediaFallback[0]），自动改成"冲印照片"占位：实物 PNG 放在相纸上、胶带固定、标注 STOCK SLOT。
+spec: { title:{text,at,side:"left"|"right"}, sub:{text,at}, credit, kb:{from:{s,x,y},to:{s,x,y}}, phLabel }
+media m0: 图库照片/视频（或占位实物）
+frame:"print" 把素材放进冲印相纸（720p 视频不满幅放大时用）。
