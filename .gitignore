@@ -12,3 +12,7 @@ project.local.yml
 .env
 .env.*
 **/evidence/
+kit/tools/rec/mouse
+kit/tools/rec/cursorlog
+kit/tools/ocr/ocr
+*.dSYM/

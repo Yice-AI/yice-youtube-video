@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "target": {
+    "process": "ChatGPT",
+    "title_contains": ["我的视频", "EP01 演示"],
+    "region": [0, 0, 1440, 805],
+    "input": {
+      "region": [300, 650, 700, 60],
+      "initial_text": "",
+      "empty_text": ""
+    },
+    "ocr": [
+      {"region": [0, 40, 220, 600], "must_not_contain": ["其他会话名占位"]}
+    ]
+  },
+  "steps": [
+    {"type": "guard"},
+    {"type": "rec_start", "region": [0, 0, 1440, 805], "out": "$YICE_WORKSPACE/evidence/ep01/s4b-4/take.mov"},
+    {"type": "click", "x": 650, "y": 680},
+    {"type": "paste", "text": "按旁白重新对齐。"},
+    {"type": "key", "key": "return"},
+    {"type": "wait_text", "region": [250, 100, 950, 500], "text": "正在思考", "timeout": 60},
+    {"type": "wait", "sec": 3},
+    {"type": "rec_stop"}
+  ]
+}
