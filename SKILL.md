@@ -14,11 +14,15 @@ EP01 v4（6 分 40 秒，8 章 70 幕）是这套体系做出的第一个成片�
 
 ## 角色（不要越位）
 
-- **Claude 中心**：写和改旁白稿、出素材需求清单、写节拍表、选配方、审片、向用户汇报。审美和取舍不外包。
-- **Claude 画面会话**：写 beats.json、调配方、渲染、自检。Codex 做视觉偏死板，画面由 Claude 来做。
-- **Codex**（用 codex-commander 派活）：配音生成、道具生图、第三方素材和许可登记、背景音乐生成、kit 脚本维护、批量检查。
-- **录屏会话**（Claude，经 Terminal 面板 + AppleScript + CGEvent）：录 Codex App 的实操。见 `references/recording.md`。
-- **用户**：只看成片，只做必须由本人决定的事：App 里的信任和权限弹窗、Codex 的权限模式、发布。
+分工原则：判断和审美留给 Claude，执行和反复跑的活交给 Codex。质量靠 Claude 把关，不靠 Claude 亲手做。
+
+- **Claude 中心**：写和改旁白稿、出素材需求清单、写节拍表（每拍选哪个配方、上什么字、用哪件素材）、审片（自己抽帧看）、给出编号返修清单、向用户汇报。审美和取舍不外包。
+- **Codex**（用 codex-commander 派活）：
+  - 配音生成、道具生图、第三方素材和许可登记、背景音乐和音效、kit 脚本维护、批量检查；
+  - **组装与渲染**（从 EP02 起）：把节拍表翻成 beats.json，build、check 到 0 error，接音频层，`render.sh` 出片，出接触表，按中心的返修清单逐条改。只能用 kit 里现成的配方和参数，不自创版式。
+- **Claude 画面会话**（只在需要时开）：新配方、改配方的视觉、Codex 连续两轮改不到位的画面。EP01 的 15 个配方都是这样做出来的，Codex 做视觉偏死板。
+- **录屏**：EP01 由 Claude 录屏会话完成（Terminal 面板 + AppleScript + CGEvent，见 `references/recording.md`）。EP02 先让 Codex 试录一段：同一套脚本和防误发守卫，中心对比画面质量，合格就整期交给 Codex。浏览器页面的录屏可以直接交给 Codex（Playwright）。
+- **用户**：只看成片，只做必须由本人决定的事：App 里的信任和权限弹窗、Codex 的权限模式、macOS 权限授权、发布。
 
 ## 一期的流程（每步的完成标准）
 
@@ -34,9 +38,9 @@ EP01 v4（6 分 40 秒，8 章 70 幕）是这套体系做出的第一个成片�
    - **透明道具**：`props.sh`，每件出 2–3 个候选，中心看总览图挑定。每期累计花到 $3 就停下汇报。
    - **第三方素材**：只用免费可商用图库，视频优先 1080p，逐件登记许可，出现的人物必须匿名。
    - **背景音乐和音效**：见 `references/models-and-skills.md`。
-5. **导演层**：写节拍表和 beats.json。规则见 `references/director-layer.md`，配方字段见 `kit/docs/recipes.md`。
+5. **导演层**：中心写节拍表，Codex 翻成 beats.json，中心核对配方和字。规则见 `references/director-layer.md`，配方字段见 `kit/docs/recipes.md`。
 6. **构建与渲染**：先 build，再 check（必须 0 error），然后 `render.sh`（7 分钟的片约 10–12 分钟）。以命令退出码判断渲染是否完成。
-7. **审片**：中心自己用 `review.sh` 抽帧看，不信执行方报的“已通过”。按 `references/review-gates.md` 逐条过；问题写成编号清单发回画面会话，出下一版。一般 3–4 轮能收敛。
+7. **审片**：中心自己用 `review.sh` 抽帧看，不信执行方报的“已通过”。按 `references/review-gates.md` 逐条过；问题写成编号清单发给 Codex（新视觉才发给 Claude 画面会话），出下一版。一般 3–4 轮能收敛。
 8. **交付**：成片 mp4、接触表、报告（占位清单、打码自检、花费），再加上缩略图 3 选 1 和标题备选。只交付，不上传、不发布，是否发布由用户决定。
 
 ## 什么叫“amazing”（每期都对照）
