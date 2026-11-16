@@ -15,7 +15,7 @@
   --toolkit "$HOME/Documents/Codex/个人IP/claude-code-video-toolkit"
 ```
 
-安装器会把 Claude 与 Codex 的 yice-youtube-video skill 目录链接到仓库根目录，写入 `~/.config/yice-video/env`。已有目标先改名为 `.bak-时间戳` 并打印备份位置；已正确链接时重复运行不会重复备份。依赖只检查、列出缺项，不自动安装。每台电脑独立配置路径；仓库更新后，软链接直接读取新版方法与代码。
+安装器会把 Claude 与 Codex 的 yice-youtube-video skill 目录链接到仓库根目录，写入 `~/.config/yice-video/env`。已有目标先移到 `~/.config/yice-video/backups/` 下（不留在 skills 目录里，免得被当成第二个 skill），并打印备份位置；已正确链接时重复运行不会重复备份。依赖只检查、列出缺项，不自动安装。每台电脑独立配置路径；仓库更新后，软链接直接读取新版方法与代码。
 
 默认工作区为 `$HOME/Documents/Codex/个人IP`，默认 toolkit 为工作区下的 claude-code-video-toolkit。执行脚本的路径优先级为：**环境变量 → 本机 env 配置 → 默认值**。
 

@@ -32,9 +32,12 @@ home = Path.home()
 stamp = datetime.now().strftime('%Y%m%dT%H%M%S-%f')
 backups, links = [], []
 
-def backup(path):
+def backup(path, outside=False):
     if path.exists() or path.is_symlink():
-        dest = path.with_name(path.name + '.bak-' + stamp)
+        # skill 目录的备份放到 skills 目录之外，否则会被当成第二个同名 skill 加载
+        bdir = (home / '.config/yice-video/backups' / path.parent.parent.name) if outside else path.parent
+        bdir.mkdir(parents=True, exist_ok=True)
+        dest = bdir / (path.name + '.bak-' + stamp)
         if dest.exists() or dest.is_symlink():
             raise RuntimeError('备份目标已存在，未覆盖')
         path.rename(dest)
@@ -45,7 +48,7 @@ for target in [home / '.claude/skills/yice-youtube-video', home / '.codex/skills
     if target.is_symlink() and target.resolve() == repo:
         links.append({'path': str(target), 'state': 'already_linked'})
         continue
-    backup(target)
+    backup(target, outside=True)
     target.symlink_to(repo, target_is_directory=True)
     links.append({'path': str(target), 'state': 'linked'})
 config = home / '.config/yice-video/env'
