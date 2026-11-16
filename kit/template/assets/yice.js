@@ -63,7 +63,8 @@
     [[m, mt, "2px 0 0 2px"], [W - m - 34, mt, "2px 2px 0 0"], [m, H - mt - 34, "0 0 2px 2px"], [W - m - 34, H - mt - 34, "0 2px 2px 0"]].forEach(function (r) {
       var e = el("div", "reg", h); css(e, { left: r[0], top: r[1] }); e.style.borderWidth = r[2];
     });
-    var meta = el("div", "meta", h, "YICE&nbsp;/&nbsp;EP01 · " + (s.chapter || "") + " " + (s.chapterTitle || "") + " · " + (s.id || ""));
+    var meta = el("div", "meta", h);
+    meta.textContent = "YICE / " + String(s.episodeId || "").toUpperCase() + " · " + (s.chapter || "") + " " + (s.chapterTitle || "") + " · " + (s.id || "");
     css(meta, { left: 116, bottom: 30 });
     var right = el("div", "meta tc", h); css(right, { right: 116, bottom: 30 });
     var src = s.source ? el("div", "meta", h, s.source) : null;
@@ -164,6 +165,24 @@
       var im = c.m(p.m); if (!im) return; im.classList.add("yf-prop"); parent.appendChild(im);
       css(im, { position: "absolute", left: p.x, top: p.y, width: p.w, height: "auto", zIndex: p.z || 30 });
       drop(tl, im, c.at(p.at, 0.1 + i * 0.2), { rot: p.rot || 0, y: -70, scale: 1.05 });
+      if (p.press || p.stamp) (c.deferred || (c.deferred = [])).push(function () {
+        var q = p.press, impact = c.at(p.at, 0.1 + i * 0.2) + 0.4;
+        if (q) {
+          var at = c.at(q.at, impact), d = q.d || 0.24;
+          impact = at + d;
+          tl.to(im, { x: (q.x == null ? p.x : q.x) - p.x, y: (q.y == null ? p.y + 24 : q.y) - p.y,
+            scale: q.scale || 1, duration: d, ease: "power3.in" }, at);
+          if (q.target) {
+            var target = c.cam.querySelector(q.target);
+            if (!target) throw new Error(c.sid + ": press target missing: " + q.target);
+            tl.to(target, { scaleY: q.depth || 0.88, transformOrigin: "50% 100%", duration: 0.1, repeat: 1, yoyo: true, ease: "sine.out" }, impact);
+          }
+        }
+        if (p.stamp) {
+          var st = p.stamp;
+          stamp(parent, tl, st.text || "", { x: st.x == null ? p.x : st.x, y: st.y == null ? p.y : st.y }, c.at(st.at, impact), st);
+        }
+      });
     });
   }
   function card(parent, r, o) { o = o || {}; var e = el("div", "yf-card", parent); css(e, { left: r.x, top: r.y, width: r.w, height: r.h }); if (o.rot) e.style.transform = "rotate(" + o.rot + "deg)"; return e; }
@@ -183,7 +202,7 @@
     write(c.tl, k, t.text, ta + 0.25);
     return lb;
   }
-  function finish(c) { transitions(c); window.__timelines[c.sid] = c.tl; }
+  function finish(c) { (c.deferred || []).forEach(function (fn) { fn(); }); transitions(c); window.__timelines[c.sid] = c.tl; }
 
   window.YF = { W: W, H: H, OV: OV, el: el, css: css, svg: svg, path: path, rng: rng, ctx: ctx, stage: stage, hud: hud, camera: camera, glyphs: glyphs, write: write, fadeUp: fadeUp, drop: drop, slideIn: slideIn, hl: hl, draw: draw, strike: strike, underline: underline, ellipse: ellipse, stamp: stamp, count: count, card: card, tape: tape, chip: chip, label: label, finish: finish, props: props, transitions: transitions, tc: tc };
 })();

@@ -1,0 +1,6 @@
+{
+  "bgm": {"A": "assets/local/audio/A.wav", "B": "assets/local/audio/B.wav", "C": "assets/local/audio/C.wav"},
+  "sfx_dir": "assets/local/audio/sfx",
+  "events": [{"scene": "S0-1", "at": "@确认", "name": "stamp"}],
+  "master": {"lufs": -14, "truepeak_ceiling_db": -1}
+}

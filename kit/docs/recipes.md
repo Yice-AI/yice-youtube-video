@@ -16,6 +16,8 @@
 
 不强制 media；`sides` 中每项的 m 要有对应图片。字段：`card:{x,y,w,rot}`、`tone:"sticky"`、`kicker`、`title`、`items:[{text,sub,at}]`、`sides`（共用 props）。代码读取 **sides**，旧 txt 的单数 side 不生效。
 
+`checked:[0]` 只勾第一个条目（零起算）；`checked:[]` 全不勾；省略则沿用全部勾选。条目文字和下划线照常显示。
+
 ```json
 {"title":"准备三样东西","items":[{"text":"一段自己的录音","sub":"安静环境录制","at":0.8},{"text":"一个项目文件夹","at":2.0}]}
 ```
@@ -63,6 +65,8 @@ m0 为截图；可用候选占位图，回退时显示文档骨架。字段：`p
 ## 8. photo-word — 实物道具配一个重点词
 
 **m0 必需**，通常是透明道具。m1 可作夹在旁边的小照片；clip.text 存在时改为纸条。字段：`obj:{x,y,w,rot,at,photo,static}`（photo 使它带照片外框）、`word:{text,at,x,y,size,color,static}`、`notes:[{text,at,ox,oy,lx,ly}]`（标注原点/标签坐标）、`push:{at,s,x,y,d}`、`clip:{text,sub,x,y,w,rot,at}`、`extras`（props）、`texts:[{text,x,y,size,rot,color,at}]`。
+
+独立红圈：`circle:{x:1000,y:400,w:480,h:180,at:"@重点",stroke:6,d:0.6}`，坐标为舞台像素，跟随相机；默认印章红，可用 color 覆盖，不要求 notes。
 
 ```json
 {"obj":{"x":1000,"y":180,"w":750,"rot":-3,"at":0.1},"word":{"text":"声音","x":160,"y":340,"size":230,"at":"@声音"},"push":{"at":1.2,"s":1.04,"x":1100,"y":470,"d":1.6}}
@@ -120,9 +124,21 @@ m0 为截图；可用候选占位图，回退时显示文档骨架。字段：`p
 
 无需主素材，props 可用图片。字段：`lead:{text,at}`、`slips:[{text,at,strike}]`、`step`（纸条纵向间距，默认 230）、`keep:{text,sub,at}`、`short:{text,n,at,strike}`、`props`（共用道具）。strike 是画线时间字段，也支持口播锚点。
 
+便签合并：`merge:{at:"@合并",x:820,y:600,d:0.6}` 配合 keep，已有 slips 移到同一位置并收起，留下 keep 的结论。keep.at 省略时跟随汇合结束；明确填写时按指定锚点。此扩展针对 slips，不改变 short 模式。
+
 ```json
 {"lead":{"text":"不用从零开始","at":0.2},"slips":[{"text":"每期重搭工具","at":0.6,"strike":1.2},{"text":"手工对齐每句话","at":1.6,"strike":2.2}],"keep":{"text":"复用模板","sub":"把精力放在内容上","at":2.8}}
 ```
+
+## 共用道具压字和盖印
+
+各配方已有的 props/extras/sides 列表可选 `press` 和 `stamp`。例如：
+
+```json
+{"m":1,"x":1200,"y":180,"w":260,"at":0.2,"press":{"at":1.4,"x":1000,"y":400,"d":0.24,"target":".word"},"stamp":{"text":"完成","x":1040,"y":580,"size":56}}
+```
+
+press 的 x/y 是道具最终左上角，target 是本幕相机内的文字选择器，落下时文字短暂受压后恢复；省略 target 只移动道具。目标在本幕所有内容建好后解析，缺失会报错。stamp 复用现有印章组件，at 省略时跟随压字接触点，也可独立指定。动画均写入本幕时间线，可向前、向后定位。
 
 ## 维护配方
 

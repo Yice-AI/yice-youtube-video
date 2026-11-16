@@ -141,7 +141,7 @@ class PropsTests(unittest.TestCase):
 
 
 class CommandTests(unittest.TestCase):
-    def test_new_episode_rejects_traversal_and_existing_project(self):
+    def test_new_episode_rejects_traversal_and_reuses_existing_project(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = {**os.environ, "YICE_WORKSPACE": tmp, "YICE_TOOLKIT": str(Path(tmp) / "toolkit")}
             run = lambda name: subprocess.run([str(KIT / "scripts/new-episode.sh"), name], env=env, capture_output=True, text=True)
@@ -149,7 +149,7 @@ class CommandTests(unittest.TestCase):
             self.assertEqual(run("test").returncode, 0)
             project = Path(tmp) / "toolkit/local/episodes/test"
             keep = project / "keep.txt"; keep.write_text("user work")
-            self.assertNotEqual(run("test").returncode, 0)
+            self.assertEqual(run("test").returncode, 0)
             self.assertEqual(keep.read_text(), "user work")
 
     def test_render_propagates_exit_code_and_keeps_log(self):

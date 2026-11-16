@@ -25,6 +25,10 @@
     if (w.static) wd.textContent = w.text; else Y.write(tl, wd, w.text, c.at(w.at, 0.5));
   }
   var sv = Y.svg(c.cam); sv.style.zIndex = 21;
+  if (s.circle) {
+    var cr = s.circle;
+    Y.ellipse(sv, tl, cr, c.at(cr.at, 1), { color: cr.color || "var(--stamp)", w: cr.stroke || 6, d: cr.d || 0.6, seed: c.sid });
+  }
   var blue = c.stage === "charcoal" ? "#7EA1FF" : "var(--blue)";
   (s.notes || []).forEach(function (n, i) {
     var t = c.at(n.at, 1 + i * 0.6), d = Y.el("div", "dot", c.cam); Y.css(d, { left: n.ox, top: n.oy });

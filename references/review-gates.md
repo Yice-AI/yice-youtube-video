@@ -16,7 +16,7 @@
 
 **技术**
 - [ ] 1920×1080 30fps，带音轨，blackdetect 结果为 0，`hyperframes check` 报 0 个 error
-- [ ] 成片时长与 voice-timing 的 end 一致
+- [ ] 成片时长等于 episode.end；允许配音结束后留 2–4 秒结尾画面，不再要求配音结束即切断成片
 
 **开头和结尾**
 - [ ] 第 0 帧就有主体

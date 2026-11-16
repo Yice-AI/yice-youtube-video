@@ -10,9 +10,12 @@
   }
   if (s.props) Y.props(c, c.cam, s.props, tl);
   var keys = [{ at: 0, x: 960, y: 540, s: 1 }];
+  var merge = s.merge, papers = [];
+  if (merge && !s.keep) throw new Error(c.sid + ": merge requires keep");
   (s.slips || []).forEach(function (sl, i) {
     var x = 820 + (i % 2) * 120, y = 170 + i * (s.step || 230), rot = i % 2 ? 1.8 : -2.2, t = c.at(sl.at, 0.5 + i * 0.5);
     var o = slip(sl.text, x, y, rot, t);
+    papers.push({ e: o.e, x: x, y: y });
     if (sl.strike != null) {
       var st = c.at(sl.strike);
       // strike drawn in slip-local svg so it rotates with the paper
@@ -30,10 +33,17 @@
   }
   if (s.keep) {
     var kx = s.short ? 900 : 820, ky = s.short ? 540 : 170 + (s.slips || []).length * (s.step || 230);
+    if (merge) {
+      kx = merge.x == null ? kx : merge.x; ky = merge.y == null ? ky : merge.y;
+      papers.forEach(function (paper) {
+        tl.to(paper.e, { x: kx - paper.x, y: ky - paper.y, scale: 0.9, rotation: merge.rot || -1,
+          opacity: 0, duration: merge.d || 0.6, ease: "power2.inOut" }, c.at(merge.at, 2));
+      });
+    }
     var k = Y.card(c.cam, { x: kx, y: ky }); k.classList.add("slip", "keep");
     var kt = Y.el("div", "tx", k); if (s.keep.sub) Y.el("div", "sb", k, s.keep.sub);
     k.style.transform = "rotate(-1deg)";
-    var kat = c.at(s.keep.at, 1.5);
+    var kat = c.at(s.keep.at, merge ? c.at(merge.at, 2) + (merge.d || 0.6) : 1.5);
     Y.drop(tl, k, kat - 0.3, { rot: -1, y: -40 });
     Y.write(tl, kt, s.keep.text, kat);
     Y.tape(k, -30, -14, -24, 130);

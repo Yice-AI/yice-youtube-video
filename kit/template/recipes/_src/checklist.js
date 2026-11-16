@@ -10,12 +10,13 @@
   var ti = Y.el("div", "ti", card); Y.write(tl, ti, s.title || "", 0.2);
   var keys = [{ at: 0, x: 960, y: 540, s: 1 }];
   (s.items || []).forEach(function (it, i) {
-    var row = Y.el("div", "it", card), n = Y.el("div", "n", row, "✓"), col = Y.el("div", "", row), tx = Y.el("div", "tx", col);
+    var checked = !Array.isArray(s.checked) || s.checked.indexOf(i) !== -1;
+    var row = Y.el("div", "it", card), n = Y.el("div", "n", row, checked ? "✓" : ""), col = Y.el("div", "", row), tx = Y.el("div", "tx", col);
     if (it.sub) Y.el("div", "sb", col, it.sub);
     var t = c.at(it.at, 1.2 + i);
     row.style.overflow = "hidden";
     tl.fromTo(row, { height: 0, opacity: 0 }, { height: it.sub ? 150 : 124, opacity: 1, duration: 0.4, ease: "power2.out" }, t - 0.3);
-    tl.fromTo(n, { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, t);
+    if (checked) tl.fromTo(n, { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(2)" }, t);
     Y.write(tl, tx, it.text, t);
     var ul = Y.el("div", "ul", row); Y.css(ul, { width: Math.min(700, 72 * Array.from(it.text).length) });
     tl.fromTo(ul, { scaleX: 0 }, { scaleX: 1, duration: 0.4, ease: "power2.inOut" }, t + 0.5);

@@ -2,6 +2,8 @@
 // usage: node build.mjs [--only S0-1,S0-2] [--from 0 --to 30]
 import fs from "node:fs";
 import path from "node:path";
+import { prepareVideo } from "./video.mjs";
+import { mixAudio } from "./audio.mjs";
 
 import { fileURLToPath } from "node:url";
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -91,7 +93,16 @@ function localize(sc, o) {
   return o;
 }
 
-const chapterOf = (sc) => manifest.chapters.find((c) => sc.B >= c.start - 1e-6 && sc.B < c.end - 1e-6);
+const chapterOf = (sc) => {
+  const id = sc.sents[0], base = id.split('.')[0];
+  const declared = manifest.chapters.find(c => (c.scenes || []).some(s => s === id || s === base));
+  if (declared) return declared;
+  const prefix = id.match(/^(\d+)-/);
+  const byId = prefix && manifest.chapters.find(c => Number(c.id) === Number(prefix[1]));
+  if (byId) return byId;
+  const first = S[id].firstCharTime;
+  return manifest.chapters.find(c => first >= c.start && first < c.end);
+};
 const only = argv("--only") ? new Set(argv("--only").split(",")) : null;
 const report = [];
 fs.mkdirSync(path.join(ROOT, "compositions/scenes"), { recursive: true });
@@ -107,10 +118,12 @@ scenes.forEach((sc, i) => {
   (sc.media || []).forEach((m, mi) => {
     const r = resolveFile(m.src);
     if (!r) throw new Error(`${sc.id}: no media for ${JSON.stringify(m.src)}`);
-    const url = useAsset(r.file);
-    used.push({ cand: r.cand, fallback: r.idx > 0 && !m.optionalFirst ? true : r.idx > 0, idx: r.idx, kind: m.kind });
     const isVid = /\.(mp4|mov|webm)$/i.test(r.file);
-    if (isVid) mediaHtml.push(`<video id="${sid}-m${mi}" src="${url}" muted playsinline data-start="${(m.at || 0)}" data-duration="${sc.dur}"${m.start ? ` data-media-start="${m.start}"` : ""}${m.rate ? ` data-playback-rate="${m.rate}"` : ""}></video>`);
+    const prepared = isVid ? prepareVideo(r.file, ROOT) : { file: r.file };
+    const url = useAsset(prepared.file);
+    used.push({ cand: r.cand, fallback: r.idx > 0 && !m.optionalFirst ? true : r.idx > 0, idx: r.idx, kind: m.kind,
+      ...(isVid ? { video: true, url, sourceStart: prepared.sourceStart, prepared: prepared.prepared } : {}) });
+    if (isVid) mediaHtml.push(`<video id="${sid}-m${mi}" src="${url}" muted playsinline preload="auto" data-start="${(m.at || 0)}" data-duration="${sc.dur}"${m.start ? ` data-media-start="${m.start}"` : ""}${m.rate ? ` data-playback-rate="${m.rate}"` : ""}></video>`);
     else mediaHtml.push(`<img id="${sid}-m${mi}" src="${url}" alt="" />`);
   });
   // a scene can declare alternate spec overrides used when its preferred media fell back
@@ -122,21 +135,31 @@ scenes.forEach((sc, i) => {
   const spec = {
     ...loc,
     id: sc.id, sid, t0: sc.start, dur: sc.dur, enter: i === 0 ? "cut" : sc.enter, exit: sc.exit,
-    stage: sc.stage || episode.chapters[ch.id].stage, chapter: ch.id, chapterTitle: episode.chapters[ch.id].title,
+    stage: sc.stage || episode.chapters[ch.id].stage, chapter: ch.id, chapterTitle: episode.chapters[ch.id].title, episodeId: episode.id,
     mediaFallback: used.map((u) => u.idx > 0),
   };
   const html = tpl.replaceAll("__SID__", sid).replace("__MEDIA__", mediaHtml.join("\n")).replace("__SPEC__", JSON.stringify(spec).replace(/</g, "\\u003c"));
   fs.writeFileSync(path.join(ROOT, "compositions/scenes", sid + ".html"), html);
   let z = 10 + i * 2; if (sc.exit === "lift") z = 10 + (i + 1) * 2 + 1;
   hostClips.push({ sid, start: sc.start, dur: sc.dur, z, sc });
-  report.push({ id: sc.id, recipe: sc.recipe, start: sc.start, B: sc.B, E: sc.E, dur: sc.dur, enter: spec.enter, exit: sc.exit, media: used });
+  report.push({ id: sc.id, recipe: sc.recipe, chapter: ch.id, start: sc.start, B: sc.B, E: sc.E, dur: sc.dur, enter: spec.enter, exit: sc.exit, media: used });
 });
 
 const from = +(argv("--from") ?? 0), to = argv("--to") != null ? +argv("--to") : END;
 const sel = hostClips.filter((h) => (!only || only.has(h.sc.id)) && h.start < to && h.start + h.dur > from);
 const offset = from;
 const total = +(Math.min(to, END) - from).toFixed(3);
-const audio = manifest.chapters.filter((c) => c.start < to && c.end > from).map((c) => {
+const audioSetting = argv("--audio") || episode.audio;
+const audioConfig = typeof audioSetting === "string" ? JSON.parse(fs.readFileSync(path.resolve(ROOT, audioSetting), "utf8")) : audioSetting;
+const master = audioConfig ? mixAudio({ root: ROOT, config: audioConfig, manifest, timing, scenes, end: END, voiceDir,
+  resolve: src => { const file = resolveFile(src); if (!file) throw new Error(`音频素材不存在: ${src}`); return file.file; },
+  events: (audioConfig.events || []).map(e => {
+    const scene = scenes.find(s => s.id === e.scene);
+    if (e.scene && !scene) throw new Error(`音效引用未知场景: ${e.scene}`);
+    return { ...e, time: scene ? anchorTime(scene, e.at) : e.at };
+  }),
+}) : null;
+const audio = master ? [`    <audio id="master" src="${useAsset(master)}" data-start="0" data-duration="${total}" data-media-start="${from}" data-track-index="1" data-volume="1"></audio>`] : manifest.chapters.filter((c) => c.start < to && c.end > from).map((c) => {
   const url = useAsset(path.resolve(voiceDir, c.path));
   const st = c.start - offset, ms = st < 0 ? -st : 0;
   return `    <audio id="vo-${c.id}" src="${url}" data-start="${Math.max(0, st).toFixed(3)}" data-duration="${(c.end - c.start - ms).toFixed(3)}"${ms ? ` data-media-start="${ms.toFixed(3)}"` : ""} data-track-index="1" data-volume="1"></audio>`;

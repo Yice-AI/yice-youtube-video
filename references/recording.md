@@ -1,6 +1,17 @@
 # 录屏（Codex App 实操）
 
-## 标准做法：rec-demo 一条命令录完，Claude 不盯屏幕
+## 首选：DeepSeek Harness 常驻录屏师（2026-11-17 起）
+
+把 Harness 当作便宜的录屏 Agent：告诉它要拍什么，具体怎么操作由它自己决定。不要用逐步脚本加层层守卫把它框住。Claude 不亲自录屏，也不盯屏幕。
+
+- **启动**：用户在 Harness **应用**里开一个对话，把待命提示词贴进去，模板见 [dsh-standby-prompt](../kit/docs/dsh-standby-prompt.md)。从命令行启动的 dsh 拿不到应用的辅助功能权限，点击会被系统拒绝，所以不要用。Harness 应用需要“辅助功能”和“屏幕录制”两个权限，由用户本人开启。
+- **收件箱**：`$YICE_WORKSPACE/.scratch/youtube/dsh-inbox/`。Harness 循环运行 `kit/scripts/dsh-wait-next.sh <收件箱>`；中心往 `tasks/task-NNNN.md` 放任务，它做完写 `done/task-NNNN.md`。
+- **任务怎么写**：用导演交代录屏师的口吻。写清这一镜给观众看什么、画面怎么走、时长、交到哪个文件夹、`progress.md` 写在哪。交回的内容包括：视频路径和时长、关键动作在第几秒、录了几次以及为什么选这一条、需要打码的地方。录糟了让它自己重录，最多 3 次。硬规矩只有三条：不在其他聊天窗口打字（任务明确指定的除外）、不改系统设置和账号、不删除或移动无关文件。
+- **验收**：中心只读 done 文件，抽 3 帧核对。裁剪、打码、倍速放到 Codex 组装时做。
+- **掉线**：同一个对话跑久了可能会停。任务放进去超过 10 分钟没人接，请用户在那个对话里说一句“继续”。
+- **实测**：EP02 的 R1 访达镜头一次交付。真实点击，指针移动平滑；它自己检查了打码，30 张照片没有任何改动，录完把窗口恢复了原样。
+
+## 备用：rec-demo 一条命令录完，Claude 不盯屏幕
 
 每期准备一份私有参数 JSON：项目与窗口标识、按顺序发送的文字、每条的完成标志和超时，以及浏览器/访达的既有动作。先用 `bash kit/scripts/rec-demo.sh /absolute/params.json --dry-run` 审核镜头单；中心审核后把 `{"action":"rec-demo","params":"/absolute/params.json"}` 原子放入已授权终端中 rec-bridge 的队列。实际执行由本机确定性脚本完成，Claude 不轮询看屏幕，也不逐段指挥输入。格式和示例见 [rec-demo 文档](../kit/docs/rec-demo.md)。
 

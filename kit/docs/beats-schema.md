@@ -52,7 +52,7 @@
 | spec | 配方输入，字段按 recipes.md。 |
 | fallbackSpec | 任一 media 用了第二个及以后候选时，浅合并到 spec。嵌套对象整项替换，不深合并。 |
 
-第一幕边界 B=0；后续 B=该幕首句 firstCharTime−0.2。结束 E=下一幕 B，末幕 E=episode.end。非 cut 入场提前 0.5 秒开始，覆盖上一幕末尾；退出动画自动取下一幕 enter。`match` 是入场淡入，其余退出行为见 yice.js。不要手写 start/duration/exit，它们由构建器生成。章归属按 B 落在哪个 manifest 区间计算。
+第一幕边界 B=0；后续 B=该幕首句 firstCharTime−0.2。结束 E=下一幕 B，末幕 E=episode.end。非 cut 入场提前 0.5 秒开始，覆盖上一幕末尾；退出动画自动取下一幕 enter。`match` 是入场淡入，其余退出行为见 yice.js。不要手写 start/duration/exit，它们由构建器生成。章归属优先取 manifest.scenes 中的句子映射，再取句子编号的章前缀，最后使用未取整的 firstCharTime；不使用提前或取整后的 B。HUD 期号读取 episode.id。
 
 ## 时间与语音锚点
 
@@ -74,4 +74,4 @@ src 可为字符串或候选数组，按顺序找第一个存在的文件；文�
 
 `npm run build` 生成 index.html、compositions/scenes 和 build-report.json。`node build.mjs --from 10 --to 30` 裁主时间线；`--only S0-1,S0-2` 只筛主页面引用，不删除时间轴空档，也仍生成全部子幕。日常完整片直接 build，不用 only。
 
-构建后 `npm run check`，再用 render.sh 和 review.sh。build 成功仅证明时间、路径及配方替换完成，不能代替运行时检查和看图。
+构建后 `npm run check`，再用 render.sh 和 review.sh。检查会实际渲染视频转场并逐帧查空画面，哪怕只有一帧也报 error；可传 `--rendered` 复用完整成片，片段须同时提供 `--rendered-start` 和 `--video-scenes`。报告含具体窗口、帧时间和错误。build 成功不能代替运行时检查和看图。音频入口见 [audio.md](audio.md)。
