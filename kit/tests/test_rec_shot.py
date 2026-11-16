@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import signal
 import tempfile
 import unittest
 from unittest import mock
@@ -30,6 +31,24 @@ class FakeBackend:
         self.process, self.title = "ChatGPT", "演示项目 / 演示会话"
         self.now, self.result_at = 0, 2
         self.switch_after_copy = False
+        self.active = False
+
+    def has_modal(self):
+        return False
+
+    def input_bounds(self):
+        return INPUT[:]
+
+    def read_input(self):
+        self.calls.append(("read_input", self.buffer))
+        return self.buffer
+
+    def clear_input(self):
+        self.calls.append(("clear_input",))
+        self.buffer = ""
+
+    def recording_alive(self):
+        return self.active
 
     def front(self):
         self.calls.append(("front", self.title))
@@ -67,9 +86,12 @@ class FakeBackend:
         self.calls.append(("rec_start", str(output)))
         output.write_bytes(b"FAKE VIDEO: unit test only")
         self.started = self.now
+        self.active = True
+        return {"ready": True, "launch_monotonic": self.now}
 
     def stop_record(self):
         self.calls.append(("rec_stop",))
+        self.active = False
         return {"exit_codes": {"recorder": 0, "logger": 0}, "simulated": True}
 
     def probe(self, output):
@@ -77,6 +99,10 @@ class FakeBackend:
 
     def close(self):
         self.calls.append(("close",))
+
+    def trim(self, source, output, start, end):
+        self.calls.append(("trim", start, end))
+        output.write_bytes(source.read_bytes())
 
     def sleep(self, sec):
         self.calls.append(("sleep", sec))
@@ -86,12 +112,19 @@ class FakeBackend:
 class RecShotTests(unittest.TestCase):
     def run_shot(self, value, backend=None):
         backend = backend or FakeBackend()
+        value = copy.deepcopy(value)
+        if not any(step["type"] == "rec_start" for step in value["steps"]):
+            temp = tempfile.TemporaryDirectory()
+            self.addCleanup(temp.cleanup)
+            value["steps"] = [{"type": "rec_start", "region": [0, 0, 100, 100],
+                               "out": str(Path(temp.name) / "take.mov")}, *value["steps"], {"type": "rec_stop"}]
         rec.Runner(value, backend, lambda: backend.now, backend.sleep).run()
         return backend
 
     def test_parse_valid_and_reject_malformed_or_unbalanced_steps(self):
-        value = shot({"type": "paste", "text": "按旁白重新对齐。"}, {"type": "key", "key": "return"})
-        self.assertEqual(len(rec.build_plan(value)), 2)
+        value = shot({"type": "rec_start", "region": [0, 0, 100, 100], "out": "/synthetic/take.mov"},
+                     {"type": "paste", "text": "按旁白重新对齐。"}, {"type": "key", "key": "return"}, {"type": "rec_stop"})
+        self.assertEqual(len(rec.build_plan(value)), 4)
         for replacement in [{"type": "unknown"}, {"type": "rec_stop"},
                             {"type": "wait", "sec": float("nan")},
                             {"type": "click", "x": True, "y": 2},
@@ -187,7 +220,7 @@ class RecShotTests(unittest.TestCase):
             data = json.loads((Path(str(output) + ".rec") / "events.json").read_text())
             self.assertEqual(data["state"], "complete")
             self.assertEqual([event["type"] for event in data["events"]],
-                             ["rec_start", "click", "input_start", "input_end", "send", "result", "rec_stop"])
+                             ["rec_start", "click", "ui_recovery", "input_start", "input_end", "send", "result", "rec_stop"])
             self.assertTrue(all(0 <= event["t"] < 1 for event in data["events"]))
             self.assertIsNone(data["video_start_offset_seconds"])
             self.assertIn("200×200", (Path(directory) / "index.md").read_text())
@@ -207,10 +240,35 @@ class RecShotTests(unittest.TestCase):
             self.assertIn(("rec_stop",), fake.calls)
             self.assertFalse((Path(directory) / "index.md").exists())
 
+    def test_sigterm_stops_recording_and_restores_signal_handler(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "take.mov"
+            source = Path(directory) / "shot.json"
+            source.write_text(json.dumps(shot(
+                {"type": "rec_start", "region": [0, 0, 100, 100], "out": str(output)},
+                {"type": "wait", "sec": 1}, {"type": "rec_stop"})))
+            fake = FakeBackend()
+            previous = signal.getsignal(signal.SIGTERM)
+            runner = rec.Runner
+            def interrupted_sleep(_seconds):
+                signal.raise_signal(signal.SIGTERM)
+            with mock.patch.object(rec, "MacBackend", return_value=fake), \
+                    mock.patch.object(rec, "Runner", side_effect=lambda value, backend:
+                                      runner(value, backend, sleep=interrupted_sleep)), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(rec.main([str(source)]), 130)
+            self.assertEqual(signal.getsignal(signal.SIGTERM), previous)
+            self.assertEqual([c[0] for c in fake.calls].count("rec_stop"), 1)
+            self.assertIn(("close",), fake.calls)
+            data = json.loads((Path(str(output) + ".rec") / "events.json").read_text())
+            self.assertEqual(data["state"], "aborted")
+
     def test_dry_run_has_no_backend_subprocess_or_filesystem_writes(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "shot.json"
-            path.write_text(json.dumps(shot({"type": "paste", "text": "按旁白重新对齐。"})))
+            path.write_text(json.dumps(shot(
+                {"type": "rec_start", "region": [0, 0, 100, 100], "out": str(Path(directory) / "take.mov")},
+                {"type": "paste", "text": "按旁白重新对齐。"}, {"type": "rec_stop"})))
             before = sorted(Path(directory).rglob("*"))
             output = io.StringIO()
             with mock.patch.object(rec, "MacBackend", side_effect=AssertionError("backend")), \
