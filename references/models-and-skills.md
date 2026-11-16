@@ -11,12 +11,12 @@ EP01 的配音在本机 MLX 上跑，透明道具用 image2，所以 Modal 花�
 | 需求 | 首选 | 何时用云 GPU（Modal，toolkit 工具） | 预算与注意 |
 |---|---|---|---|
 | 配音 | 本机 MLX Qwen3-TTS 8bit（kit `voice.sh`） | 本机内存不够或要批量重做时，用 `qwen3_tts` | 每章一次连续生成，不要逐句生成 |
-| **背景音乐** | toolkit `music_gen.py`（ACE-Step，Modal），也可以用 `pick_music.py` 从免费曲库挑 | ✔ 首选云 GPU | 音量压在人声下 −18 到 −22 dB；人声出现时自动压低（ducking）；章节换场时音乐跟着变化。**EP01 没有背景音乐，这是下一期最该补的一层** |
+| **背景音乐** | toolkit `music_gen.py`（ACE-Step，Modal），也可以用 `pick_music.py` 从免费曲库挑 | ✔ 首选云 GPU | 参数按参考片声音卡定：配音时 BGM 比人声低 24dB，空白处最多回升 4dB，压低 100ms / 回升 600ms，章节间交叉淡化 600ms；音效每分钟 6–10 组，提前约 2 帧，普通 −18dB、关键 −12dB（相对人声）；成片 −14 LUFS、真峰值 ≤ −1 dBTP。**生成的曲子常混着人声**：入选前用本机 Demucs 分离测人声（P90 ≤ −20dB 且没有连续 1 秒以上高于 −20dB），不合格就用它的伴奏轨（no_vocals）再测一遍，合格即可用，不用重新生成（EP01 的 A/B 两段就是这样救回来的） |
 | 音效（纸、章、点击、快进） | 免费音效库（逐件登记许可） | 不需要 | 只在物件落下、盖章、划线、快进时出现，音量要小 |
 | 透明道具 | image2（`props.sh`，原生透明） | 不用 | 和下面的生图共用每期 $3 预算 |
 | 第三方空镜 | Pexels / Unsplash / Pixabay | 不用 | 视频优先 1080p，逐件登记许可 |
 | **图库找不到的画面** | **image2 生成写实照片**（role content，16:9），套 stock-shot 配方做慢推（Ken Burns），或者放进冲印相纸（frame:"print"） | 只有画面必须真的在动（液体、人手连续动作等）时，才用 `ltx2.py` 生成 3–5 秒视频 | 和道具共用 image2 的 key 和 $3 预算。生成的画面只能当氛围镜头，不能冒充真实操作 |
-| 缩略图 | image2 `--role thumbnail --guard light --candidates 3` | — | 人工挑掉画了假时长、出现占位框的候选 |
+| 缩略图 | image2 `--role thumbnail --guard light --candidates 3` | — | image2 容易出千篇一律的蓝色霓虹 AI 风。**首选品牌版**：取开场那一帧的画面（舞台底色、实物、宋体大字、高亮条），用 HyperFrames 截一帧做成 1280×720，和片头是同一个视觉锤；image2 只做备选 |
 | 字幕 | voice.sh 输出的 SRT | — | 上传 YouTube 时附上 |
 
 Modal 的规则：Starter 套餐每月 $30 免费额度，spend limit 设为 $0（超出就停，不会扣钱）。重新部署前先看 toolkit 的文档；同类素材要批量生成时，复用已经热起来的容器。
