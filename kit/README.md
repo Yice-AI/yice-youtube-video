@@ -37,3 +37,6 @@ DO_NOT_TRACK=1 npm run check
 **已有验证：** 参考片 70 幕、78 个 composition 文件 **diff=0**；20 秒样片 check **0 error**、有音轨、黑帧 0；短稿实跑 3 句 9.48 秒，原 PCM 保留，原 ASR 的 96 字时间重放无差异。道具脚本已实测累计预算停止与重跑防重复。视频、声音及原始核验素材不随公开仓库分发；本次迁移验证见 [PRIVACY-SCAN.md](../PRIVACY-SCAN.md)。
 
 离线复验：`"$YICE_TOOLKIT/local/tts-venv/bin/python" -m unittest discover -s "$KIT/tests" -v`。安装与依赖见[仓库首页](../README.md)。
+
+
+参考片粗拆：`"$KIT/scripts/breakdown.sh" <视频> <输出目录> [起点秒=60] [长度秒=180]`，输出切点统计、每 2 秒帧墙、开头 30 秒逐秒帧。方法见仓库 `references/breakdown.md`。

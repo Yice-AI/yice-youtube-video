@@ -74,4 +74,5 @@ EP01 v4（6 分 40 秒，8 章 70 幕）是这套体系做出的第一个成片�
 - `references/models-and-skills.md`：模型和云 GPU 什么时候用，与 HyperFrames、toolkit、codex-commander 怎么搭配
 - `references/review-gates.md`：审片门槛清单，以及已经踩过的坑
 - `references/recording.md`：录屏方法、打码、Codex 权限模式的影响
+- `references/breakdown.md`：拆解参考片的六层法（L0 叙事到 L5 工艺）、`kit/scripts/breakdown.sh`、可借鉴清单、对标验收
 - `kit/README.md`、`kit/docs/recipes.md`、`kit/docs/beats-schema.md`、`kit/template/frame.md`：命令、配方字段、视觉规范
