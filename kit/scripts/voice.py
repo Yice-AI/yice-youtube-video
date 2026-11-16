@@ -118,12 +118,16 @@ def ranges(text, pattern):
     return [(m.start(), m.end(), m.group().strip()) for m in re.finditer(pattern, text) if chars(m.group())]
 
 
-def prepare_chapter(chapter, raw_path, output, transcription, normalizations, silence, offset, anchors):
+def prepare_chapter(chapter, raw_path, output, transcription, normalizations, silence, offset, anchors, aligned=None):
     with wave.open(str(raw_path), "rb") as source:
         params, pcm = source.getparams(), source.readframes(source.getnframes())
     rate, stride = params.framerate, params.nchannels * params.sampwidth
     duration = params.nframes / rate
-    mapped, ratio, clamps = align_characters(chapter["text"], transcription, duration, normalizations)
+    if aligned is None:
+        mapped, ratio, clamps = align_characters(chapter["text"], transcription, duration, normalizations)
+    else:
+        mapped = aligned["mapped"]
+        ratio, clamps = aligned.get("matched_ratio", 1.), aligned.get("monotonic_clamps", 0)
     scenes, cursor = [], 0
     for scene in chapter["scenes"]:
         end = cursor + len(scene["text"])
@@ -136,10 +140,13 @@ def prepare_chapter(chapter, raw_path, output, transcription, normalizations, si
                   for a, b in zip(scenes, scenes[1:])] + [params.nframes]
     gap = round(silence * rate)
     chunks, segments, timing, scene_timing, captions = [], [], [], [], []
+    output_mapped = []
     for i, scene in enumerate(scenes):
         lo, hi = cuts[i], cuts[i + 1]
         chunks.extend([b"\0" * gap * stride, pcm[lo * stride:hi * stride]])
         added = (i + 1) * gap / rate
+        output_mapped.extend({**row, "s": row["s"] + added, "e": row["e"] + added}
+                             for row in scene["chars"])
         start, end = offset + lo / rate + i * gap / rate, offset + hi / rate + added
         first = offset + scene["chars"][0]["s"] + added
         segments.append({"id": scene["id"], "source_start_sample": lo, "source_end_sample": hi,
@@ -192,8 +199,52 @@ def prepare_chapter(chapter, raw_path, output, transcription, normalizations, si
               "sha256": hashlib.sha256(final.read_bytes()).hexdigest()}
     analysis = {"chapter": chapter["id"], "text": chapter["text"], "mapped": mapped,
                 "matched_ratio": ratio, "monotonic_clamps": clamps, "normalizations": normalizations,
-                "sample_rate": rate, "segments": segments, "raw_pcm_preserved": True}
+                "sample_rate": rate, "segments": segments, "raw_pcm_preserved": True,
+                "output_mapped": output_mapped}
     return record, timing, scene_timing, captions, analysis
+
+
+def load_voice_tool(name):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name.replace("-", "_"), Path(__file__).with_name(name + ".py"))
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    return tool
+
+
+def finish_chapter(chapter, raw, output, transcription, normalizations, silence, offset, anchors,
+                   *, skip_post=False, post_options=None):
+    """Generate final timing from edited audio; every chapter gets a mandatory check."""
+    check_tool = load_voice_tool("voice-check")
+    with wave.open(str(raw), "rb") as source:
+        original_duration = source.getnframes() / source.getframerate()
+    mapped, ratio, clamps = align_characters(chapter["text"], transcription, original_duration, normalizations)
+    aligned = dict(text=chapter["text"], mapped=mapped, matched_ratio=ratio, monotonic_clamps=clamps)
+    audio = raw
+    if not skip_post:
+        post_tool = load_voice_tool("voice-post")
+        boundaries, cursor = [], 0
+        for scene in chapter["scenes"][:-1]:
+            end = cursor + len(scene["text"])
+            boundaries.append(max(row["charEnd"] for row in mapped if cursor <= row["charStart"] < end))
+            cursor = end + 1
+        processed = output / "processed"
+        processed.mkdir(exist_ok=True)
+        audio = processed / f"chapter-{chapter['id']}.wav"
+        aligned = post_tool.postprocess(raw, aligned, audio, scene_boundaries=boundaries,
+                                        scene_padding=silence, **(post_options or {}))
+    write_json(output / "analysis" / f"post-alignment-{chapter['id']}.json", aligned)
+    record, timing, scenes, captions, analysis = prepare_chapter(
+        chapter, audio, output, transcription, normalizations, silence, offset, anchors, aligned=aligned)
+    final_alignment = dict(text=chapter["text"], mapped=analysis["output_mapped"])
+    write_json(output / "analysis" / f"final-alignment-{chapter['id']}.json", final_alignment)
+    check = check_tool.check_chapter(output / record["path"], final_alignment, chapter=chapter["id"],
+                                    cache=output / "analysis" / f"voice-check-{chapter['id']}.npz")
+    write_json(output / "analysis" / f"voice-check-{chapter['id']}.json", check)
+    record["generated_duration"] = original_duration
+    record["postprocessing"] = not skip_post
+    record["prosody_alert_count"] = len(check["alerts"])
+    return record, timing, scenes, captions, analysis, check
 
 
 def main():
@@ -206,6 +257,12 @@ def main():
     parser.add_argument("--silence", type=float, default=.2)
     parser.add_argument("--asr-model", default="mlx-community/whisper-large-v3-turbo")
     parser.add_argument("--generate-only", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--skip-post", action="store_true", help="保留原音；韵律检测仍强制执行")
+    parser.add_argument("--speed", type=float, default=1.08)
+    parser.add_argument("--breath-db", type=float, default=-12.)
+    parser.add_argument("--breath-cut-ms", type=float, default=250.)
+    parser.add_argument("--breath-target-ms", type=float, default=150.)
+    parser.add_argument("--fade-ms", type=float, default=10.)
     args = parser.parse_args()
     if not 0 <= args.silence <= 2:
         parser.error("换幕静音须在 0–2 秒之间")
@@ -235,16 +292,25 @@ def main():
     os.environ.update({k: env[k] for k in ["HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE", "HF_HUB_DISABLE_TELEMETRY"]})
     import mlx_whisper
     records, timings, scenes, subtitles, offset = [], [], [], [], 0
+    failed = []
     for chapter in chapters:
         raw = output / "raw" / f"chapter-{chapter['id']}-raw.wav"
         transcription = mlx_whisper.transcribe(str(raw), path_or_hf_repo=args.asr_model,
                                                language="zh", word_timestamps=True, verbose=False)
         write_json(output / "analysis" / f"whisper-{chapter['id']}.json", transcription)
-        record, timing, scene, captions, analysis = prepare_chapter(
-            chapter, raw, output, transcription, normalization, args.silence, offset, anchors)
+        record, timing, scene, captions, analysis, check = finish_chapter(
+            chapter, raw, output, transcription, normalization, args.silence, offset, anchors,
+            skip_post=args.skip_post, post_options={
+                "speed": args.speed, "breath_db": args.breath_db,
+                "breath_cut_ms": args.breath_cut_ms, "breath_target_ms": args.breath_target_ms,
+                "fade_ms": args.fade_ms})
+        if not check["ok"]:
+            failed.append(chapter["id"])
         write_json(output / "analysis" / f"aligned-characters-{chapter['id']}.json", analysis)
         records.append(record); timings.extend(timing); scenes.extend(scene); subtitles.extend(captions)
         offset = record["end"]
+    if failed:
+        raise SystemExit("配音检测未通过，停止组装：" + ", ".join(failed) + "；查看 analysis/voice-check-*.json")
     sys.path.insert(0, str(TOOLKIT / "tools"))
     from captions import export_subtitles
     (output / "voice.srt").write_text(export_subtitles(subtitles, max_words=1))
@@ -253,10 +319,11 @@ def main():
                 "total_duration": offset, "chapters": records, "scene_timing": scenes,
                 "scene_count": len(scenes), "sentence_count": len(timings), "subtitle_count": len(subtitles),
                 "anchor_count": sum(len(t["anchors"]) for t in timings),
-                "raw_voice_duration": round(sum(c["original_duration"] for c in records), 5),
+                "raw_voice_duration": round(sum(c["generated_duration"] for c in records), 5),
                 "boundary_silence_duration": round(sum(c["added_boundary_silence"] for c in records), 5),
                 "source_script_sha256": hashlib.sha256(args.script.read_bytes()).hexdigest(),
-                "alignment_note": "T61：Whisper 字时间估计，原稿归一化后复用 captions.align 插值；章内 PCM 原样保留，仅每幕前加静音。"}
+                "postprocessing": not args.skip_post, "prosody_check": "passed",
+                "alignment_note": "Whisper字时间经后期剪切/保音高提速映射，再插入已预算的换幕静音；最终章音频必须通过韵律检测。"}
     write_json(output / "voice-manifest.json", manifest)
     print(json.dumps({"output": str(output), "duration": offset, "chapters": len(records),
                       "sentences": len(timings), "anchors": manifest["anchor_count"]}, ensure_ascii=False))

@@ -35,12 +35,60 @@ def load_environment(environ=None):
     return workspace, toolkit
 
 
+def ensure_voice_dependencies(toolkit):
+    """Install only missing/wrong-version voice dependencies in the existing ASR venv."""
+    import json
+    import shutil
+    import subprocess
+
+    python = Path(toolkit) / "local/asr-venv/bin/python"
+    required = {"librosa": "1.0.1", "soundfile": "0.14.0", "scipy": None, "numpy": None}
+    if not python.is_file():
+        return {"ready": False, "python": str(python), "installed": [], "missing_environment": True}
+    probe = """
+import importlib, importlib.metadata, json
+result = {}
+for package in ["librosa", "soundfile", "scipy", "numpy"]:
+    try:
+        importlib.import_module(package)
+        result[package] = importlib.metadata.version(package)
+    except Exception:
+        result[package] = None
+print(json.dumps(result))
+"""
+
+    def inspect():
+        completed = subprocess.run([str(python), "-I", "-c", probe], capture_output=True, text=True, check=True)
+        return json.loads(completed.stdout)
+
+    before = inspect()
+    missing = [name + ("==" + version if version else "")
+               for name, version in required.items()
+               if not before.get(name) or (version and before[name] != version)]
+    if missing:
+        uv = shutil.which("uv")
+        command = ([uv, "pip", "install", "--python", str(python)] if uv else
+                   [str(python), "-I", "-m", "pip", "install"])
+        completed = subprocess.run([*command, *missing], capture_output=True, text=True)
+        if completed.returncode:
+            raise RuntimeError("ASR 配音依赖安装失败：" + completed.stderr[-2000:])
+    after = inspect() if missing else before
+    ready = all(after.get(name) and (version is None or after[name] == version)
+                for name, version in required.items())
+    if not ready:
+        raise RuntimeError("ASR 配音依赖安装后仍无法导入或版本不匹配")
+    return {"ready": True, "python": str(python), "installed": missing,
+            "versions_before": before, "versions": after}
+
+
 def main():
     runners = {"voice.py": ("YICE_ASR_PYTHON", "asr-venv"),
+               "voice-check.py": ("YICE_VOICE_PYTHON", "asr-venv"),
+               "voice-post.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "props.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
                "review.py": ("YICE_REVIEW_PYTHON", "tts-venv")}
     if len(sys.argv) < 2 or sys.argv[1] not in runners:
-        raise SystemExit("内部入口：workspace.py voice.py|props.py|review.py [参数]")
+        raise SystemExit("内部入口：workspace.py voice.py|voice-check.py|voice-post.py|props.py|review.py [参数]")
     workspace, toolkit = load_environment()
     variable, venv = runners[sys.argv[1]]
     python = os.environ.get(variable) or str(toolkit / "local" / venv / "bin/python")

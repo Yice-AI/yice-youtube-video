@@ -6,10 +6,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / 'kit/scripts'))
-from workspace import load_environment
+from workspace import load_environment, ensure_voice_dependencies
 
 
 class EnvironmentTests(unittest.TestCase):
@@ -39,6 +40,20 @@ class EnvironmentTests(unittest.TestCase):
 
 
 class InstallTests(unittest.TestCase):
+    def test_check_mode_leaves_skill_and_path_config_untouched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            test_root = Path(tmp)
+            env = {k: v for k, v in os.environ.items() if k not in ['YICE_WORKSPACE', 'YICE_TOOLKIT']}
+            env['HOME'] = str(test_root)
+            result = subprocess.run([str(REPO / 'install.sh'), '--check', '--toolkit', str(test_root / 'toolkit')],
+                                    env=env, capture_output=True, text=True, check=True)
+            report = json.loads(result.stdout)
+            self.assertTrue(report['check_only'])
+            self.assertEqual(report['links'], [])
+            self.assertFalse((test_root / '.codex').exists())
+            self.assertFalse((test_root / '.claude').exists())
+            self.assertFalse((test_root / '.config/yice-video/env').exists())
+
     def test_fake_home_preserves_existing_entries_and_writes_config(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp).resolve() / 'home'; home.mkdir()
@@ -65,6 +80,47 @@ class InstallTests(unittest.TestCase):
             updated = json.loads(subprocess.run([str(REPO / 'install.sh'), '--workspace', str(home / 'new'), '--toolkit', str(tk)], env=env, capture_output=True, text=True, check=True).stdout)
             self.assertEqual(len(updated['backups']), 1)
             self.assertTrue(Path(updated['backups'][0]).name.startswith('env.bak-'))
+
+
+class VoiceDependencyTests(unittest.TestCase):
+    versions = {'librosa': '1.0.1', 'soundfile': '0.14.0', 'scipy': '1.18.1', 'numpy': '2.5.4'}
+
+    def toolkit(self, directory):
+        toolkit = Path(directory)
+        python = toolkit / 'local/asr-venv/bin/python'
+        python.parent.mkdir(parents=True)
+        python.touch()
+        return toolkit
+
+    def test_ready_environment_skips_installation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            response = subprocess.CompletedProcess([], 0, stdout=json.dumps(self.versions))
+            with patch('subprocess.run', return_value=response) as run:
+                result = ensure_voice_dependencies(self.toolkit(tmp))
+            self.assertTrue(result['ready'])
+            self.assertEqual(result['installed'], [])
+            self.assertEqual(run.call_count, 1)
+            self.assertIn('-I', run.call_args.args[0])
+
+    def test_only_missing_or_wrong_version_packages_are_installed(self):
+        before = {**self.versions, 'librosa': '0.11.0', 'soundfile': None, 'scipy': None}
+        responses = [subprocess.CompletedProcess([], 0, stdout=json.dumps(before)),
+                     subprocess.CompletedProcess([], 0, stdout='', stderr=''),
+                     subprocess.CompletedProcess([], 0, stdout=json.dumps(self.versions))]
+        with tempfile.TemporaryDirectory() as tmp, patch('shutil.which', return_value='uv'), \
+                patch('subprocess.run', side_effect=responses) as run:
+            result = ensure_voice_dependencies(self.toolkit(tmp))
+        self.assertTrue(result['ready'])
+        self.assertEqual(result['installed'], ['librosa==1.0.1', 'soundfile==0.14.0', 'scipy'])
+        self.assertEqual(run.call_args_list[1].args[0][-3:], result['installed'])
+
+    def test_install_failure_does_not_claim_ready(self):
+        responses = [subprocess.CompletedProcess([], 0, stdout=json.dumps({})),
+                     subprocess.CompletedProcess([], 1, stdout='', stderr='download failed')]
+        with tempfile.TemporaryDirectory() as tmp, patch('shutil.which', return_value='uv'), \
+                patch('subprocess.run', side_effect=responses):
+            with self.assertRaisesRegex(RuntimeError, '依赖安装失败'):
+                ensure_voice_dependencies(self.toolkit(tmp))
 
 
 if __name__ == '__main__':

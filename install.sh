@@ -12,11 +12,12 @@ from pathlib import Path
 
 repo = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(repo / 'kit/scripts'))
-from workspace import load_environment
+from workspace import load_environment, ensure_voice_dependencies
 
-parser = argparse.ArgumentParser(description='安装 skill 软链接与机器路径配置；依赖只检查，不自动安装。')
+parser = argparse.ArgumentParser(description='安装/检查 skill；自动补齐现有 ASR 环境的配音依赖，其余依赖仅检查。')
 parser.add_argument('--workspace', type=Path)
 parser.add_argument('--toolkit', type=Path)
+parser.add_argument('--check', action='store_true', help='检查并补齐 ASR 配音依赖，不修改 skill 软链接或路径配置')
 args = parser.parse_args(sys.argv[2:])
 workspace, toolkit = load_environment()
 if args.workspace:
@@ -43,29 +44,33 @@ def backup(path, outside=False):
         path.rename(dest)
         backups.append(str(dest))
 
-for target in [home / '.claude/skills/yice-youtube-video', home / '.codex/skills/yice-youtube-video']:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if target.is_symlink() and target.resolve() == repo:
-        links.append({'path': str(target), 'state': 'already_linked'})
-        continue
-    backup(target, outside=True)
-    target.symlink_to(repo, target_is_directory=True)
-    links.append({'path': str(target), 'state': 'linked'})
 config = home / '.config/yice-video/env'
-config.parent.mkdir(parents=True, exist_ok=True)
-content = 'YICE_WORKSPACE=' + shlex.quote(str(workspace)) + '\nYICE_TOOLKIT=' + shlex.quote(str(toolkit)) + '\n'
-if not config.is_file() or config.read_text() != content:
-    backup(config)
-    temporary = config.with_name('env.tmp-' + stamp)
-    temporary.write_text(content)
-    temporary.chmod(0o600)
-    temporary.replace(config)
+if not args.check:
+    for target in [home / '.claude/skills/yice-youtube-video', home / '.codex/skills/yice-youtube-video']:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if target.is_symlink() and target.resolve() == repo:
+            links.append({'path': str(target), 'state': 'already_linked'})
+            continue
+        backup(target, outside=True)
+        target.symlink_to(repo, target_is_directory=True)
+        links.append({'path': str(target), 'state': 'linked'})
+    config.parent.mkdir(parents=True, exist_ok=True)
+    content = 'YICE_WORKSPACE=' + shlex.quote(str(workspace)) + '\nYICE_TOOLKIT=' + shlex.quote(str(toolkit)) + '\n'
+    if not config.is_file() or config.read_text() != content:
+        backup(config)
+        temporary = config.with_name('env.tmp-' + stamp)
+        temporary.write_text(content)
+        temporary.chmod(0o600)
+        temporary.replace(config)
+
+voice_dependencies = ensure_voice_dependencies(toolkit)
 
 checks = {name: bool(shutil.which(name)) for name in ['node', 'npm', 'ffmpeg', 'ffprobe', 'python3']}
 checks.update({
     'toolkit': toolkit.is_dir(),
     'tts-venv': (toolkit / 'local/tts-venv/bin/python').is_file(),
     'asr-venv': (toolkit / 'local/asr-venv/bin/python').is_file(),
+    'ASR 配音声学依赖': voice_dependencies['ready'],
     'Qwen3-TTS 8bit 离线模型': (toolkit / 'local/models/Qwen3-TTS-12Hz-1.7B-Base-8bit').is_dir(),
     'Whisper 离线模型': (home / '.cache/huggingface/hub/models--mlx-community--whisper-large-v3-turbo').is_dir(),
     'rec 录屏工具': all((toolkit / 'local/tools/rec' / name).is_file() for name in ['rec.sh', 'mouse', 'cursorlog', 'ingest.sh', 'ingest.py']),
@@ -75,6 +80,7 @@ checks.update({
 })
 print(json.dumps({'repository': str(repo), 'links': links, 'backups': backups, 'config': str(config),
                   'workspace': str(workspace), 'toolkit': str(toolkit), 'dependencies': checks,
+                  'voice_dependencies': voice_dependencies, 'check_only': args.check,
                   'missing': [name for name, exists in checks.items() if not exists],
-                  'note': '缺失依赖请自行准备；安装器没有下载模型、安装软件或修改应用设置。'}, ensure_ascii=False, indent=2))
+                  'note': '仅自动补齐现有 asr-venv 的配音 Python 依赖；其余缺失依赖请自行准备，不下载模型。'}, ensure_ascii=False, indent=2))
 PY
