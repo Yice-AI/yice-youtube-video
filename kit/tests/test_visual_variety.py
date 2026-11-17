@@ -44,6 +44,11 @@ class VisualVarietyTests(unittest.TestCase):
         self.assertEqual(result['fingerprint']['nonRecordingRatio'], .75)
         self.assertEqual(result['fingerprint']['sourceDurations']['recording'], 10)
 
+    def test_built_entity_reference_is_validated_using_its_resolved_media(self):
+        data=fixture();scene=data['beats']['scenes'][3];scene.update(recipe='news-card',props={'entity':{'manifest':'entity/manifest.json','item':'proof'}})
+        data['buildReport']=[{'id':scene['id'],'resolvedProps':{'source':'Official proof','date':'2026-11-17','shot':'assets/proof.png'}}]
+        self.assertTrue(self.evaluate(data)['ok'])
+
     def test_long_bare_recording(self):
         data = fixture(); self.stretch_first(data, 23)
         self.assert_only(data, 'bare_recording_too_long')
@@ -71,8 +76,13 @@ class VisualVarietyTests(unittest.TestCase):
         for i, scene in enumerate(scenes): scene.update(id=f'S{i}', recipe='same', start=i*8, end=(i+1)*8)
         self.assert_only(data, 'recipe_repeated')
 
-    def test_less_than_three_transitions(self):
+    def test_default_hard_cuts_are_allowed(self):
         data = fixture()
+        for scene in data['beats']['scenes']: scene['enter'] = 'cut'
+        self.assertTrue(self.evaluate(data)['ok'])
+
+    def test_transition_minimum_remains_configurable(self):
+        data = fixture();data['limits']={'minTransitionKinds':3}
         for scene in data['beats']['scenes']: scene['enter'] = 'cut'
         self.assert_only(data, 'transition_kinds_low')
 

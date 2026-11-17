@@ -22,7 +22,7 @@
       "minNonRecordingRatio": 0.4,
       "minSourceTypes": 3,
       "maxRecipeUses": 4,
-      "minTransitionKinds": 3,
+      "minTransitionKinds": 0,
       "maxPreviousRecipeOverlap": 0.7,
       "minNewRecipes": 1,
       "minRecordingContainerKinds": 2,

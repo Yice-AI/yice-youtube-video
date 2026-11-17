@@ -36,8 +36,9 @@ var Y = YF, c = Y.ctx("__SID__", document.querySelector('[data-composition-id="_
   var layer = Y.el("div", framed ? "on-stage" : "on-photo", c.root); Y.css(layer, { position: "absolute", inset: 0, zIndex: 30 });
   if (!framed) {
     var bleed = Y.el("div", "bleed", c.cam), kb = Y.el("div", "kb", bleed); kb.appendChild(m0);
-    var a = (s.kb && s.kb.from) || { s: 1.06, x: -24, y: 6 }, b = (s.kb && s.kb.to) || { s: 1.16, x: 24, y: -12 };
-    tl.fromTo(kb, { scale: a.s, x: a.x, y: a.y }, { scale: b.s, x: b.x, y: b.y, duration: c.dur, ease: "none" }, 0);
+    var push = s.props?.push || s.push || {}, a = (s.kb && s.kb.from) || { s: push.from ?? 1, x: 0, y: 0 }, b = (s.kb && s.kb.to) || { s: push.to ?? 1.17, x: 0, y: 0 };
+    kb.dataset.camera = 'push';
+    tl.fromTo(kb, { scale: a.s, x: a.x, y: a.y }, { scale: b.s, x: b.x, y: b.y, duration: s.kb ? c.dur : Math.min(c.dur,push.duration??3), ease: "none" }, 0);
     var sc = Y.el("div", "scrim", bleed);
     sc.style.background = side === "left"
       ? "radial-gradient(90% 120% at 0% 60%, rgba(12,10,8,.70) 0%, rgba(12,10,8,.28) 55%, rgba(12,10,8,0) 80%), radial-gradient(140% 80% at 50% 120%, rgba(0,0,0,.35), transparent 60%)"
@@ -62,6 +63,7 @@ var Y = YF, c = Y.ctx("__SID__", document.querySelector('[data-composition-id="_
     tl.fromTo(r, { scaleX: 0 }, { scaleX: 1, duration: 0.5, ease: "power2.inOut" }, ta + 0.45);
     if (s.sub) { var sb = Y.el("div", "sub", layer, s.sub.text); if (side === "left") Y.css(sb, { left: 154, top: y + 240 }); else { sb.style.right = "154px"; sb.style.top = (y + 240) + "px"; } Y.fadeUp(tl, sb, c.at(s.sub.at, ta + 0.7), { y: 10 }); }
   }
+  if(window.YV)window.YV.overlays(c,s.props||s);
   Y.hud(c, { onMedia: !framed });
   Y.finish(c);
 })();

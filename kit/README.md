@@ -16,8 +16,9 @@ NOTES="$YICE_WORKSPACE/.scratch/youtube/episodes/$EP_ID"
 # 准备素材；按实际配音调整 PROJECT 的 episode.json、beats.json
 cd "$PROJECT"
 npm run build
-DO_NOT_TRACK=1 npm run check
+DO_NOT_TRACK=1 npm run check -- --visual-only
 "$KIT/scripts/render.sh" "$PROJECT"
+DO_NOT_TRACK=1 npm run check -- --rendered "$PROJECT/renders/render-时间戳.mp4"
 "$KIT/scripts/review.sh" "$PROJECT/renders/render-时间戳.mp4" --at 1,5,12
 ```
 
@@ -26,12 +27,14 @@ DO_NOT_TRACK=1 npm run check
 | 新一期 | 默认项目放 toolkit/local/episodes，可用 `new-episode.sh ep02 --dir /项目目录` 指定。已有剧本目录可继续用；只补缺少的文件，保留已有剧本、幕表和配置。目录里的 episode.id 不符则停止。 |
 | 配音 | 每章一次连续 MLX 8bit 生成，默认每幕前插 0.2 秒静音；〔核〕不朗读。voice/ 输出章 WAV、firstCharTime/anchors 时间轴、manifest、voice.srt；raw/ 和 analysis/ 保留原音与对齐依据。重新生成用新的空输出目录。 |
 | 素材 | 手工素材放 assets/local；道具和库存图放 assets/props、assets/stock。assets/media 由 build 重建。录屏复用 toolkit/local/tools/rec/rec.sh，例如 `rec.sh 60 /绝对路径/demo.mov`，同时保存独立鼠标轨迹。 |
+| 真实素材候选 | `find-media.sh --q 'laptop' --type photo --n 8` 合并 Commons/NASA/Archive，先出许可清单和候选拼图；选定 ID 后再下载、转 MP4 并入账。见 [素材入口](docs/assets.md)。 |
+| 抠图剪报 | `cutout.sh 照片 --project 目录 --id 名称 --source-json 来源记录.json --angle -3`，本地生成透明 PNG、白边纸纹投影版并入账；支持先裁切主体。见 [抠图说明](docs/assets.md#透明抠图与剪报)。 |
 | 道具 | `props.sh props.json --case-dir /本案统一道具目录 --budget 2`；计划格式见 template/props.example.json，每件 candidates=N。图片在 images/，深炭检查图在 checks/；把 images 路径填进 episode.json 的 @assets/。所有批次必须共用同一个 case-dir，成功候选不重复付费。 |
 | 预算 | 每次请求默认预留 $0.20；累计已用+预留超过全案预算即停。费用不明或中断请求会保留预留并停止，失败不自动重试。usage 费用为网关单价估算，非最终账单；预留不是服务端硬限额。凭证仍从原文件读取，不复制进 kit。 |
 | 渲染与审片 | render 前台等待退出码，日志与 MP4 在 renders/；review 输出每 3 秒接触表、每 40 秒拼图、blackdetect、时长/音轨 JSON 和 --at 抽帧。 |
 | 混音 | episode.audio 指向音频配置，或 `node build.mjs --audio audio-config.json`；A/B/C 音乐、语音避让、音效锚点和 −14 LUFS / −1 dBTP 母带一并构建。见 [音频配置](docs/audio.md)。 |
 
-`npm run check` 除 HyperFrames 检查外，还按 30fps 实际渲染视频转场检查空画面；可用 `--rendered /完整成片.mp4` 复用成片。单段验证加 `--video-scenes S5-6 --rendered /片段.mp4 --rendered-start 139`，报告会写出实际检查的窗口。原生视频构建时自动归零异常的源时间戳并预加载，源素材不变。
+`npm run check -- --rendered /完整成片.mp4` 包含 HyperFrames 检查、视频转场空画面检查，以及静止/重点字高/机位运动三条硬门，见 [画面检查](docs/cinema-check.md)。结构预检使用 `--visual-only`；三条画面门需要完整成片。原生视频构建时自动归零异常的源时间戳并预加载，源素材不变。
 
 依赖本机 Node/npm、FFmpeg，及 toolkit 既有 tts-venv、asr-venv、离线模型和 yice 声音配置。路径可用 YICE_WORKSPACE、YICE_TOOLKIT 覆盖；解释器可用 YICE_TTS_PYTHON、YICE_ASR_PYTHON、YICE_IMAGE_PYTHON、YICE_REVIEW_PYTHON 覆盖。录屏工具需已有 macOS 屏幕录制权限。组件、字体及许可随 template 带入。
 

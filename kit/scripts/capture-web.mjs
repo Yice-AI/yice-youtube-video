@@ -4,9 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
-import { spawn } from 'node:child_process';
-import { once } from 'node:events';
 import { createHash } from 'node:crypto';
+import {recordBrowserFrames} from './browser-frames.mjs';
 
 export function wallReason({ status = 200, title = '', text = '', password = false }) {
   if (status >= 400) return `http_${status}`;
@@ -15,15 +14,11 @@ export function wallReason({ status = 200, title = '', text = '', password = fal
   return null;
 }
 
-export function recordAsset(project, entry) {
-  const file=path.join(project,'asset-ledger.jsonl');
-  const rows=fs.existsSync(file)?fs.readFileSync(file,'utf8').split('\n').filter(Boolean).map(JSON.parse):[];
-  const text=[...rows.filter(row=>row.id!==entry.id),entry].map(row=>JSON.stringify(row)).join('\n')+'\n';
-  fs.writeFileSync(file+'.tmp',text);fs.renameSync(file+'.tmp',file);
-}
+import {recordAsset} from '../template/asset-ledger.mjs';
+export {recordAsset};
 
 export async function capturePage({ project, url, id = 'web-page', seconds = 7, scene = '', sourceName, highlight,
-  license = '原页面权利人保留；短段引用，发布用途待核对', licenseUrl }) {
+  license = '原页面权利人保留；短段引用，发布用途待核对', licenseUrl, details=false, scroll=true }) {
   const target = new URL(url);
   if (!['https:','http:'].includes(target.protocol) || target.username || target.password) throw new Error('只采集无账号信息的公开 HTTP(S) 页面');
   if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('id 只用字母、数字、下划线和短横线');
@@ -38,7 +33,6 @@ export async function capturePage({ project, url, id = 'web-page', seconds = 7, 
   const browser = await chromium.launch(launch);
   const result = { id, url, sourceName:sourceName || target.hostname, capturedAt:new Date().toISOString(),
     sourceType:'web_capture', scene, license, viewport:{width:1920,height:1080}, seconds, fps:15, status:'failed' };
-  let encoder;
   try {
     const context = await browser.newContext({viewport:result.viewport,deviceScaleFactor:1,acceptDownloads:false});
     const page = await context.newPage();
@@ -85,31 +79,18 @@ export async function capturePage({ project, url, id = 'web-page', seconds = 7, 
     // 只滚动一个短片段，不把整篇长文变成录像。
     result.scrollPixels = Math.min(result.scrollPixels,2160);
     result.motion = result.scrollPixels ? 'smooth_scroll' : 'short_page_hold_no_scroll_range';
-    const part = path.join(output,'scroll.part.mp4');
-    let stderr='', pipeError;
-    encoder=spawn('ffmpeg',['-hide_banner','-loglevel','error','-y','-f','image2pipe','-vcodec','png','-framerate','15','-i','pipe:0',
-      '-an','-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p','-movflags','+faststart',part],{stdio:['pipe','ignore','pipe']});
-    encoder.stderr.on('data',chunk=>{stderr=(stderr+chunk).slice(-2000);});
-    encoder.stdin.on('error',error=>{pipeError=error;});
-    const closed = new Promise((resolve,reject)=>{encoder.once('error',reject);encoder.once('close',code=>code===0?resolve():reject(new Error(stderr || `ffmpeg退出${code}`)));});
-    // 给提前失败的编码器挂处理器，循环最终仍会抛出原始错误。
-    closed.catch(()=>{});
-    for (let frame=0;frame<seconds*15;frame++) {
-      const p=frame/(seconds*15-1), ease=p*p*(3-2*p);
-      if(pipeError) throw pipeError;
+    if(scroll)await recordBrowserFrames(page,path.join(output,'scroll.mp4'),{seconds,fps:15,step:async p=>{
+      const ease=p*p*(3-2*p);
       await page.evaluate(y=>window.scrollTo(0,y),result.scrollStart+Math.round(result.scrollPixels*ease));
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-      const pixels=await page.screenshot();
-      if (!encoder.stdin.write(pixels)) await once(encoder.stdin,'drain');
-    }
-    encoder.stdin.end();await closed;
-    fs.renameSync(part,path.join(output,'scroll.mp4'));
+    }});
+    if(details){const {inspectEntityPage}=await import('./entity-page.mjs');result.details=await inspectEntityPage(page,{project,output,record:typeof details==='object'?details.record!==false:true});}
     result.status='captured';
-    result.files=['still.png','scroll.mp4'].map(name=>({path:path.relative(project,path.join(output,name)),sha256:createHash('sha256').update(fs.readFileSync(path.join(output,name))).digest('hex')}));
+    result.files=['still.png',...(scroll?['scroll.mp4']:[])].map(name=>({path:path.relative(project,path.join(output,name)),sha256:createHash('sha256').update(fs.readFileSync(path.join(output,name))).digest('hex')}));
     recordAsset(project,{...result,attribution:`${result.sourceName} · ${url} · ${result.capturedAt.slice(0,10)}`,licenseUrl:licenseUrl || url,approval:'editorial_review'});
     return result;
   } catch(error) {
-    encoder?.kill();result.reason=error.message;return result;
+    result.reason=error.message;return result;
   } finally {
     await browser.close();
     fs.writeFileSync(path.join(output,'capture.json'),JSON.stringify(result,null,2)+'\n');

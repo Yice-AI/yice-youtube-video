@@ -1,4 +1,9 @@
 /* 首批 registry 动作适配：颜色和字体只引用 Yice Frame，媒体保留原始颜色。 */
+/* 第二批：真实素材层、物件动词和大标注；沿用同一套纸/炭/功能色。 */
+.yv .v-full-media>.v-media{object-fit:cover}
+.yv .v-cutout-object,.yv .v-contrast-object,.yv .v-reaction-person,.yv .v-brand-logo{position:absolute}
+.yv .v-zip-teeth{background:repeating-linear-gradient(0deg,var(--st-dark) 0 12px,transparent 12px 24px);border-left:12px solid var(--sub);border-right:12px solid var(--sub)}
+.yv .v-sticker{white-space:nowrap;transform-origin:50% 50%}
 .yv.st-charcoal{--st-light:#34343A;--st-mid:#232327;--st-dark:#141416;--ink:#EEE8DC;--sub:#A39C90;--rule:rgba(238,232,220,.12);--card:#F3EEE4}
 .yv .v-heading{position:absolute;left:116px;top:85px;font:900 70px/1.1 var(--f-song);color:var(--ink)}
 .yv .v-source{position:absolute;right:116px;top:104px;max-width:1010px;text-align:right;font:28px/1.3 var(--f-mono);color:var(--sub)}

@@ -11,3 +11,13 @@
 `events:[{scene:"S2-1",at:"@完成",name:"stamp"}]` 复用幕的语音锚点；at 为数值时相对该幕边界 B。省略 scene 时 at 是全片秒数。`stamp`、`counter` 默认重点音效，也可用 `key:true/false` 覆盖。文件从 sfx_dir 的 `<name>.wav`、sfx_files 的映射或事件 src 读取。
 
 master 默认 `{lufs:-14,truepeak_ceiling_db:-1,gain_db:-0.59}`。两遍响度处理后重新测量，结果进入报告。改变音乐或音效后重新 build 即可，不需要后处理脚本替换 HTML。
+
+## 按幕表自动配音效
+
+在音频配置中加 `"auto_sfx":{"enabled":true,"density":1}`。build 根据 `beats.json` 的配方、转场、气泡入场点、通知卡片、数字和高亮生成事件：whoosh（非硬切转场）、tick（数字/排名）、pop（气泡/卡片）、thump（盖章/物件落定）、swipe（划线）。`density` 为 0–1，0 关闭自动事件，1 保留全部候选；中间值稳定抽稀，重建不会随机换点。
+
+默认复用本地 `sfx_dir` 中的 `whoosh.wav`、`fast-tick.wav`、`mouse-click.wav`、`stamp.wav`、`underline.wav`。也可用 `sfx_files` 或 `auto_sfx.bank.<音效名>:{src,sourceUrl,creator,license,licenseUrl}` 指向现有或已下载的 CC0 音效；工具不联网、不把来源不明的本地音效称作 CC0。用到的文件复制入 `assets/audio/sfx/` 并登记许可账本。
+
+普通/重点仍分别相对旁白 −18/−12dB（以及上述 trim）；thump 为重点，其他普通。自动层开启后，与手填事件合并，按文件哈希去重，同一声音跨镜头也至少间隔 1 秒。`auto-sfx-report.json` 列出保留/舍弃的事件、密度、素材和电平；实际输入响度与增益仍由 `audio-report.json` 核验。
+
+需要精确贴动作时，在某幕写 `"sfx":[{"name":"thump","at":0.6}]`，会取代该幕自动推断（at 相对该幕 composition 开始）；`"sfx":false` 禁用该幕。普通音频配置里的手填 events 仍按边界 B/语音锚点解释。无旁白样片可显式设置 `voice_lufs` 作为混音参考值，并用空的 voice manifest 与明确的 A/B/C 分段；不要把 BGM 假作旁白再次叠加。

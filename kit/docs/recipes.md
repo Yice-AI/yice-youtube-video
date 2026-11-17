@@ -297,3 +297,5 @@ text最多10字，stage推荐charcoal；每章最多一次。逐字砸入，位�
 ```json
 {"enter":"directional-wipe","layers":[{"kind":"grain-overlay","strength":0.06},{"kind":"light-sweep-pass","at":0.3},{"kind":"notification-stack","items":[{"text":"已下载","at":1.0},{"text":"已打包","at":1.4}]}]}
 ```
+
+第二批真实素材配方见 [recipes-second-batch.md](recipes-second-batch.md)，人物库与双档规则见 [people.md](people.md)。

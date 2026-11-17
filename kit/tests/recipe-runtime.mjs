@@ -22,7 +22,8 @@ function runtime(spec, recipe) {
   const scope = { window: { __timelines: {} }, document, Math };
   vm.createContext(scope); vm.runInContext(fs.readFileSync(path.join(template, 'assets/yice.js'), 'utf8'), scope);
   const Y = scope.window.YF, root = new Element('div'), cam = new Element('div'); root.appendChild(cam);
-  const c = { sid: 'test', spec, root, cam, wrap: root, dur: 10, tl, stage: 'paper-gray',
+  // 此轻量替身只测旧配方参数；全局机位行为另由真实浏览器测试覆盖。
+  const c = { sid: 'test', spec:{...spec,reframe:false}, root, cam, wrap: root, dur: 10, tl, stage: 'paper-gray',
     at: (t, fallback = .6) => t == null ? fallback : t, m: () => new Element('img') };
   Object.assign(scope, { Y, c, s: spec, tl });
   if (recipe) vm.runInContext(fs.readFileSync(path.join(template, `recipes/_src/${recipe}.js`), 'utf8'), scope);

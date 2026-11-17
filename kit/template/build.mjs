@@ -4,7 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { prepareVideo } from "./video.mjs";
 import { mixAudio } from "./audio.mjs";
+import { prepareAutoSfx } from "./auto-sfx.mjs";
 import { prepareVocab } from "./vocab-props.mjs";
+import { bindEntityScene } from "./entity-assets.mjs";
+import { bindPersonScene } from "./people-assets.mjs";
 
 import { fileURLToPath } from "node:url";
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -110,6 +113,8 @@ fs.mkdirSync(path.join(ROOT, "compositions/scenes"), { recursive: true });
 
 const hostClips = [];
 scenes.forEach((sc, i) => {
+  if(sc.props?.entity)Object.assign(sc,bindEntityScene(sc,{root:ROOT,resolvePath:p=>resolveFile(p)?.file,useAsset}));
+  if(sc.props?.personRef)Object.assign(sc,bindPersonScene(sc,{root:ROOT,library:episode.peopleLibrary,useAsset}));
   const tpl = fs.readFileSync(path.join(ROOT, "recipes", sc.recipe + ".html"), "utf8");
   const sid = sc.id.replace(/[^\w-]/g, "_").toLowerCase();
   const ch = chapterOf(sc);
@@ -130,9 +135,9 @@ scenes.forEach((sc, i) => {
     const isVid = /\.(mp4|mov|webm)$/i.test(r.file);
     const prepared = isVid ? prepareVideo(r.file, ROOT) : { file: r.file };
     const url = useAsset(prepared.file);
-    used.push({ cand: r.cand, fallback: r.idx > 0 && !m.optionalFirst ? true : r.idx > 0, idx: r.idx, kind: m.kind,
+    used.push({ cand: r.cand, url, fallback: r.idx > 0 && !m.optionalFirst ? true : r.idx > 0, idx: r.idx, kind: m.kind,
       ...(isVid ? { video: true, url, sourceStart: prepared.sourceStart, prepared: prepared.prepared } : {}) });
-    if (isVid) mediaHtml.push(`<video id="${sid}-m${mi}" src="${url}" muted playsinline preload="auto" data-start="${(m.at || 0)}" data-duration="${sc.dur}"${m.start ? ` data-media-start="${m.start}"` : ""}${m.rate ? ` data-playback-rate="${m.rate}"` : ""}></video>`);
+    if (isVid) mediaHtml.push(`<video id="${sid}-m${mi}" src="${url}" muted playsinline preload="auto" data-start="${(m.at || 0)}" data-duration="${m.duration??sc.dur}"${m.start ? ` data-media-start="${m.start}"` : ""}${m.rate ? ` data-playback-rate="${m.rate}"` : ""}></video>`);
     else mediaHtml.push(`<img id="${sid}-m${mi}" src="${url}" alt="" />`);
   });
   // a scene can declare alternate spec overrides used when its preferred media fell back
@@ -153,7 +158,7 @@ scenes.forEach((sc, i) => {
   fs.writeFileSync(path.join(ROOT, "compositions/scenes", sid + ".html"), html);
   let z = 10 + i * 2; if (sc.exit === "lift") z = 10 + (i + 1) * 2 + 1;
   hostClips.push({ sid, start: sc.start, dur: sc.dur, z, sc });
-  report.push({ id: sc.id, recipe: sc.recipe, chapter: ch.id, start: sc.start, B: sc.B, E: sc.E, dur: sc.dur, enter: spec.enter, exit: sc.exit, media: used });
+  report.push({ id: sc.id, recipe: sc.recipe, chapter: ch.id, start: sc.start, B: sc.B, E: sc.E, dur: sc.dur, enter: spec.enter, exit: sc.exit, media: used, resolvedProps: sc.props });
 });
 
 const from = +(argv("--from") ?? 0), to = argv("--to") != null ? +argv("--to") : END;
@@ -162,13 +167,16 @@ const offset = from;
 const total = +(Math.min(to, END) - from).toFixed(3);
 const audioSetting = argv("--audio") || episode.audio;
 const audioConfig = typeof audioSetting === "string" ? JSON.parse(fs.readFileSync(path.resolve(ROOT, audioSetting), "utf8")) : audioSetting;
+const resolveAudio = src => { const file = resolveFile(src); if (!file) throw new Error(`音频素材不存在: ${src}`); return file.file; };
+const audioEvents = (audioConfig?.events || []).map(e => {
+  const scene = scenes.find(s => s.id === e.scene);
+  if (e.scene && !scene) throw new Error(`音效引用未知场景: ${e.scene}`);
+  return { ...e, time: scene ? anchorTime(scene, e.at) : e.at };
+});
+const autoSfx = audioConfig ? prepareAutoSfx({root:ROOT,scenes,config:audioConfig,resolve:resolveAudio,manualEvents:audioEvents}) : null;
 const master = audioConfig ? mixAudio({ root: ROOT, config: audioConfig, manifest, timing, scenes, end: END, voiceDir,
-  resolve: src => { const file = resolveFile(src); if (!file) throw new Error(`音频素材不存在: ${src}`); return file.file; },
-  events: (audioConfig.events || []).map(e => {
-    const scene = scenes.find(s => s.id === e.scene);
-    if (e.scene && !scene) throw new Error(`音效引用未知场景: ${e.scene}`);
-    return { ...e, time: scene ? anchorTime(scene, e.at) : e.at };
-  }),
+  resolve: resolveAudio,
+  events: autoSfx.events,
 }) : null;
 const audio = master ? [`    <audio id="master" src="${useAsset(master)}" data-start="0" data-duration="${total}" data-media-start="${from}" data-track-index="1" data-volume="1"></audio>`] : manifest.chapters.filter((c) => c.start < to && c.end > from).map((c) => {
   const url = useAsset(path.resolve(voiceDir, c.path));

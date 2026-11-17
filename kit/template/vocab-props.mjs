@@ -20,6 +20,14 @@ export const VOCAB_RECIPES = {
   'hand-mark':{family:'F',origin:'hw-arrow / hw-callout-circle / hw-underline / hw-box-label',slots:['media']},
   'word-swap':{family:'G',origin:'kinetic-type-swap',slots:[]},
   'headline-slam':{family:'G',origin:'headline-slam',slots:[]},
+  'action-montage':{family:'H',origin:'T02',slots:['clips']},
+  'quote-fragments':{family:'H',origin:'T04',slots:['image']},
+  'visual-contrast':{family:'H',origin:'T05',slots:['left','right']},
+  'cutout-stack':{family:'H',origin:'T08',slots:['items']},
+  'paper-break':{family:'H',origin:'T11',slots:['items']},
+  'brand-hero':{family:'H',origin:'official-brand',slots:['logo','background']},
+  'sticker-text':{family:'H',origin:'seq112',slots:['background']},
+  'reaction-cutout':{family:'H',origin:'seq113',slots:['person','background']},
 };
 const STAGES = ['paper-cool','paper-warm','charcoal'];
 const number=(v,name,min=-Infinity,max=Infinity)=>{
@@ -43,6 +51,8 @@ export function validateVocab(recipe,p,stage='paper-cool') {
   if(recipe==='news-card'){
     text(p.source,'source');text(p.date,'date');
     for(const h of p.highlight||[])box(h,'highlight');if(p.zoom)box(p.zoom,'zoom');
+    if(p.focusRect)box(p.focusRect,'focusRect');
+    for(const jump of p.cutZoom||[]){number(jump.at,'cutZoom.at',0);number(jump.scale,'cutZoom.scale',1,4);if(jump.rect)box(jump.rect,'cutZoom.rect');}
   }
   if(recipe==='social-post')text(p.text,'text');
   if(recipe==='chat-bubble'){
@@ -50,6 +60,16 @@ export function validateVocab(recipe,p,stage='paper-cool') {
   }
   if(recipe==='device-stage'&&p.chrome&&!['browser','window','phone'].includes(p.chrome))throw new Error('chrome 只能为 browser / window / phone');
   if(recipe==='laptop-3d'){number(p.angle??-7,'angle',-12,12);number(p.dolly??.08,'dolly',0,.15);}
+  if(p.push&&p.push!==true){number(p.push.from??1,'push.from',1,2);number(p.push.to??1.17,'push.to',1,2);number(p.push.duration??3,'push.duration',.1,30);}
+  if(recipe==='action-montage'){list(p.clips,'clips',4,6);for(const clip of p.clips)number(clip.duration??.75,'clip.duration',.5,.9);}
+  if(recipe==='quote-fragments'){text(p.text,'text');list(p.keywords,'keywords',1,4);p.keywords.forEach(k=>text(k,'keyword'));number(p.fadeDuration??.5,'fadeDuration',.4,.7);}
+  if(recipe==='visual-contrast'){if(!p.left||!p.right)throw new Error('visual-contrast 需要两件素材');number(p.leftHeight??.72,'leftHeight',.2,.8);number(p.rightHeight??.54,'rightHeight',.1,.72);}
+  if(recipe==='cutout-stack'){list(p.items,'items',1,30);number(p.stagger??.2,'stagger',.15,.25);number(p.enterDuration??.3,'enterDuration',.25,.45);text(p.title,'title');}
+  if(recipe==='paper-break'){if(!['zip','tear','stamp'].includes(p.mode||'zip'))throw new Error('paper-break mode 只能为 zip / tear / stamp');number(p.changeDuration??1,'changeDuration',.8,1.2);}
+  if(recipe==='brand-hero'){if(!p.logo)throw new Error('brand-hero 需要官方logo');number(p.logoHeight??.38,'logoHeight',.3,.45);text(p.line,'line');}
+  if(['sticker-text','reaction-cutout'].includes(recipe)){text(p.text,'text');number(p.stroke??10,'stroke',8,12);number(p.angle??-3,'angle',-4,4);if(!['highlight','stamp','blue'].includes(p.ink||'highlight'))throw new Error('贴纸只用荧光/红章/蓝墨');}
+  if(recipe==='reaction-cutout'&&!p.person&&!p.personRef)throw new Error('reaction-cutout 需要人物或人物库引用');
+  if(recipe==='hand-mark')number(p.labelHeight??.08,'labelHeight',.06,.14);
   if(recipe==='filmed-screen'){number(p.moire??.3,'moire',0,1);number(p.handheld??.3,'handheld',0,1);}
   if(recipe==='cursor-zoom'){
     number(p.zoom??1.7,'zoom',1.4,2.2);
@@ -80,10 +100,10 @@ export function validateVocab(recipe,p,stage='paper-cool') {
 }
 
 export function prepareVocab(scene) {
-  const definition=VOCAB_RECIPES[scene.recipe];
+  const definition=VOCAB_RECIPES[scene.recipe]||(scene.recipe==='stock-shot'?{slots:[]}:null);
   if(!definition)return {props:scene.props,media:scene.media||[]};
   // 兼容阶段A的 news-card spec；新工程统一写 props。
-  let p=structuredClone(scene.props||{});
+  let p=structuredClone(scene.props||(scene.recipe==='stock-shot'?scene.spec:{} )||{});
   if(scene.recipe==='news-card'&&!scene.props){
     const old=scene.spec||{},h=old.highlight;
     p={...old,shot:{m:0},highlight:h?.box?[{x:h.box.x,y:h.box.y,w:h.box.width??h.box.w,h:h.box.height??h.box.h,at:h.at}]:[]};
@@ -99,7 +119,9 @@ export function prepareVocab(scene) {
     if(!m.src)throw new Error(`${key} 需要文件路径或 {src,start,rate}`);
     media.push(m);return {m:media.length-1};
   }
-  for(const key of definition.slots){p[key]=key==='images'?(p[key]||[]).map((value,i)=>slot(value,`images[${i}]`)):slot(p[key],key);}
+  for(const key of definition.slots){p[key]=['images','items','clips'].includes(key)?(p[key]||[]).map((value,i)=>({...((typeof value==='object')?value:{}),...slot(value,`${key}[${i}]`)})):slot(p[key],key);}
+  if(p.overlays)p.overlays=p.overlays.map((o,i)=>({...o,...(o.media?{media:slot(o.media,`overlays[${i}].media`)}:{})}));
+  if(scene.recipe==='action-montage'){let at=0;for(const clip of p.clips){const duration=clip.duration??.75;Object.assign(media[clip.m],{at,duration});clip.at=at;clip.duration=duration;at+=duration;}if(scene.dur&&at>scene.dur+.001)throw new Error('action-montage 素材时长超过镜头');}
   if(RECORDING_CONTAINERS.includes(scene.recipe)&&!p.media)throw new Error(`${scene.recipe} 缺少 media`);
   if(scene.recipe==='news-card'&&!p.shot)throw new Error('news-card 缺少 shot');
   for(const layer of scene.layers||[]){if(!VOCAB_LAYERS.includes(layer.kind))throw new Error(`未知质感层 ${layer.kind}`);}

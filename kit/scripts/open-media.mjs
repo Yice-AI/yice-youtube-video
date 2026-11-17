@@ -5,6 +5,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { recordAsset, wallReason } from './capture-web.mjs';
 
 const UA='YiceVideoToolkit/0.1 (public media research)';
@@ -14,7 +15,12 @@ const plain=text=>String(text||'').replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').t
 export function licenseUrlKey(url) {
   try {
     const u=new URL(url);
-    if(!['https:','http:'].includes(u.protocol)||u.username||u.password||! /^(?:www\.)?creativecommons\.org$/.test(u.hostname)) return null;
+    if(!['https:','http:'].includes(u.protocol)||u.username||u.password) return null;
+    if(u.hostname==='www.nasa.gov'&&/^\/nasa-brand-center\/images-and-media\/?$/.test(u.pathname))return 'https://www.nasa.gov/nasa-brand-center/images-and-media/';
+    if(/^(?:www\.)?pexels\.com$/.test(u.hostname)&&/^\/license\/?$/.test(u.pathname))return 'https://www.pexels.com/license/';
+    if(u.hostname==='pixabay.com'&&/^\/service\/license-summary\/?$/.test(u.pathname))return 'https://pixabay.com/service/license-summary/';
+    if(! /^(?:www\.)?creativecommons\.org$/.test(u.hostname))return null;
+    if(/^\/licenses\/publicdomain\/?$/.test(u.pathname))return 'https://creativecommons.org/publicdomain/mark/1.0/';
     const match=u.pathname.match(/^\/(licenses\/(?:by|by-sa)\/[\d.]+|publicdomain\/(?:zero|mark)\/[\d.]+)(?:\/(?:deed|legalcode)(?:\.[a-zA-Z_-]+)?)?\/?$/);
     return match?`https://creativecommons.org/${match[1]}/`:null;
   } catch {return null;}
@@ -31,7 +37,8 @@ function publicUrl(value) {
   return u.href;
 }
 
-async function request(url) {
+export async function request(url) {
+  if(process.env.YICE_MEDIA_OFFLINE==='1')throw new Error('离线测试禁止真实素材网络请求');
   const response=await fetch(publicUrl(url),{headers:{'User-Agent':UA},signal:AbortSignal.timeout(25000)});
   if(!response.ok)throw new Error(`HTTP ${response.status} ${new URL(url).hostname}`);
   return response;
@@ -43,8 +50,10 @@ export function commonsCandidates(data) {
     const meta=info.extmetadata||{}, get=key=>plain(meta[key]?.value);
     return [{provider:'commons',title:page.title.replace(/^File:/,''),sourceUrl:info.descriptionurl,
       downloadUrl:info.mime?.startsWith('image/')?(info.thumburl||info.url):info.url,originalUrl:info.url,
-      mime:info.thumburl?(info.thumbmime||info.mime):info.mime,bytes:info.size,creator:get('Artist'),
-      license:get('LicenseShortName')||get('UsageTerms'),licenseUrl:get('LicenseUrl'),
+      mime:info.thumburl?(info.thumbmime||info.mime):info.mime,originalMime:info.mime,bytes:info.size,creator:get('Artist'),
+      width:info.width,height:info.height,thumbnailUrl:info.thumburl||(info.mime?.startsWith('image/')?info.url:null),
+      duration:info.duration??[...(info.metadata||[]),...(info.commonmetadata||[])].find(x=>/^(length|duration|playtime_seconds)$/i.test(x.name))?.value,
+      license:get('LicenseShortName')||get('UsageTerms'),licenseUrl:get('LicenseUrl')||(/^false$/i.test(get('Copyrighted'))&&/public domain/i.test(get('LicenseShortName')+' '+get('UsageTerms'))?'https://creativecommons.org/publicdomain/mark/1.0/':''),
       licenseEvidence:{method:'Commons imageinfo extmetadata',pageId:page.pageid,metadata:meta}}];
   });
 }
@@ -105,18 +114,24 @@ async function browserSearch(provider,query,limit,browser) {
   }finally{await page.close();}
 }
 
-export async function downloadAsset({project,candidate,scene='',requestFn=request}) {
-  if(!licenseAllowed(candidate.licenseUrl))throw new Error('不是已核验的 CC BY / BY-SA / CC0 / 公有领域许可');
+export async function downloadAsset({project,candidate,scene='',requestFn=request,transcodeVideo=false,maxBytes=MAX_BYTES,maxDuration=Infinity}) {
+  if(!licenseAllowed(candidate.licenseUrl))throw new Error('不是已核验的开放许可或已授权图库许可');
+  if(licenseUrlKey(candidate.licenseUrl)==='https://www.nasa.gov/nasa-brand-center/images-and-media/'&&(candidate.provider!=='nasa'||candidate.licenseEvidence?.nasaOriginal!==true||new URL(candidate.sourceUrl||'https://invalid').hostname!=='images.nasa.gov'))throw new Error('NASA许可必须有原始馆藏及NASA原创证据');
+  for(const [provider,policy,host] of [['pexels','https://www.pexels.com/license/','pexels.com'],['pixabay','https://pixabay.com/service/license-summary/','pixabay.com']]){
+    if(licenseUrlKey(candidate.licenseUrl)===policy&&(candidate.provider!==provider||![host,'www.'+host].includes(new URL(candidate.sourceUrl||'https://invalid').hostname)||!candidate.licenseEvidence?.providerApi))throw new Error('图库许可必须有对应原始页面及API记录');
+  }
   if(!candidate.creator)throw new Error('缺少作者/署名，不下载');
   if(!candidate.sourceUrl||!candidate.downloadUrl)throw new Error('缺少原始来源页或文件直链');
-  if(candidate.bytes>MAX_BYTES)throw new Error('素材超过25MiB，本次跳过');
+  if(!Number.isFinite(maxBytes)||maxBytes<=0)throw new Error('maxBytes必须为正数');
+  if(!(maxDuration>0))throw new Error('maxDuration必须为正数');
+  if(candidate.bytes>maxBytes)throw new Error('素材超过下载大小上限，本次跳过');
   const response=await requestFn(publicUrl(candidate.downloadUrl));
   const mime=(response.headers.get('content-type')||'').split(';')[0];
   if(!/^(image|video)\//.test(mime))throw new Error(`下载不是图/视频：${mime}`);
   const advertised=Number(response.headers.get('content-length'));
-  if(advertised>MAX_BYTES)throw new Error('素材超过25MiB，本次跳过');
+  if(advertised>maxBytes)throw new Error('素材超过下载大小上限，本次跳过');
   const chunks=[];let count=0;
-  for await(const chunk of response.body){count+=chunk.length;if(count>MAX_BYTES)throw new Error('素材超过25MiB，本次跳过');chunks.push(Buffer.from(chunk));}
+  for await(const chunk of response.body){count+=chunk.length;if(count>maxBytes)throw new Error('素材超过下载大小上限，本次跳过');chunks.push(Buffer.from(chunk));}
   const data=Buffer.concat(chunks);if(!data.length)throw new Error('下载为空');
   const sha256=createHash('sha256').update(data).digest('hex');
   const extension=({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/svg+xml':'svg','image/gif':'gif','video/webm':'webm','video/mp4':'mp4','video/ogg':'ogv'})[mime];
@@ -125,7 +140,26 @@ export async function downloadAsset({project,candidate,scene='',requestFn=reques
   fs.mkdirSync(path.join(project,'assets/open'),{recursive:true});fs.writeFileSync(path.join(project,relative),data);
   const entry={...candidate,id,type:mime.startsWith('video/')?'video':'image',sourceType:'third_party',path:relative,sha256,bytes:data.length,mime,
     capturedAt:new Date().toISOString(),scene,attribution:`${candidate.title} — ${candidate.creator} · ${candidate.license} · ${candidate.licenseUrl} · ${candidate.sourceUrl}`,
-    approval:'license_metadata_recorded',rightsNote:'署名与许可随成片保留；人物/商标等其他权利按使用语境核对'};
+    approval:'license_metadata_recorded',rightsNote:candidate.rightsNote||'署名与许可随成片保留；人物/商标等其他权利按使用语境核对'};
+  if(transcodeVideo&&entry.type==='video'){
+    if(mime!=='video/mp4'){
+      const converted=`assets/open/${id}.mp4`,tmp=path.join(project,`assets/open/${id}.tmp.mp4`);
+      execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',path.join(project,relative),'-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-movflags','+faststart',tmp],{timeout:120000,stdio:'pipe'});
+      fs.renameSync(tmp,path.join(project,converted));const result=fs.readFileSync(path.join(project,converted));
+      Object.assign(entry,{originalPath:relative,originalSha256:sha256,path:converted,mime:'video/mp4',sha256:createHash('sha256').update(result).digest('hex'),bytes:result.length,processing:'webm/ogv → H.264/AAC MP4，原文件保留'});
+    }
+    const probe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_entries','format=duration:stream=codec_type,width,height','-of','json',path.join(project,entry.path)],{timeout:15000,encoding:'utf8'})),video=probe.streams.find(s=>s.codec_type==='video');
+    if(!video)throw new Error('下载文件没有视频轨');Object.assign(entry,{width:video.width,height:video.height,durationSeconds:Number(probe.format.duration)});
+    if(entry.durationSeconds>maxDuration){
+      const originalPath=entry.originalPath||entry.path,originalSha256=entry.originalSha256||entry.sha256,originalDurationSeconds=entry.durationSeconds;
+      const clipped=`assets/open/${id}-clip.mp4`,tmp=path.join(project,`assets/open/${id}.clip.tmp.mp4`);
+      execFileSync('ffmpeg',['-hide_banner','-loglevel','error','-y','-i',path.join(project,entry.path),'-t',String(Math.max(.01,maxDuration-.05)),'-c:v','libx264','-pix_fmt','yuv420p','-c:a','aac','-movflags','+faststart',tmp],{timeout:120000,stdio:'pipe'});
+      const durationSeconds=Number(execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','default=nw=1:nk=1',tmp],{encoding:'utf8'}).trim());
+      if(!Number.isFinite(durationSeconds)||durationSeconds>maxDuration)throw new Error('视频截取后仍超过指定时长');
+      fs.renameSync(tmp,path.join(project,clipped));const result=fs.readFileSync(path.join(project,clipped));
+      Object.assign(entry,{originalPath,originalSha256,originalDurationSeconds,path:clipped,durationSeconds,sha256:createHash('sha256').update(result).digest('hex'),bytes:result.length,processing:(entry.processing?entry.processing+'；':'')+`实测时长超过 ${maxDuration}s，离线截取，原件保留`});
+    }
+  }
   recordAsset(project,entry);return entry;
 }
 

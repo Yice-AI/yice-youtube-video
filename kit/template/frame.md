@@ -71,7 +71,7 @@ motion:
   entrance-order: "物件先落 → 主文字写入 → 结构展开 → 标注最后 → 小字随后；相邻两步间隔 ≥ 0.4s，整组落在旁白锚点附近"
   eases: "物件 power3.out / back.out(1.4)（实物落位带残差）；镜头 power2.inOut / sine.inOut；文字 power2.out"
   camera: "每幕入场后至少一个持续动作：推近、平移到下一个重点、荧光扫过、章盖下、纸抽走"
-  transitions: "cut / pan（同一桌面平移）/ push（推进物件内部）/ lift（纸被拿走露出下一层）/ match（同位置叠化）；至少一半换幕不是硬切；换幕点 = 下一句首字前 0.2s"
+  transitions: "默认 cut；pan（同一桌面平移）/ push（推进物件内部）/ lift（纸被拿走露出下一层）/ match（同位置叠化）只用于表达关系，不设置转场种类最低数；换幕点 = 下一句首字前 0.2s"
 
 rhythm:            # 节拍规则（template-spec §九-7 的量化）
   shot-sizes: "每章至少 1 特写（主物件 >60%）、1 全景（≥5 件物件）、1 满幅（屏幕/文献铺满）；相邻两幕景别不同"

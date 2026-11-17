@@ -230,5 +230,78 @@
   "headline-slam": {
     "text": "工具自己做",
     "stage": "charcoal"
+  },
+  "action-montage": {
+    "clips": [
+      {
+        "src": "@assets/typing.mp4",
+        "start": 0,
+        "duration": 0.75
+      },
+      {
+        "src": "@assets/typing.mp4",
+        "start": 1,
+        "duration": 0.75
+      },
+      {
+        "src": "@assets/typing.mp4",
+        "start": 2,
+        "duration": 0.75
+      },
+      {
+        "src": "@assets/typing.mp4",
+        "start": 3,
+        "duration": 0.75
+      }
+    ],
+    "label": "开始动手"
+  },
+  "quote-fragments": {
+    "text": "说清需求，把重复工作交给工具",
+    "keywords": [
+      "说清需求",
+      "交给工具"
+    ],
+    "image": "@assets/photo.jpg",
+    "photoAt": 2.2
+  },
+  "visual-contrast": {
+    "left": "@assets/large.png",
+    "right": "@assets/small.png",
+    "leftLabel": "132 MB",
+    "rightLabel": "14.8 MB"
+  },
+  "cutout-stack": {
+    "items": [
+      "@assets/cutout01.png",
+      "@assets/cutout02.png",
+      "@assets/cutout03.png"
+    ],
+    "title": "30 张照片",
+    "stagger": 0.2
+  },
+  "paper-break": {
+    "mode": "zip",
+    "items": [
+      "@assets/cutout01.png",
+      "@assets/cutout02.png"
+    ],
+    "fileLabel": "photos.zip",
+    "caption": "打包带走"
+  },
+  "brand-hero": {
+    "logo": "@assets/logo.svg",
+    "line": "一句话 做工具",
+    "source": "官方品牌标志"
+  },
+  "sticker-text": {
+    "text": "直接开干",
+    "ink": "highlight"
+  },
+  "reaction-cutout": {
+    "person": "@assets/person.png",
+    "text": "这就搞定了",
+    "ink": "blue",
+    "tier": "default"
   }
 }

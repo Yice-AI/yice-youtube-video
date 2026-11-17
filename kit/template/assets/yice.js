@@ -203,7 +203,22 @@
     write(c.tl, k, t.text, ta + 0.25);
     return lb;
   }
-  function finish(c) { (c.deferred || []).forEach(function (fn) { fn(); }); if (window.YV) window.YV.layers(c); transitions(c); window.__timelines[c.sid] = c.tl; }
+  function autoReframe(c) {
+    if(c.spec.reframe===false||c.spec.props?.reframe===false||c.dur<=2.5)return;
+    var spans=[];
+    c.tl.getChildren(false,true,false).forEach(function(tween){
+      var foreground=tween.targets().some(function(e){return e instanceof Element&&c.cam.contains(e)&&!e.closest('.yf-stage,.yf-hud,.v-grain,[data-layout-ignore="true"]');});
+      if(foreground)spans.push([Math.max(0,tween.startTime()),Math.min(c.dur,tween.endTime())]);
+    });
+    spans.sort(function(a,b){return a[0]-b[0];});spans.push([c.dur,c.dur]);
+    var end=0,index=0,points=[];
+    spans.forEach(function(span){
+      for(var t=end+2.4;t<span[0]-.1;t+=2.4){index++;points.push(t);c.tl.set(c.cam,{scale:index%2?1.07:1.035,x:index%2?-68:-30,y:index%2?-28:-10},t);}
+      end=Math.max(end,span[1]);
+    });
+    c.cam.dataset.reframes=JSON.stringify(points);
+  }
+  function finish(c) { (c.deferred || []).forEach(function (fn) { fn(); }); if (window.YV) window.YV.layers(c); autoReframe(c); transitions(c); window.__timelines[c.sid] = c.tl; }
 
   window.YF = { W: W, H: H, OV: OV, el: el, css: css, svg: svg, path: path, rng: rng, ctx: ctx, stage: stage, hud: hud, camera: camera, glyphs: glyphs, write: write, fadeUp: fadeUp, drop: drop, slideIn: slideIn, hl: hl, draw: draw, strike: strike, underline: underline, ellipse: ellipse, stamp: stamp, count: count, card: card, tape: tape, chip: chip, label: label, finish: finish, props: props, transitions: transitions, tc: tc };
 })();

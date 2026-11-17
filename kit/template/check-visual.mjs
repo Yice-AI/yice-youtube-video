@@ -6,7 +6,7 @@ import { RECORDING_CONTAINERS, prepareVocab, vocabLayout } from './vocab-props.m
 export const SOURCE_TYPES = ['recording', 'code_animation', 'third_party', 'web_capture', 'image2'];
 export const DEFAULT_VISUAL_LIMITS = Object.freeze({
   maxBareRecordingSeconds: 20, minNonRecordingRatio: 0.4, minSourceTypes: 3,
-  maxRecipeUses: 4, minTransitionKinds: 3, maxPreviousRecipeOverlap: 0.7, minNewRecipes: 1,
+  maxRecipeUses: 4, minTransitionKinds: 0, maxPreviousRecipeOverlap: 0.7, minNewRecipes: 1,
   minRecordingContainerKinds: 2,
   minTitleFreeRatio: 0.4, maxConsecutiveLayout: 3,
 });
@@ -47,16 +47,22 @@ function inferMedia(media, recipe, assumptions) {
   return type;
 }
 
-export function evaluateVisualVariety({ beats, episode = {}, timing = [], buildReport = [], previous = null, limits = {} }) {
+export function evaluateVisualVariety({ beats, episode = {}, timing = [], buildReport = [], previous = null, limits = {}, assetLedger = [], thumbnailManifest = {} }) {
   const config = { ...DEFAULT_VISUAL_LIMITS, ...(episode.visual?.limits || {}), ...limits };
   for (const [key, value] of Object.entries(config)) {
     if (!(key in DEFAULT_VISUAL_LIMITS) || !Number.isFinite(value) || value < 0) throw new Error(`无效 visual.limits.${key}`);
   }
   if (config.minNonRecordingRatio > 1 || config.maxPreviousRecipeOverlap > 1 || config.minTitleFreeRatio > 1) throw new Error('比例阈值必须在 0–1 之间');
-  const scenes = Array.isArray(beats) ? beats : beats.scenes || beats.shots;
+  let scenes = Array.isArray(beats) ? beats : beats.scenes || beats.shots;
   if (!Array.isArray(scenes) || !scenes.length) throw new Error('beats.scenes / shots 不能为空');
   const T = new Map(timing.map(t => [t.id, t]));
   const reports = new Map((Array.isArray(buildReport) ? buildReport : buildReport.scenes || []).map(s => [s.id, s]));
+  scenes=scenes.map(scene=>{
+    if(!scene.props?.entity&&!scene.props?.personRef)return scene;
+    const props=reports.get(scene.id)?.resolvedProps;
+    if(!props)throw new Error(scene.id+' 的实体/人物引用需要先 build');
+    return {...scene,props};
+  });
   const end = episode.end ?? beats.end ?? scenes.at(-1).E ?? scenes.at(-1).end ?? reports.get(scenes.at(-1).id)?.E;
   if (!Number.isFinite(end) || end <= 0) throw new Error('需要正数 episode.end / beats.end');
   const starts = scenes.map((s, i) => {
@@ -165,6 +171,13 @@ export function evaluateVisualVariety({ beats, episode = {}, timing = [], buildR
     if (overlap > config.maxPreviousRecipeOverlap + EPS) fail('previous_recipe_overlap', `本期配方集合复用率超过 ${config.maxPreviousRecipeOverlap * 100}%`, comparison);
     if (fresh.length < config.minNewRecipes) fail('no_new_recipe', `本期新增配方不足 ${config.minNewRecipes} 个`, { newRecipes: fresh });
   }
+  const stickerScenes=scenes.filter(s=>['sticker-text','reaction-cutout'].includes(s.recipe)&&s.props?.text);
+  if(stickerScenes.length>4)fail('sticker_density_high','一期贴纸大字最多4次',{scenes:stickerScenes.map(s=>s.id),actual:stickerScenes.length});
+  const thumbnailIds=new Set([...(episode.thumbnail?.assets||[]),...(thumbnailManifest.assets||[])].map(x=>typeof x==='string'?x:x.id));
+  const thumbnailScenes=new Set([...(episode.thumbnail?.scenes||[]),...(thumbnailManifest.scenes||[])]);
+  const commentary=assetLedger.filter(a=>a.tier==='commentary'&&(thumbnailIds.has(a.id)||thumbnailScenes.has(a.scene)||a.role==='thumbnail'||a.usage==='thumbnail'||a.thumbnail===true));
+  for(const scene of scenes)if((scene.role==='thumbnail'||thumbnailScenes.has(scene.id))&&scene.props?.tier==='commentary')commentary.push({id:scene.id});
+  if(commentary.length)fail('commentary_in_thumbnail','缩略图含仅允许正文评论的人物素材',{assets:commentary.map(a=>a.id)});
   return { ok: findings.length === 0, findings, limits: config, fingerprint, comparison, assumptions: [...assumptions] };
 }
 
@@ -176,6 +189,8 @@ export function checkVisualVariety(root, { previousPath, outputDir = root } = {}
   const previousFile = previousPath || episode.visual?.previousFingerprint;
   const result = evaluateVisualVariety({ beats, episode, timing: optional(timingFile),
     buildReport: optional(path.join(root, 'build-report.json')),
+    assetLedger: fs.existsSync(path.join(root,'asset-ledger.jsonl'))?fs.readFileSync(path.join(root,'asset-ledger.jsonl'),'utf8').split('\n').filter(Boolean).map(JSON.parse):[],
+    thumbnailManifest: fs.existsSync(path.join(root,'thumbnail-manifest.json'))?read(path.join(root,'thumbnail-manifest.json')):{},
     previous: previousFile ? read(path.resolve(root, previousFile)) : null });
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(path.join(outputDir, 'visual-fingerprint.json'), JSON.stringify(result.fingerprint, null, 2) + '\n');
