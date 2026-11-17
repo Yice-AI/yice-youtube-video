@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { prepareVideo } from "./video.mjs";
 import { mixAudio } from "./audio.mjs";
+import { prepareVocab } from "./vocab-props.mjs";
 
 import { fileURLToPath } from "node:url";
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -113,6 +114,14 @@ scenes.forEach((sc, i) => {
   const sid = sc.id.replace(/[^\w-]/g, "_").toLowerCase();
   const ch = chapterOf(sc);
   if (!ch || !episode.chapters[ch.id]) throw new Error(`${sc.id}: chapter missing from voice-manifest or episode.json`);
+  if (typeof sc.props?.cursorLog === 'string') {
+    const file=resolveFile(sc.props.cursorLog);
+    if(!file)throw new Error(`${sc.id}: cursorLog 文件不存在`);
+    const log=JSON.parse(fs.readFileSync(file.file,'utf8'));
+    sc.props.cursorLog=Array.isArray(log)?log:log.points;
+  }
+  const vocabulary=prepareVocab({...sc,stage:sc.stage||sc.props?.stage||episode.chapters[ch.id].stage});
+  sc.media=vocabulary.media;
   // media
   const mediaHtml = [], used = [];
   (sc.media || []).forEach((m, mi) => {
@@ -128,6 +137,8 @@ scenes.forEach((sc, i) => {
   });
   // a scene can declare alternate spec overrides used when its preferred media fell back
   let specSrc = { ...sc.spec };
+  if(vocabulary.props) specSrc.props=vocabulary.props;
+  if(sc.layers)specSrc.layers=sc.layers;
   if (used.some((u) => u.idx > 0) && sc.fallbackSpec) specSrc = { ...specSrc, ...sc.fallbackSpec };
   const loc = localize(sc, specSrc), lb = sc.B - sc.start;
   for (const k of ["word", "title", "lead"]) if (loc[k] && typeof loc[k].at === "number" && loc[k].at > lb + 0.9) loc[k].at = +(lb + 0.9).toFixed(3);
@@ -135,7 +146,7 @@ scenes.forEach((sc, i) => {
   const spec = {
     ...loc,
     id: sc.id, sid, t0: sc.start, dur: sc.dur, enter: i === 0 ? "cut" : sc.enter, exit: sc.exit,
-    stage: sc.stage || episode.chapters[ch.id].stage, chapter: ch.id, chapterTitle: episode.chapters[ch.id].title, episodeId: episode.id,
+    stage: sc.stage || sc.props?.stage || episode.chapters[ch.id].stage, chapter: ch.id, chapterTitle: episode.chapters[ch.id].title, episodeId: episode.id,
     mediaFallback: used.map((u) => u.idx > 0),
   };
   const html = tpl.replaceAll("__SID__", sid).replace("__MEDIA__", mediaHtml.join("\n")).replace("__SPEC__", JSON.stringify(spec).replace(/</g, "\\u003c"));
@@ -177,6 +188,8 @@ const index = `<!doctype html>
     <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
     <link rel="stylesheet" href="assets/frame.css" />
     <script src="assets/yice.js"></script>
+    <link rel="stylesheet" href="assets/vocab.css" />
+    <script src="assets/vocab.js"></script>
     <style>
       html, body { margin: 0; background: #141416; }
       #root { position: relative; width: 100%; height: 100%; overflow: hidden; background: #141416; }

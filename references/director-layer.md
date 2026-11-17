@@ -13,8 +13,8 @@
 
 | 观众要做的 | 首选配方 | 备选 |
 |---|---|---|
-| 看真实操作 | rec-zoom（推近到输入框、按钮、正在出的结果） | doc-zoom |
-| 读证据或官方原文 | doc-zoom（推近 + 荧光） | rec-zoom |
+| 看真实操作 | B族：device-stage / laptop-3d / filmed-screen / cursor-zoom | rec-zoom（固定框推近） |
+| 读证据或官方原文 | A族：news-card / social-post / chat-bubble | doc-zoom |
 | 认识一个东西 | photo-word（实物特写 + 大字 + 测量小签） | stock-shot |
 | 清点 / 花了多少 | ledger、checklist | desk |
 | 看关系 | rope-map | desk |
@@ -51,10 +51,23 @@
 4. **幕内运动**：入场后至少还有 1 个动作：推近、平移、荧光扫、章盖下、纸被抽走。不准入场后就静止到切走。
 5. **转场**：至少一半换幕不是硬切，可用平移（pan）、推进物件内部（push）、拿走露出下一层（lift）、匹配剪（match）。
 6. **配方轮换**：相邻两幕配方不同；每章至少用 4 种配方。
-7. **舞台**：每幕单独指定。四种舞台：charcoal 深炭、paper-warm 牛皮纸、paper-cool 冷白、paper-gray 灰纸。每章深炭最多约 40%，同一舞台连续最多 3 幕。
+7. **舞台**：每幕单独指定。首批新配方只用 charcoal 深炭、paper-warm 牛皮纸、paper-cool 冷白；旧配方的 paper-gray 仅保留兼容。每章深炭最多约 40%，同一舞台连续最多 3 幕。
 8. **色彩焦点**：每章一个，用素材自带的颜色（彩色配图、屏幕 UI、牛皮纸），其余保持低饱和。
 
 EP01 实际配方分布可作参考：rec-zoom 16、photo-word 12、strike-slips 6、doc-zoom 6，desk、step-ruler、stock-shot、chapter、num-split 各 4，single-line 3，editor、checklist、rope-map 各 2，ledger 1。
+
+首批视觉词汇的使用规则：
+
+- 每期至少用 2 种 B 族容器装录屏，`kit check` 自动拦截不足项；连续两段录屏不能用同一种装法。
+- 标题条可选：单期至少40%镜头不出左上标题；素材满画面、3D设备、图墙、金句和录屏容器优先关闭 `props.showTitle`。同一版式骨架最多连续3镜，不能只换配方名字。
+- 转场时旧标题和来源先退场，再进入新标题；根据检查器的阅读建议分配停留，长需求原文优先获得时长。
+- rank-race只用于至少两帧的真实排名观察，静态数值对比用bar-compare。终端30px、至少6行高，红章盖纸色签；对比柱宽140px，测量差值从原始数据计算。
+- 数字、新闻、别人说的话等有依据的论点，优先用 A 族证据，不用 image2 代画证据。
+- image2 只做现实里拍不到的比喻画面、物件道具和封面。
+- 新配方第一次出现，节奏放慢 20%，给观众看清结构的时间。
+- `headline-slam` 每章最多 1 次；`chromatic-aberration-wipe` 每期最多 1 次，只用在问题/翻车处，颜色仍限定为功能色。
+- 转场选 directional-wipe、cinematic-zoom、grid-pixelate-wipe、halftone-dissolve、flash-through-white、chromatic-aberration-wipe，统一 0.5 秒；不用 glitch、gravitational-lens、domain-warp。
+- 质感层只选 grain-overlay（默认 0.06）、light-sweep-pass、notification-stack；不引入霓虹、星空或雪花背景。质感层不计入配方使用次数。
 
 ## 5. 上屏文字
 

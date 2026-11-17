@@ -1,0 +1,234 @@
+{
+  "news-card": {
+    "shot": "@assets/page.png",
+    "source": "Wikipedia",
+    "date": "2026-11-17",
+    "headline": "原文作证",
+    "highlight": [
+      {
+        "x": 486,
+        "y": 93,
+        "w": 249,
+        "h": 32
+      }
+    ],
+    "zoom": {
+      "x": 440,
+      "y": 70,
+      "w": 370,
+      "h": 230
+    }
+  },
+  "social-post": {
+    "name": "需要隐去的姓名",
+    "handle": "@private",
+    "text": "把一批图片压到每张500KB以内，压完打包下载。",
+    "time": "需求原文",
+    "metrics": {},
+    "showTitle": false
+  },
+  "chat-bubble": {
+    "turns": [
+      {
+        "role": "user",
+        "text": "把30张图片压缩后打包。",
+        "at": 0
+      },
+      {
+        "role": "ai",
+        "text": "每张控制在500KB以内。",
+        "at": 0.9
+      }
+    ],
+    "typing": true
+  },
+  "device-stage": {
+    "media": "@assets/screen.mp4",
+    "chrome": "browser",
+    "url": "本地图片工具",
+    "swap": "@assets/second.mp4",
+    "showTitle": false
+  },
+  "laptop-3d": {
+    "media": "@assets/screen.mp4",
+    "angle": -7,
+    "dolly": 0.08,
+    "showTitle": false
+  },
+  "filmed-screen": {
+    "media": "@assets/screen.mp4",
+    "moire": 0.3,
+    "handheld": 0.3,
+    "showTitle": false
+  },
+  "cursor-zoom": {
+    "media": "@assets/screen.mp4",
+    "cursorLog": [
+      {
+        "t": 0,
+        "x": 500,
+        "y": 300
+      },
+      {
+        "t": 0.8,
+        "x": 1100,
+        "y": 600,
+        "click": true
+      },
+      {
+        "t": 2,
+        "x": 1400,
+        "y": 700
+      }
+    ],
+    "zoom": 1.7,
+    "showTitle": false
+  },
+  "terminal-run": {
+    "lines": [
+      {
+        "cmd": true,
+        "text": "python compress.py"
+      },
+      {
+        "out": true,
+        "text": "30张图片已处理"
+      },
+      {
+        "out": true,
+        "text": "输出已打包"
+      }
+    ],
+    "speed": 1,
+    "stage": "charcoal"
+  },
+  "code-diff": {
+    "before": "上限 = 1000\n水印大小 = 48",
+    "after": "上限 = 500\n水印大小 = 24",
+    "lang": "参数对比"
+  },
+  "bar-compare": {
+    "items": [
+      {
+        "label": "原始素材",
+        "value": 132,
+        "unit": "MB"
+      },
+      {
+        "label": "压缩后",
+        "value": 14.8,
+        "unit": "MB"
+      }
+    ],
+    "highlight": 1
+  },
+  "progress-ring": {
+    "value": 88.79,
+    "label": "体积减少",
+    "from": 0,
+    "showTitle": false
+  },
+  "rank-race": {
+    "frames": [
+      {
+        "t": 0,
+        "label": "第1次观察",
+        "items": [
+          {
+            "label": "照片一",
+            "value": 90,
+            "unit": "%"
+          },
+          {
+            "label": "照片二",
+            "value": 80,
+            "unit": "%"
+          }
+        ]
+      },
+      {
+        "t": 0.65,
+        "label": "第2次观察",
+        "items": [
+          {
+            "label": "照片三",
+            "value": 95,
+            "unit": "%"
+          },
+          {
+            "label": "照片一",
+            "value": 90,
+            "unit": "%"
+          }
+        ]
+      },
+      {
+        "t": 1.2,
+        "label": "第3次观察",
+        "items": [
+          {
+            "label": "照片三",
+            "value": 95,
+            "unit": "%"
+          },
+          {
+            "label": "照片四",
+            "value": 93,
+            "unit": "%"
+          }
+        ]
+      }
+    ],
+    "title": "样本逐步加入榜单",
+    "source": "接口示例数据，成片须换实测"
+  },
+  "concept-hub": {
+    "center": "图片工具",
+    "nodes": [
+      "压缩",
+      "水印",
+      "打包",
+      "本地处理"
+    ],
+    "order": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  "photo-path": {
+    "images": [
+      "@assets/photo-01.jpg",
+      "@assets/photo-02.jpg",
+      "@assets/photo-03.jpg"
+    ],
+    "focus": 1,
+    "showTitle": false
+  },
+  "hand-mark": {
+    "kind": "circle",
+    "target": {
+      "x": 700,
+      "y": 410,
+      "w": 500,
+      "h": 180
+    },
+    "label": "看这里",
+    "color": "blue-ink",
+    "media": "@assets/page.png"
+  },
+  "word-swap": {
+    "prefix": "一句话，",
+    "words": [
+      "压图片",
+      "加水印",
+      "打包"
+    ],
+    "interval": 0.8
+  },
+  "headline-slam": {
+    "text": "工具自己做",
+    "stage": "charcoal"
+  }
+}

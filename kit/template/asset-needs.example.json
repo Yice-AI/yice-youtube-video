@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "id": "codex-announcement", "scene": "S1",
+      "claim": "用官方发布页证明 Codex 的产品定位与发布信息",
+      "type": "news_capture", "sourceName": "OpenAI",
+      "candidateUrls": ["https://openai.com/index/introducing-codex/"],
+      "capture": {"mode": "still_and_scroll", "seconds": 7, "highlight": "Introducing Codex"},
+      "license": {"name": "原页面版权保留；短段引用，标来源", "url": "https://openai.com/policies/terms-of-use/"}
+    },
+    {
+      "id": "codex-repository", "scene": "S2",
+      "claim": "展示官方仓库中的项目说明与开源资料",
+      "type": "news_capture", "sourceName": "GitHub · openai/codex",
+      "candidateUrls": ["https://github.com/openai/codex"],
+      "capture": {"mode": "still_and_scroll", "seconds": 7},
+      "license": {"name": "仓库内容按各文件许可；网页界面权利保留，短段引用", "url": "https://github.com/openai/codex/blob/main/LICENSE"}
+    },
+    {
+      "id": "image-compression", "scene": "S3",
+      "claim": "用公开词条说明图像压缩的基本概念",
+      "type": "news_capture", "sourceName": "Wikipedia",
+      "candidateUrls": ["https://en.wikipedia.org/wiki/Image_compression"],
+      "capture": {"mode": "still_and_scroll", "seconds": 7, "highlight": "Image compression"},
+      "license": {"name": "文字 CC BY-SA；图片逐件核对；保留来源及署名", "url": "https://en.wikipedia.org/wiki/Wikipedia:Copyrights"}
+    }
+  ]
+}

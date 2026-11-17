@@ -35,7 +35,7 @@ DO_NOT_TRACK=1 npm run check
 
 依赖本机 Node/npm、FFmpeg，及 toolkit 既有 tts-venv、asr-venv、离线模型和 yice 声音配置。路径可用 YICE_WORKSPACE、YICE_TOOLKIT 覆盖；解释器可用 YICE_TTS_PYTHON、YICE_ASR_PYTHON、YICE_IMAGE_PYTHON、YICE_REVIEW_PYTHON 覆盖。录屏工具需已有 macOS 屏幕录制权限。组件、字体及许可随 template 带入。
 
-接口详见 [15 个配方](docs/recipes.md) 和 [幕表字段](docs/beats-schema.md)。例稿是四幕结构示例，新题材须填写自己的剧本、锚点、素材和 end。
+接口详见 [配方与视觉词汇](docs/recipes.md) 和 [幕表字段](docs/beats-schema.md)。例稿是四幕结构示例，新题材须填写自己的剧本、锚点、素材和 end。
 
 **已有验证：** 参考片 70 幕、78 个 composition 文件 **diff=0**；20 秒样片 check **0 error**、有音轨、黑帧 0；短稿实跑 3 句 9.48 秒，原 PCM 保留，原 ASR 的 96 字时间重放无差异。道具脚本已实测累计预算停止与重跑防重复。视频、声音及原始核验素材不随公开仓库分发；本次迁移验证见 [PRIVACY-SCAN.md](../PRIVACY-SCAN.md)。
 

@@ -2,6 +2,9 @@
   "name": "yice-video-episode",
   "private": true,
   "type": "module",
+  "devDependencies": {
+    "playwright-core": "1.65.1"
+  },
   "scripts": {
     "dev": "npx --yes hyperframes@0.9.52 preview",
     "check": "node check.mjs",

@@ -143,3 +143,157 @@ press 的 x/y 是道具最终左上角，target 是本幕相机内的文字选�
 ## 维护配方
 
 14 个配方由 `_src/名称.txt/.css/.js` 和 wrap.py 生成 HTML；rec-zoom 直接维护 HTML。复制版本的既有细节应保留，修改后只重新生成自己改动的配方并检查 diff，避免覆盖已有 HTML 手工修正。注册组件位于 compositions/components，与这 15 个叙事配方分别管理；原工程一条指向缺失文件的 freeze-frame-dressing 登记没有带入本包，8 个实际存在的组件已保留。
+
+## 首批视觉词汇（A1–G2）
+
+规格表逐项共17个名称，全部实现。新配方用 `recipe + props`；旧配方的 `spec` 接口保留。共用三舞台、三功能色与Yice三字体，不使用registry原始配色。媒体槽支持路径、`{src,start,rate,sourceType}` 或已有 `media` 的 `{m:编号}`，经原有视频预处理后进入动画。
+
+下列中文例子也保存在模板 `vocab-examples.json`；示例数据只演示接口，成片数字必须换成实测。坐标采用1920×1080画布，`at`支持数字及口播锚点。来源与改编范围见 [原件说明](vocabulary-origins.md)。
+
+### news-card
+
+首批配方通用 `props.showTitle:false` 可关闭左上标题，来源仍保留；金句和轮换词本身没有左上标题。单期至少 40% 镜头无左上标题，同一版式骨架最多连续 3 镜。标题与来源在旧镜头转场前退场，新镜头随后进入。
+
+shot为网页静帧或滚动片段；source/date必填。highlight为框数组{x,y,w,h,at}；zoom为局部框，固定1.6倍，带蓝墨边框与引线。两角胶带，截图内裁切。来源日期固定在画面右上，默认注明采集日期。
+
+```json
+{"recipe": "news-card", "props": {"shot": "@assets/page.png", "source": "Wikipedia", "date": "2026-11-17", "headline": "原文作证", "highlight": [{"x": 486, "y": 93, "w": 249, "h": 32}], "zoom": {"x": 440, "y": 70, "w": 370, "h": 230}}}
+```
+
+### social-post
+
+头像、姓名和handle默认隐去；仅公开机构或官方账号显式publicAccount:true才显示。可传avatar/image媒体槽。metrics支持likes/reposts/comments，仅传有出处的数字；省略即不显示。
+
+```json
+{"recipe": "social-post", "props": {"name": "需要隐去的姓名", "handle": "@private", "text": "把一批图片压到每张500KB以内，压完打包下载。", "time": "需求原文", "metrics": {}}}
+```
+
+### chat-bubble
+
+turns每项role为user/ai，text为原文，可用at控制逐条时间。typing:true先显示0.6秒三点。短镜头宜2条短句。
+
+```json
+{"recipe": "chat-bubble", "props": {"turns": [{"role": "user", "text": "把30张图片压缩后打包。", "at": 0}, {"role": "ai", "text": "每张控制在500KB以内。", "at": 0.9}], "typing": true}}
+```
+
+### device-stage
+
+chrome支持browser/window/phone；url只是显示文本，可用已打码的名称。swap为第二媒体，swapAt控制横推时间。灰色三点，不使用系统彩色灯。
+
+```json
+{"recipe": "device-stage", "props": {"media": "@assets/screen.mp4", "chrome": "browser", "url": "本地图片工具", "swap": "@assets/second.mp4"}}
+```
+
+### laptop-3d
+
+angle范围−12至12度；dolly为0–0.15的全镜头推近比例。屏幕内播放media，保持固定视角，不旋转绕圈。
+
+```json
+{"recipe": "laptop-3d", "props": {"media": "@assets/screen.mp4", "angle": -7, "dolly": 0.08}}
+```
+
+### filmed-screen
+
+moire与handheld范围0–1，默认0.3；轻透视与确定性扫描线/手持运动，不靠模糊制造质感。
+
+```json
+{"recipe": "filmed-screen", "props": {"media": "@assets/screen.mp4", "moire": 0.3, "handheld": 0.3}}
+```
+
+### cursor-zoom
+
+cursorLog支持数组或JSON文件路径；文件为数组或{points:[...]}。每点{t,x,y,click?}：镜头局部秒、1920×1080坐标。原日志需按实际裁切/缩放换算。平滑系数0.12，以60Hz固定采样保证随机seek一致；zoom范围1.4–2.2。
+
+```json
+{"recipe": "cursor-zoom", "props": {"media": "@assets/screen.mp4", "cursorLog": [{"t": 0, "x": 500, "y": 300}, {"t": 0.8, "x": 1100, "y": 600, "click": true}, {"t": 2, "x": 1400, "y": 700}], "zoom": 1.7}}
+```
+
+### terminal-run
+
+lines每项{cmd:true,text}或{out:true,text}；speed是行速倍率。输出默认60ms/行，字体30px；终端随行数自适应，至少6行高。success:false隐藏成功章；红章盖在纸色小签上，炭色舞台也达到4.5:1对比度。不要把演示命令冒充实际执行记录。
+
+```json
+{"recipe": "terminal-run", "props": {"lines": [{"cmd": true, "text": "python compress.py"}, {"out": true, "text": "30张图片已处理"}, {"out": true, "text": "输出已打包"}], "speed": 1, "stage": "charcoal"}}
+```
+
+### code-diff
+
+before/after为换行文本，lang为语言/参数标签；红色删除底18%、蓝墨新增底14%，行号等宽。
+
+```json
+{"recipe": "code-diff", "props": {"before": "上限 = 1000\n水印大小 = 48", "after": "上限 = 500\n水印大小 = 24", "lang": "参数对比"}}
+```
+
+### bar-compare
+
+items为{label,value,unit}，最多6根；highlight是从0开始的索引；value非负，source可注明实测来源。柱宽140px，墨柱为85%墨色叠纸纤维；两根柱时自动以原始数值计算蓝墨测量线上的变化百分比。
+
+```json
+{"recipe": "bar-compare", "props": {"items": [{"label": "原始素材", "value": 132, "unit": "MB"}, {"label": "压缩后", "value": 14.8, "unit": "MB"}], "highlight": 1}}
+```
+
+### progress-ring
+
+value/from为0–100百分比，label必填；蓝墨环与宋体160px中心数，完成时盖红章。
+
+```json
+{"recipe": "progress-ring", "props": {"value": 88.79, "label": "体积减少", "from": 0}}
+```
+
+### rank-race
+
+frames至少2帧，每帧{t,items,label?}，t严格递增；允许榜单成员进出，同一帧label不可重复，items非负数。条宽按当前帧最大值缩放并从0生长，卡片高度随可见条数自适应。title/source必填，无来源或单帧拒绝构建；只有多次实测排名才用此配方，静态对比用bar-compare，不编造热度。
+
+```json
+{"recipe": "rank-race", "props": {"frames": [{"t": 0, "label": "第1次观察", "items": [{"label": "照片一", "value": 90, "unit": "%"}, {"label": "照片二", "value": 80, "unit": "%"}]}, {"t": 0.65, "label": "第2次观察", "items": [{"label": "照片三", "value": 95, "unit": "%"}, {"label": "照片一", "value": 90, "unit": "%"}]}, {"t": 1.2, "label": "第3次观察", "items": [{"label": "照片三", "value": 95, "unit": "%"}, {"label": "照片四", "value": 93, "unit": "%"}]}], "title": "样本逐步加入榜单", "source": "接口示例数据，成片须换实测"}}
+```
+
+### concept-hub
+
+center为中心文字，nodes最多6个，可为字符串或{text}；order为从0开始的节点顺序。蓝墨细线逐个点亮，当前节点用荧光。
+
+```json
+{"recipe": "concept-hub", "props": {"center": "图片工具", "nodes": ["压缩", "水印", "打包", "本地处理"], "order": [0, 1, 2, 3]}}
+```
+
+### photo-path
+
+images为媒体槽数组，2–60张；focus为从0开始的索引，focusAt可选。沿path-2波浪运动；聚焦图占画面宽45%，其余压暗40%。
+
+```json
+{"recipe": "photo-path", "props": {"images": ["@assets/photo-01.jpg", "@assets/photo-02.jpg", "@assets/photo-03.jpg"], "focus": 1}}
+```
+
+### hand-mark
+
+kind支持arrow/circle/underline/box；target是画布框，label可选；color只支持stamp/blue-ink。media可选背景；笔画0.5秒，5px线宽，0.2强度微抖。
+
+```json
+{"recipe": "hand-mark", "props": {"kind": "circle", "target": {"x": 700, "y": 410, "w": 500, "h": 180}, "label": "看这里", "color": "blue-ink", "media": "@assets/page.png"}}
+```
+
+### word-swap
+
+prefix固定前缀，words顺序替换；interval至少0.35秒，竖向换词0.35秒。宋体120px，变化词为荧光底。
+
+```json
+{"recipe": "word-swap", "props": {"prefix": "一句话，", "words": ["压图片", "加水印", "打包"], "interval": 0.8}}
+```
+
+### headline-slam
+
+text最多10字，stage推荐charcoal；每章最多一次。逐字砸入，位移回弹2px。sub可放等宽小签。
+
+```json
+{"recipe": "headline-slam", "props": {"text": "工具自己做", "stage": "charcoal"}}
+```
+
+### 转场包与质感层
+
+`enter`可用directional-wipe、cinematic-zoom、grid-pixelate-wipe、halftone-dissolve、flash-through-white、chromatic-aberration-wipe，统一0.5秒；最后一种每期最多一次，改为红章/蓝墨边缘分离，不保留RGB霓虹。
+
+任何镜头都可加`layers`，不增加配方计数；纹理/扫光不冒充信息叠加层，通知卡才作为信息层统计。
+
+```json
+{"enter":"directional-wipe","layers":[{"kind":"grain-overlay","strength":0.06},{"kind":"light-sweep-pass","at":0.3},{"kind":"notification-stack","items":[{"text":"已下载","at":1.0},{"text":"已打包","at":1.4}]}]}
+```

@@ -77,6 +77,7 @@
 
   // ---------- transitions (scene-local; host overlaps clips by OV) ----------
   function transitions(c) {
+    if (window.YV) window.YV.transitions(c);
     var s = c.spec, tl = c.tl, w = c.wrap, d = c.dur;
     var e = s.enter || "cut", x = s.exit || "cut";
     if (e === "pan") tl.fromTo(w, { x: W }, { x: 0, duration: OV, ease: "power2.inOut" }, 0);
@@ -202,7 +203,7 @@
     write(c.tl, k, t.text, ta + 0.25);
     return lb;
   }
-  function finish(c) { (c.deferred || []).forEach(function (fn) { fn(); }); transitions(c); window.__timelines[c.sid] = c.tl; }
+  function finish(c) { (c.deferred || []).forEach(function (fn) { fn(); }); if (window.YV) window.YV.layers(c); transitions(c); window.__timelines[c.sid] = c.tl; }
 
   window.YF = { W: W, H: H, OV: OV, el: el, css: css, svg: svg, path: path, rng: rng, ctx: ctx, stage: stage, hud: hud, camera: camera, glyphs: glyphs, write: write, fadeUp: fadeUp, drop: drop, slideIn: slideIn, hl: hl, draw: draw, strike: strike, underline: underline, ellipse: ellipse, stamp: stamp, count: count, card: card, tape: tape, chip: chip, label: label, finish: finish, props: props, transitions: transitions, tc: tc };
 })();

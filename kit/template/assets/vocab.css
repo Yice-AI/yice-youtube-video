@@ -1,0 +1,45 @@
+/* 首批 registry 动作适配：颜色和字体只引用 Yice Frame，媒体保留原始颜色。 */
+.yv.st-charcoal{--st-light:#34343A;--st-mid:#232327;--st-dark:#141416;--ink:#EEE8DC;--sub:#A39C90;--rule:rgba(238,232,220,.12);--card:#F3EEE4}
+.yv .v-heading{position:absolute;left:116px;top:85px;font:900 70px/1.1 var(--f-song);color:var(--ink)}
+.yv .v-source{position:absolute;right:116px;top:104px;max-width:1010px;text-align:right;font:28px/1.3 var(--f-mono);color:var(--sub)}
+.yv .v-tag{position:absolute;left:116px;bottom:84px;font:28px/1.4 var(--f-mono);color:var(--sub);border-left:2px solid var(--blue);padding-left:20px}
+.yv .v-card{position:absolute;background:var(--card);color:var(--paper-ink);border:1px solid var(--rule);box-shadow:2px 3px 2px color-mix(in srgb,var(--paper-ink) 12%,transparent),16px 24px 36px color-mix(in srgb,var(--paper-ink) 23%,transparent)}
+.yv .v-card::before{content:'';position:absolute;inset:0;background:var(--fiber);opacity:.1;pointer-events:none;mix-blend-mode:multiply}
+.yv .v-bar-column::after{content:'';position:absolute;inset:0;background:var(--fiber);opacity:.24;pointer-events:none;mix-blend-mode:screen}
+.yv .v-clip{position:absolute;overflow:hidden;background:var(--card)}
+.yv .v-media{display:block;width:100%;height:100%;object-fit:contain;position:absolute;inset:0}
+.yv .v-world{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
+.yv .v-highlight{position:absolute;background:var(--hl);mix-blend-mode:multiply;opacity:.82;transform-origin:0 50%;border-radius:4px 10px 6px 12px}
+.yv .v-browser{position:absolute;border:14px solid var(--st-dark);border-radius:22px;background:var(--card);overflow:hidden;box-shadow:18px 32px 45px color-mix(in srgb,var(--paper-ink) 28%,transparent)}
+.yv .v-browser-bar{height:62px;display:flex;align-items:center;gap:12px;padding:0 24px;background:var(--st-mid);color:var(--paper-ink);font:28px var(--f-mono);border-bottom:1px solid var(--rule)}
+.yv .v-browser-bar i{width:12px;height:12px;border-radius:50%;background:var(--sub)}
+.yv .v-address{margin-left:28px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.yv .v-glare{position:absolute;inset:0;pointer-events:none;background:linear-gradient(118deg,color-mix(in srgb,var(--card) 15%,transparent),transparent 43%);box-shadow:inset 0 0 30px color-mix(in srgb,var(--paper-ink) 10%,transparent)}
+.yv .v-post-name{position:absolute;left:126px;top:42px;font:700 36px var(--f-sans)}
+.yv .v-post-handle{position:absolute;left:126px;top:92px;font:28px var(--f-mono);color:var(--sub)}
+.yv .v-avatar{position:absolute;left:40px;top:44px;width:64px;height:64px;border-radius:50%;background:var(--st-dark);overflow:hidden}
+.yv .v-avatar.redacted{filter:blur(10px);opacity:.55}
+.yv .v-post-text{position:absolute;left:48px;top:160px;right:48px;font:34px/1.45 var(--f-sans);white-space:pre-wrap}
+.yv .v-post-meta{position:absolute;left:48px;bottom:38px;right:48px;display:flex;gap:42px;font:28px var(--f-mono);color:var(--sub)}
+.yv .v-bubble{position:absolute;padding:24px 34px;font:34px/1.45 var(--f-sans);border-radius:18px;box-sizing:border-box;white-space:pre-wrap}
+.yv .v-bubble.user{background:var(--blue);color:var(--card)}
+.yv .v-bubble.ai{background:var(--card);color:var(--paper-ink);border:1px solid var(--rule);box-shadow:6px 12px 18px color-mix(in srgb,var(--paper-ink) 12%,transparent)}
+.yv .v-typing{position:absolute;display:flex;gap:10px;left:34px;top:35px}
+.yv .v-typing i{width:10px;height:10px;border-radius:50%;background:currentColor}
+.yv .v-terminal{background:#232327;color:#EEE8DC;border:1px solid #34343A;border-radius:14px;padding:38px 48px;box-sizing:border-box;position:absolute;box-shadow:16px 24px 36px color-mix(in srgb,var(--paper-ink) 23%,transparent)}
+.yv .v-terminal-row{font:30px/1.65 var(--f-mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.yv .v-terminal-row b{color:var(--hl);font-weight:400;margin-right:22px}
+.yv .v-code{position:absolute;padding:34px 32px;box-sizing:border-box;overflow:hidden}
+.yv .v-code-label{font:28px var(--f-mono);padding-bottom:28px;border-bottom:1px solid var(--rule);margin-bottom:24px}
+.yv .v-code-row{display:flex;gap:22px;padding:8px;font:28px/1.4 var(--f-mono);white-space:pre-wrap;overflow-wrap:anywhere}
+.yv .v-code-row .no{min-width:35px;color:var(--sub)}
+.yv .v-code-row.del{background:color-mix(in srgb,var(--stamp) 18%,transparent)}
+.yv .v-code-row.add{background:color-mix(in srgb,var(--blue) 14%,transparent)}
+.yv .v-number{font:48px var(--f-mono);font-variant-numeric:tabular-nums}
+.yv .v-label{font:34px/1.3 var(--f-sans)}
+.yv .v-grain{position:absolute;inset:0;background:var(--fiber);pointer-events:none;mix-blend-mode:multiply;z-index:3}
+.yv .v-sweep{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:4}
+.yv .v-sweep-band{position:absolute;left:-350px;top:0;width:350px;height:1080px;transform:skewX(-24deg);background:linear-gradient(90deg,transparent,color-mix(in srgb,var(--card) 38%,transparent),transparent)}
+.yv .v-notification{position:absolute;right:116px;width:450px;padding:22px 30px;font:30px var(--f-sans);box-sizing:border-box;border-left:5px solid var(--blue);z-index:20}
+.yv .v-slam{position:absolute;left:116px;right:116px;top:390px;text-align:center;font:900 160px/1.15 var(--f-song);white-space:nowrap}
+.yv .v-slam span{display:inline-block}

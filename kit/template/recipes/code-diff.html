@@ -1,0 +1,14 @@
+<!doctype html>
+<!-- Yice 首批配方：接口见 docs/recipes.md；registry 来源见 docs/vocabulary-origins.md。 -->
+<html><head><meta charset="UTF-8"></head><body><template>
+<div id="__SID__-root" data-composition-id="__SID__" data-width="1920" data-height="1080">
+  <div id="__SID__-holder">__MEDIA__</div>
+  <script type="application/json" id="__SID__-spec">__SPEC__</script>
+</div>
+<script>
+(function(){
+  var c=YF.ctx('__SID__',document.querySelector('[data-composition-id="__SID__"]'));
+  YV.render('code-diff',c);
+})();
+</script>
+</template></body></html>

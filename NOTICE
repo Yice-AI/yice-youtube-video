@@ -23,6 +23,10 @@ kit/template/compositions/components 下 8 个组件来自 heygen-com/hyperframe
 上游及许可：https://github.com/heygen-com/hyperframes/blob/main/LICENSE
 完整许可附于 licenses/HyperFrames-Apache-2.0.txt；保留组件已有署名与注释。
 
+首批视觉词汇在 kit/template/assets/vocab.js、vocab.css 及 recipes 对应入口中
+适配 registry 0.9.58 的运动结构，统一改为 Yice 素材槽、舞台与字体。
+这些适配保留 Apache-2.0 来源说明，逐项原件与改动见 kit/docs/vocabulary-origins.md。
+
 本包运行 HyperFrames CLI 0.9.52，不捆绑 CLI 二进制。
 
 ## 素材范围

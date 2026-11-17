@@ -14,5 +14,20 @@
       "stage": "charcoal"
     }
   },
-  "end": 20
+  "end": 20,
+  "visual": {
+    "previousFingerprint": null,
+    "limits": {
+      "maxBareRecordingSeconds": 20,
+      "minNonRecordingRatio": 0.4,
+      "minSourceTypes": 3,
+      "maxRecipeUses": 4,
+      "minTransitionKinds": 3,
+      "maxPreviousRecipeOverlap": 0.7,
+      "minNewRecipes": 1,
+      "minRecordingContainerKinds": 2,
+      "minTitleFreeRatio": 0.4,
+      "maxConsecutiveLayout": 3
+    }
+  }
 }
