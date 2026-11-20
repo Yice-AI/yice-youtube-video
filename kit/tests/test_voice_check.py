@@ -78,8 +78,11 @@ class VoiceCheckTests(unittest.TestCase):
         samples, rate = sf.read(audio)
         right = aligned["mapped"][2]
         start = round(right["s"] * rate) + round(.05 * rate)
-        end = start + round(.04 * rate)
-        samples[start:end] *= .02
+        end = start + round(.11 * rate)
+        samples[start:start + round(.04 * rate)] *= .02
+        sf.write(audio, samples, rate, subtype="PCM_24")
+        self.assertFalse(any(f["kind"] == "intra_word_stutter" for f in self.scan(audio, aligned)["alerts"]))
+        samples[start + round(.04 * rate):end] *= .02
         sf.write(audio, samples, rate, subtype="PCM_24")
         alerts = self.scan(audio, aligned)["alerts"]
         self.assertTrue(any(flag["kind"] == "intra_word_stutter" for flag in alerts))

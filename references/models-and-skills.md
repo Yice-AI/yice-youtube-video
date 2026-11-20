@@ -1,57 +1,54 @@
-# 模型、云 GPU 与各 skill 怎么搭配
+# 模型、云 GPU、生图工具与各 skill 协同策略（v2）
 
-## 为什么 EP01 几乎没用云 GPU
+## 1. 核心转变：生成与采集工具全部进入“剪辑常规武器库”
 
-画面的主力是**真实录屏**和**真实物件**：教程的可信度来自真东西。AI 生成的视频片段容易显假，又贴不住具体操作，所以 EP01 没有用。
+早期为了省成本，曾把生成视频写成“极少用”、把 `image2` 限制为“只当氛围镜头且满 $3 即停”，导致执行代理在剪 8 分钟长片时不敢造新画面，只能拿两三段旧录屏来回切，剪出来像简陋 PPT。
 
-EP01 的配音在本机 MLX 上跑，透明道具用 image2，所以 Modal 花费是 $0。
+**v2 确立的新原则**：
+- **围绕成片高级感按句选工具，缺画面当场生产**（统一通过 `kit/scripts/produce-asset.sh` 调用并自动记账）。
+- **真假边界清晰**：真实软件操作、真实命令输出、公开新闻与实测数据，100% 用真实录屏、网页抓取和底账数据驱动组件呈现；抽象概念、比喻隐喻、实物道具、以及图库搜不到的物理动态场景，大胆使用 `image2`、`blueprint-diagram` 和 Modal GPU `ltx2` 造出影棚级画面。
+- **按整期设总预算、同批热容器集中跑**：既保证每分钟画面饱满不重样，又严格守住 Modal `$0` 实付与 API 额度红线。
 
-这不代表模型没用。下面几处**该用就用**，用得好画面会更饱满：
+---
 
-| 需求 | 首选 | 何时用云 GPU（Modal，toolkit 工具） | 预算与注意 |
-|---|---|---|---|
-| 配音 | 本机 MLX Qwen3-TTS 8bit（kit `voice.sh`） | 本机内存不够或要批量重做时，用 `qwen3_tts` | 每章一次连续生成，不要逐句生成 |
-| **背景音乐** | toolkit `music_gen.py`（ACE-Step，Modal），也可以用 `pick_music.py` 从免费曲库挑 | ✔ 首选云 GPU | 参数按参考片声音卡定：配音时 BGM 比人声低 24dB，空白处最多回升 4dB，压低 100ms / 回升 600ms，章节间交叉淡化 600ms；音效每分钟 6–10 组，提前约 2 帧，普通 −18dB、关键 −12dB（相对人声）；成片 −14 LUFS、真峰值 ≤ −1 dBTP。**生成的曲子常混着人声**：入选前用本机 Demucs 分离测人声（P90 ≤ −20dB 且没有连续 1 秒以上高于 −20dB），不合格就用它的伴奏轨（no_vocals）再测一遍，合格即可用，不用重新生成（EP01 的 A/B 两段就是这样救回来的） |
-| 音效（纸、章、点击、快进） | 免费音效库（逐件登记许可） | 不需要 | 只在物件落下、盖章、划线、快进时出现，音量要小 |
-| 透明道具 | image2（`props.sh`，原生透明） | 不用 | 和下面的生图共用每期 $3 预算 |
-| 第三方空镜 | Pexels / Unsplash / Pixabay | 不用 | 视频优先 1080p，逐件登记许可 |
-| **图库找不到的画面** | **image2 生成写实照片**（role content，16:9），套 stock-shot 配方做慢推（Ken Burns），或者放进冲印相纸（frame:"print"） | 只有画面必须真的在动（液体、人手连续动作等）时，才用 `ltx2.py` 生成 3–5 秒视频 | 和道具共用 image2 的 key 和 $3 预算。生成的画面只能当氛围镜头，不能冒充真实操作 |
-| 缩略图 | image2 `--role thumbnail --guard light --candidates 3` | — | image2 容易出千篇一律的蓝色霓虹 AI 风。**首选品牌版**：取开场那一帧的画面（舞台底色、实物、宋体大字、高亮条），用 HyperFrames 截一帧做成 1280×720，和片头是同一个视觉锤；image2 只做备选 |
-| 字幕 | voice.sh 输出的 SRT | — | 上传 YouTube 时附上 |
+## 2. 工具矩阵、使用场景与整期预算红线
 
-Modal 的规则：Starter 套餐每月 $30 免费额度，spend limit 设为 $0（超出就停，不会扣钱）。重新部署前先看 toolkit 的文档；同类素材要批量生成时，复用已经热起来的容器。
+| 画面/音频需求 | 标准调用入口 | 底层模型 / 服务 | 什么时候当场用 | 整期预算与操作纪律 | 标准示范 |
+|---|---|---|---|---|---|
+| **克隆本人声音配音** | `kit/scripts/voice.sh`（默认 `--backend modal`） | Modal GPU A10G · `Qwen3-TTS-12Hz-1.7B-Base`（bf16） | 每期配音、补录、单句热修默认首选（彻底替代本机 MLX 8bit）；Modal 故障时切 Kaggle 或 `--backend local` | Modal 免费额度内约 `$0.15–$0.35`/期；按 3–5 句语义句组单次 batch 请求共享 `voice_clone_prompt`；**参考音频仅走 HTTPS Base64 内存直传，禁传 R2 或公开桶** | — |
+| **软件与终端真实操作** | `kit/scripts/rec-shot.sh` / Harness 收件箱 `.scratch/youtube/dsh-inbox/` | 本机 OCR 确定性录制 / DeepSeek Harness | 讲“具体怎么点、怎么跑、AI 怎么干活” | `$0`；**Claude 界面禁录屏（只用打码截图）**；所有隐私路径/账号必须绑 `.redact` | `D1-recording` |
+| **公开网页 / GitHub / 论文 / 榜单证据** | `kit/scripts/produce-asset.sh --kind web-capture`（调 `capture-web.mjs` / `collect-entity.sh`） | 本机 Playwright 高清视口截图 + 平滑滚动录屏 | 讲官网、开源仓库、新闻报道、官方跑分 | `$0`；记录来源 URL 与采集日期进 `asset-ledger.jsonl` | `D2-web-evidence` |
+| **纪实空镜 / 真实人物与手部动作** | `kit/scripts/produce-asset.sh --kind stock-footage`（调 `find-media.sh`） | Pexels / Pixabay / Wikimedia 1080p | 讲现实工作场景、行业动态、快切蒙太奇 | `~/.config/yice-video/stock.env` 共用 key，**单期 API 调用 ≤ 60 次**（脚本硬拦截），逐件登记许可 | `D3-stock-footage` |
+| **概念隐喻大图 / 透明实物道具 / 缩略图备选** | `kit/scripts/produce-asset.sh --kind metaphor-image` 或 `--kind prop-cutout`（底层 `image2.py` / `props.sh`） | `image2`（16:9 `r_plus` 轻护栏多候选；透明底 PNG 道具） | 讲抽象概念、正反比喻（如“案板两样菜”“金鱼记忆”）、桌面实物拼贴 | **常规使用，整期合并预算上限 `$5.00`**（每镜 2–3 候选挑最佳，防重缓存不重复扣费；超 `$5` 停下汇报） | `D4-image2-metaphor` |
+| **技术架构 / 流程步骤 / 因果拆解动画** | 直接在 `beats.json` 选用 `blueprint-diagram` 组件 | `kit` 内置精密工程蓝图 SVG + GSAP 引擎 | 讲系统分工、多步流水线、模块关系、机制拆解 | `$0`；执行者只传结构化节点与边 JSON，**严禁手写简陋贴画** | `D5-svg-blueprint` |
+| **图库找不到的写实物理动态场景** | `kit/scripts/produce-asset.sh --kind motion-video`（底层 Modal `tools/ltx2.py`） | Modal GPU A100 · `LTX-2`（3–5 秒 16:9 写实动态视频） | 画面必须真正在动（翻动厚重档案、聚光灯扫过工作台、特写物理隐喻动作）且图库无贴切实拍时常规调用 | Modal `spend_limit=$0` 免费额度内管理（每期建议 **3–8 段**，约 `$0.60–$1.80` 额度）；**同章需求集中成批连续提交以复用热容器**，不设 `min_containers`；不可冒充真实软件录屏 | `D6-modal-ltx2` |
+| **实测数据尺 / 对比柱图 / 代码差异** | `beats.json` 选用 `shot-wall` / `ruler-measure` / `bar-compare` / `code-diff` | `kit` 数据驱动可视化组件 | 讲逐镜测量、耗时体积对比、前后指标提升 | `$0`；只绑实测底账 JSON，禁编数字、禁引参考片画面 | `D7-data-chart` |
+| **原创背景音乐与分轨验收** | Modal `tools/music_gen.py`（ACE-Step）+ 本机 Demucs 人声机测，或 `pick_music.py` | Modal GPU + 本机音频母带链（`audio.mjs`） | 每期 A/B/C 情绪段落配乐 | Modal 免费额度约 `$0.10`/期；入选前必过 Demucs 无人声机测（P90 ≤ −20dB）；人声段压低 24dB，成片 −14 LUFS | — |
 
-## 各 skill / 仓库的分工
+---
 
+## 3. 各仓库与 Skill 的边界
+
+```text
+yice-youtube-video（~/Documents/Codex/yice-youtube-video，公开仓库 Yice-AI）
+ ├─ SKILL.md + references/            导演方法论、逐句选工具总表、配音与质感审片标准（中心把控）
+ └─ kit/                              高阶动效版式组件库、produce-asset 即时制片 CLI、GPU 配音与卡顿检测、D1–D7 示范镜头、kit check 门禁
+
+HyperFrames skills（本机确定性渲染底座，锁定 @0.9.52）
+ ├─ hyperframes / hyperframes-core    HTML→MP4 确定性时间轴与子合成契约（维护 kit 组件时遵守）
+ ├─ hyperframes-animation / -audio    组件内部缓动编排与多轨混音压低
+ └─ hyperframes-cli                   check / snapshot / render 排错（严禁使用云渲染、publish、share）
+
+claude-code-video-toolkit（$YICE_TOOLKIT，只调工具与环境，不改 git 跟踪文件）
+ ├─ tools/qwen3_tts.py, ltx2.py, music_gen.py, flux2.py   Modal 云 GPU 端点调用器
+ └─ local/                            image2.py、asr-venv、tts-venv、yice 声音私有配置（git 排除）
+
+codex-commander                       中心向 Codex 派发重执行任务、令牌管理与 watch.py 监听
 ```
-yice-youtube-video（本 skill）        决定拍什么、怎么排、怎么验收
- ├─ kit/（本仓库）                     配方、视觉规范、配音/渲染/审片/道具脚本
- ├─ HyperFrames skills（渲染层）       把 HTML 画面渲染成 mp4
- │    hyperframes          入口：工作循环、渲染契约
- │    hyperframes-core     写或改配方前必读（data-* 时序、子合成、确定性渲染）
- │    hyperframes-animation / -keyframes   入场、推镜、转场
- │    hyperframes-registry 缺效果时先搜现成组件（约 450 个），装进 template 后回写 kit
- │    hyperframes-cli      check / render / snapshot 排错
- │    hyperframes-audio    给背景音乐和音效做压低、淡入淡出、混音
- │    （hyperframes-creative 不用：视觉方向以 frame.md 为准）
- ├─ claude-code-video-toolkit（工具仓库，只取工具）
- │    local/：tts-venv、image2.py、rec/ 录屏、episodes/ 项目目录（我们加的附加工具）
- │    tools/：music_gen、pick_music（背景音乐）、ltx2（极少用）
- │    不使用：templates/（product-demo、sprint-review 等 Remotion 模板）、kits/、
- │      examples/、brands/，以及它的 Remotion skills。这些都是英文产品或发布会风格，
- │      画面层已由 kit 和 HyperFrames 替代
- └─ codex-commander                    给 Codex 派执行活、监听状态
-```
 
-## 什么时候调用哪个
+---
 
-| 场景 | 调用 |
-|---|---|
-| 开新一期 | 本 skill → `kit/scripts/new-episode.sh` |
-| 拆解一部新参考片 | `references/breakdown.md` → `kit/scripts/breakdown.sh`；只有要精确复刻某个镜头时才用 HyperFrames 的 `reverse-any-video` |
-| 写 beats、改配方参数 | 本 skill 的 director-layer，加 kit `docs/recipes.md` |
-| 新写一个配方 | `hyperframes-core`，再加 `hyperframes-animation`；写完放进 `kit/template/recipes/_src`，运行 wrap.py |
-| 想要某种效果（光扫、撕纸、计数） | 先查 `hyperframes-registry`，找不到再自己写 |
-| 渲染报错 | `hyperframes-cli` |
-| 混背景音乐和音效 | toolkit `music_gen.py` 或 `pick_music.py` 准备素材，`hyperframes-audio` 混音 |
-| 批量执行（配音、生图、素材、脚本维护） | `codex-commander` 派给 Codex |
+## 4. 七大工具标准示范镜头（`kit/docs/tool-demos.md`）
+
+为了让执行代理不再“凭想象从零画画面”，`kit` 内置 7 个做好的影棚级示范镜头（`D1`–`D7`），每个示范都包含**生成该素材的精确命令 + 完整 `beats.json` 片段 + 100% 审片级渲染成片**：
+- 执行代理剪辑任何一幕时，先定位它属于 `D1`–`D7` 哪一类，直接照搬示范镜头的组件结构、光影层级与动效节奏，只替换当句内容与锚点。

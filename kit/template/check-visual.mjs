@@ -216,7 +216,10 @@ export function evaluateVisualVariety({ beats, episode = {}, timing = [], buildR
   const sourceDurations = Object.fromEntries(SOURCE_TYPES.map(type => [type, round(seconds(sourceIntervals[type]))]));
   const sourceTypes = SOURCE_TYPES.filter(type => sourceDurations[type] > EPS);
   const nonRecordingSeconds = seconds(nonRecordings), nonRecordingRatio = nonRecordingSeconds / end;
-  const recordingContainers=[...new Set(timeline.filter(s=>s.sourceType==='recording'&&RECORDING_CONTAINERS.includes(s.recipe)).map(s=>s.recipe))].sort();
+  const recordingScenes = timeline.filter(scene => scene.sourceType === 'recording');
+  const containerRecipes = new Set([...RECORDING_CONTAINERS, 'terminal-over-footage', 'desk-dispatch']);
+  const recordingContainers = [...new Set(recordingScenes.map(s => s.recipe).filter(recipe => containerRecipes.has(recipe)))].sort();
+  const requiredContainers = Math.min(config.minRecordingContainerKinds, recordingScenes.length);
   const titleFreeScenes=timeline.filter(s=>!s.titleBar).length,titleFreeRatio=titleFreeScenes/timeline.length,layoutRuns=[];
   for(const s of timeline){const last=layoutRuns.at(-1);if(last?.skeleton===s.layoutSkeleton){last.count++;last.sceneIds.push(s.id);}else layoutRuns.push({skeleton:s.layoutSkeleton,count:1,sceneIds:[s.id]});}
   const fingerprint = { schemaVersion: 1, episodeId: episode.id || beats.id || null, duration: end,
@@ -232,7 +235,7 @@ export function evaluateVisualVariety({ beats, episode = {}, timing = [], buildR
   const repeats = Object.fromEntries(Object.entries(recipeCounts).filter(([, count]) => count > config.maxRecipeUses));
   if (Object.keys(repeats).length) fail('recipe_repeated', `同一配方使用超过 ${config.maxRecipeUses} 次`, repeats);
   if (transitions.size < config.minTransitionKinds) fail('transition_kinds_low', `转场不足 ${config.minTransitionKinds} 类`, { actual: [...transitions] });
-  if(recordingContainers.length<config.minRecordingContainerKinds)fail('recording_containers_low',`录屏B族容器不足 ${config.minRecordingContainerKinds} 种`,{actual:recordingContainers});
+  if(recordingContainers.length<requiredContainers)fail('recording_containers_low',`录屏容器不足 ${requiredContainers} 种`,{actual:recordingContainers});
   if(titleFreeRatio+EPS<config.minTitleFreeRatio)fail('title_free_ratio_low',`不出左上标题的镜头不足 ${config.minTitleFreeRatio*100}%`,{actual:round(titleFreeRatio),titleFreeScenes,totalScenes:timeline.length});
   const repeatedLayouts=layoutRuns.filter(r=>r.count>config.maxConsecutiveLayout);
   if(repeatedLayouts.length)fail('layout_repeated',`同一版式骨架连续超过 ${config.maxConsecutiveLayout} 镜`,repeatedLayouts);

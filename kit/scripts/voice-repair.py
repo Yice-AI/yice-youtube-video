@@ -86,9 +86,10 @@ def splice(samples, rate, alignment, cuts, groups, replacements):
                 raise ValueError('整句替换必须同采样率、单声道')
             rms = lambda y: float(np.sqrt(np.mean(y[np.abs(y) > .005]**2))) if np.any(np.abs(y) > .005) else 0.
             gain = rms(old) / max(rms(chunk), 1e-10)
+            peak = np.max(np.abs(chunk))
+            if peak > 0:
+                gain = min(gain, 10 ** (-1 / 20) / peak)
             chunk = chunk * gain
-            if np.max(np.abs(chunk)) >= 1:
-                raise ValueError('匹配句间响度会削波，拒绝替换')
             local = copy.deepcopy(take['alignment']['mapped'])
             char_offset = take['char_offset']
         else:

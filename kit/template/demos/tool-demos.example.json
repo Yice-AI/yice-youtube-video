@@ -1,0 +1,610 @@
+{
+  "end": 35.5,
+  "scenes": [
+    {
+      "id": "D1",
+      "sents": [
+        "00-D1"
+      ],
+      "recipe": "cursor-zoom",
+      "sourceType": "recording",
+      "mediaClass": "screenshot",
+      "stage": "charcoal",
+      "props": {
+        "title": "按大小，重排素材",
+        "media": "assets/local/D1-finder.mp4",
+        "zoom": 1.8,
+        "cursorLog": [
+          {
+            "t": 0,
+            "x": 350,
+            "y": 145,
+            "click": false
+          },
+          {
+            "t": 0.8,
+            "x": 672,
+            "y": 130,
+            "click": false
+          },
+          {
+            "t": 1.2,
+            "x": 1490,
+            "y": 128,
+            "click": true
+          },
+          {
+            "t": 2.5,
+            "x": 1410,
+            "y": 275,
+            "click": false
+          },
+          {
+            "t": 3.8,
+            "x": 1490,
+            "y": 126,
+            "click": true
+          },
+          {
+            "t": 4.35,
+            "x": 410,
+            "y": 200,
+            "click": false
+          }
+        ],
+        "redactions": [
+          {
+            "x": 303,
+            "y": 4,
+            "w": 165,
+            "h": 65
+          }
+        ]
+      },
+      "enter": "cut"
+    },
+    {
+      "id": "D2",
+      "sents": [
+        "00-D2"
+      ],
+      "recipe": "news-card",
+      "sourceType": "web_capture",
+      "mediaClass": "screenshot",
+      "stage": "charcoal",
+      "props": {
+        "headline": "路径对象怎样分类",
+        "source": "Python 官方文档",
+        "date": "2026-11-21",
+        "shot": "assets/web/python-pathlib/still.png",
+        "highlight": [
+          {
+            "x": 378,
+            "y": 80,
+            "w": 632,
+            "h": 38,
+            "at": 0.55
+          }
+        ],
+        "zoom": {
+          "x": 499,
+          "y": 367,
+          "w": 412,
+          "h": 300
+        },
+        "focusRect": {
+          "x": 330,
+          "y": 52,
+          "w": 925,
+          "h": 490
+        },
+        "cutZoom": [
+          {
+            "at": 1.8,
+            "rect": {
+              "x": 383,
+              "y": 55,
+              "w": 685,
+              "h": 360
+            },
+            "scale": 1.35
+          },
+          {
+            "at": 3.6,
+            "rect": {
+              "x": 426,
+              "y": 310,
+              "w": 700,
+              "h": 394
+            },
+            "scale": 1.32
+          }
+        ]
+      },
+      "enter": "cut",
+      "readingRegions": [
+        {
+          "name": "文档原题",
+          "media": 0,
+          "rect": {
+            "x": 384,
+            "y": 70,
+            "w": 700,
+            "h": 45
+          },
+          "at": 1.2
+        }
+      ]
+    },
+    {
+      "id": "D3",
+      "sents": [
+        "00-D3"
+      ],
+      "recipe": "action-montage",
+      "sourceType": "third_party",
+      "mediaClass": "real_video",
+      "stage": "charcoal",
+      "props": {
+        "clips": [
+          {
+            "src": "assets/local/angle-1.mp4",
+            "duration": 0.9
+          },
+          {
+            "src": "assets/local/angle-2.mp4",
+            "duration": 0.9
+          },
+          {
+            "src": "assets/local/angle-3.mp4",
+            "duration": 0.9
+          },
+          {
+            "src": "assets/local/angle-4.mp4",
+            "duration": 0.9
+          },
+          {
+            "src": "assets/local/angle-5.mp4",
+            "duration": 0.9
+          }
+        ],
+        "label": "摄影机位"
+      },
+      "enter": "cut"
+    },
+    {
+      "id": "D4",
+      "sents": [
+        "00-D4"
+      ],
+      "recipe": "footage-bigword",
+      "sourceType": "image2",
+      "mediaClass": "graphics",
+      "stage": "charcoal",
+      "props": {
+        "media": "assets/local/D4-B.png",
+        "text": "真凶",
+        "sub": "案板上只有两样菜",
+        "at": 0.2,
+        "showTitle": false
+      },
+      "enter": "cut"
+    },
+    {
+      "id": "D5",
+      "sents": [
+        "00-D5"
+      ],
+      "recipe": "blueprint-diagram",
+      "sourceType": "code_animation",
+      "mediaClass": "graphics",
+      "stage": "charcoal",
+      "props": {
+        "topology": "flow",
+        "title": "一句旁白怎样变成画面",
+        "nodes": [
+          {
+            "id": "0",
+            "title": "逐句判需求",
+            "subtitle": "观众要看见什么",
+            "at": 0.0
+          },
+          {
+            "id": "1",
+            "title": "当场造画面",
+            "subtitle": "实拍或生成",
+            "at": 0.55
+          },
+          {
+            "id": "2",
+            "title": "影棚组件装配",
+            "subtitle": "镜头对齐旁白",
+            "at": 1.1
+          },
+          {
+            "id": "3",
+            "title": "质感门禁出片",
+            "subtitle": "检查并渲染",
+            "at": 1.6500000000000001
+          }
+        ],
+        "edges": [
+          {
+            "from": "0",
+            "to": "1",
+            "at": 0.35
+          },
+          {
+            "from": "1",
+            "to": "2",
+            "at": 0.9
+          },
+          {
+            "from": "2",
+            "to": "3",
+            "at": 1.4500000000000002
+          }
+        ]
+      },
+      "enter": "cut"
+    },
+    {
+      "id": "D6",
+      "sents": [
+        "00-D6"
+      ],
+      "recipe": "cinematic-broll",
+      "sourceType": "code_animation",
+      "mediaClass": "graphics",
+      "stage": "charcoal",
+      "props": {
+        "media": "assets/local/D6-film.mp4",
+        "showTitle": false,
+        "tag": "微距运动 · LTX-2"
+      },
+      "enter": "cut"
+    },
+    {
+      "id": "D7a",
+      "sents": [
+        "00-D7a"
+      ],
+      "recipe": "shot-wall",
+      "sourceType": "code_animation",
+      "mediaClass": "graphics",
+      "stage": "charcoal",
+      "props": {
+        "rows": [
+          {
+            "label": "Fireship",
+            "shots": [
+              {
+                "d": 0.709,
+                "k": "graphic"
+              },
+              {
+                "d": 2.4608,
+                "k": "real"
+              },
+              {
+                "d": 3.0802,
+                "k": "real"
+              },
+              {
+                "d": 1.1741,
+                "k": "screen"
+              },
+              {
+                "d": 5.0884,
+                "k": "real"
+              },
+              {
+                "d": 1.5015,
+                "k": "screen"
+              },
+              {
+                "d": 2.2106,
+                "k": "real"
+              },
+              {
+                "d": 1.5432,
+                "k": "screen"
+              },
+              {
+                "d": 3.1698,
+                "k": "real"
+              },
+              {
+                "d": 2.2523,
+                "k": "screen"
+              },
+              {
+                "d": 2.2522,
+                "k": "screen"
+              },
+              {
+                "d": 2.7528,
+                "k": "real"
+              },
+              {
+                "d": 2.4608,
+                "k": "screen"
+              },
+              {
+                "d": 3.9205,
+                "k": "graphic"
+              },
+              {
+                "d": 3.9206,
+                "k": "real"
+              },
+              {
+                "d": 3.5869,
+                "k": "real"
+              },
+              {
+                "d": 1.4181,
+                "k": "real"
+              },
+              {
+                "d": 2.586,
+                "k": "graphic"
+              },
+              {
+                "d": 1.6683,
+                "k": "screen"
+              },
+              {
+                "d": 1.7517,
+                "k": "screen"
+              },
+              {
+                "d": 2.8779,
+                "k": "real"
+              },
+              {
+                "d": 3.003,
+                "k": "graphic"
+              },
+              {
+                "d": 3.4201,
+                "k": "screen"
+              },
+              {
+                "d": 1.1912,
+                "k": "graphic"
+              }
+            ],
+            "at": 0.1,
+            "sweep": 3.8
+          },
+          {
+            "label": "Johnny Harris",
+            "shots": [
+              {
+                "d": 7.5909,
+                "k": "graphic"
+              },
+              {
+                "d": 0.6673,
+                "k": "real"
+              },
+              {
+                "d": 0.7508,
+                "k": "real"
+              },
+              {
+                "d": 0.7507,
+                "k": "real"
+              },
+              {
+                "d": 0.9176,
+                "k": "real"
+              },
+              {
+                "d": 0.7091,
+                "k": "real"
+              },
+              {
+                "d": 0.6256,
+                "k": "real"
+              },
+              {
+                "d": 0.4171,
+                "k": "real"
+              },
+              {
+                "d": 0.3336,
+                "k": "real"
+              },
+              {
+                "d": 0.6257,
+                "k": "real"
+              },
+              {
+                "d": 1.0844,
+                "k": "real"
+              },
+              {
+                "d": 0.8759,
+                "k": "real"
+              },
+              {
+                "d": 0.3753,
+                "k": "real"
+              },
+              {
+                "d": 1.2513,
+                "k": "real"
+              },
+              {
+                "d": 1.9186,
+                "k": "real"
+              },
+              {
+                "d": 1.001,
+                "k": "real"
+              },
+              {
+                "d": 0.6673,
+                "k": "real"
+              },
+              {
+                "d": 1.9186,
+                "k": "real"
+              },
+              {
+                "d": 1.7517,
+                "k": "real"
+              },
+              {
+                "d": 2.2523,
+                "k": "real"
+              },
+              {
+                "d": 6.5899,
+                "k": "real"
+              },
+              {
+                "d": 4.713,
+                "k": "real"
+              },
+              {
+                "d": 1.585,
+                "k": "real"
+              },
+              {
+                "d": 2.5025,
+                "k": "real"
+              },
+              {
+                "d": 1.4181,
+                "k": "real"
+              },
+              {
+                "d": 1.6683,
+                "k": "real"
+              },
+              {
+                "d": 2.0437,
+                "k": "real"
+              },
+              {
+                "d": 8.6447,
+                "k": "graphic"
+              },
+              {
+                "d": 0.406,
+                "k": "real"
+              },
+              {
+                "d": 1.001,
+                "k": "real"
+              },
+              {
+                "d": 0.167,
+                "k": "real"
+              },
+              {
+                "d": 0.3335,
+                "k": "real"
+              },
+              {
+                "d": 0.292,
+                "k": "real"
+              },
+              {
+                "d": 0.2502,
+                "k": "real"
+              },
+              {
+                "d": 0.4588,
+                "k": "real"
+              },
+              {
+                "d": 0.292,
+                "k": "real"
+              },
+              {
+                "d": 0.5422,
+                "k": "real"
+              },
+              {
+                "d": 0.6073,
+                "k": "real"
+              }
+            ],
+            "at": 0.4,
+            "sweep": 3.8
+          }
+        ],
+        "window": 60,
+        "showTitle": false,
+        "source": "开头六十秒 · 逐镜标注",
+        "zoom": {
+          "row": 1,
+          "second": 28,
+          "scale": 1.18,
+          "at": 2.2,
+          "back": 3.8
+        }
+      },
+      "enter": "cut"
+    },
+    {
+      "id": "D7b",
+      "sents": [
+        "00-D7b"
+      ],
+      "recipe": "split-compare",
+      "sourceType": "code_animation",
+      "mediaClass": "real_video",
+      "stage": "charcoal",
+      "props": {
+        "left": {
+          "src": "assets/local/ep01.mp4",
+          "aspect": 1.7777777777777777
+        },
+        "right": {
+          "src": "assets/local/ep02.mp4",
+          "aspect": 1.7777777777777777
+        },
+        "leftLabel": "第一期",
+        "rightLabel": "第二期",
+        "title": "两期成片，同屏对照",
+        "focusTimeline": [
+          {
+            "at": 0.18,
+            "side": "left"
+          },
+          {
+            "at": 1.03,
+            "side": "right"
+          },
+          {
+            "at": 1.95,
+            "side": "both"
+          }
+        ],
+        "countdown": {
+          "at": 1.95,
+          "seconds": 2
+        },
+        "stamps": [
+          {
+            "side": "left",
+            "text": "第一期",
+            "at": 4.03
+          },
+          {
+            "side": "right",
+            "text": "第二期",
+            "at": 4.33
+          }
+        ],
+        "showTitle": false
+      },
+      "enter": "cut"
+    }
+  ]
+}

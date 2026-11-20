@@ -32,6 +32,15 @@ def load_environment(environ=None):
 
     workspace = path(environ.get("YICE_WORKSPACE") or values.get("YICE_WORKSPACE") or home / "Documents/Codex/个人IP")
     toolkit = path(environ.get("YICE_TOOLKIT") or values.get("YICE_TOOLKIT") or workspace / "claude-code-video-toolkit")
+    dotenv = toolkit / ".env"
+    endpoints = {f"MODAL_{service}_ENDPOINT_URL" for service in ("QWEN3_TTS", "FLUX2", "MUSIC_GEN", "LTX2")}
+    if dotenv.is_file():
+        for line in dotenv.read_text(encoding="utf-8").splitlines():
+            key, sep, raw = line.strip().removeprefix("export ").partition("=")
+            if sep and key.strip() in endpoints:
+                parts = shlex.split(raw, comments=True)
+                if len(parts) == 1:
+                    environ.setdefault(key.strip(), parts[0])
     return workspace, toolkit
 
 

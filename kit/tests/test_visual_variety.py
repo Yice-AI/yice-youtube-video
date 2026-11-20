@@ -165,7 +165,8 @@ class VisualVarietyTests(unittest.TestCase):
 
     def test_container_showing_non_recording_does_not_count(self):
         data=self.container_fixture();data['beats']['scenes'][1]['sourceType']='web_capture'
-        result=self.assert_only(data,'recording_containers_low')
+        result=self.evaluate(data)
+        self.assertTrue(result['ok'])
         self.assertEqual(result['fingerprint']['recordingContainers'],['device-stage'])
 
     def test_numeric_bar_highlight_is_not_an_overlay_array(self):

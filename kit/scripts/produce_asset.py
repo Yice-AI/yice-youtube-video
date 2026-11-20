@@ -75,7 +75,11 @@ def modal_guard():
 
 
 def tool_python():
-    toolkit = Path(os.environ.get("YICE_TOOLKIT", "/Users/micra/Documents/Codex/个人IP/claude-code-video-toolkit"))
+    if __package__:
+        from .workspace import load_environment
+    else:
+        from workspace import load_environment
+    _, toolkit = load_environment()
     candidate = Path(os.environ.get("YICE_TOOLKIT_PYTHON", toolkit / ".venv/bin/python"))
     return str(candidate if candidate.exists() else sys.executable), toolkit
 
@@ -119,8 +123,7 @@ def produce(args, project, rows):
         path = output_file(project, args.kind, args.output, ".png")
         command = [python, str(toolkit / "local/tools/image2.py"), "--prompt", prompt,
                    "--width", str(args.width or 1920), "--height", str(args.height or 1080),
-                   "--output", str(path), "--aspect", args.aspect, "--guard", "light",
-                   "--thumb-guard", "r_plus", "--json"]
+                   "--output", str(path), "--aspect", args.aspect, "--json"]
         output = run_command(command, timeout=600)
         metadata = json.loads(output.splitlines()[-1]) if output else {}
         entry.update(sourceType="image2", tool="image2", path=str(path), width=metadata.get("width", args.width or 1920),
@@ -139,7 +142,9 @@ def produce(args, project, rows):
         if not prompt:
             raise RuntimeError("motion-video 需要 --prompt")
         path = output_file(project, args.kind, args.output, ".mp4")
+        frames = 1 + 8 * max(1, round(args.duration * 24 / 8))
         command = [python, str(toolkit / "tools/ltx2.py"), "--prompt", prompt, "--cloud", "modal",
+                   "--width", str(args.width), "--height", str(args.height), "--num-frames", str(frames),
                    "--quality", args.quality, "--output", str(path), "--no-open", "--json"]
         run_command(command, timeout=1800)
         entry.update(tool="ltx2.py", path=str(path), sourceType="generated-video", cost_usd=args.cost)
@@ -157,7 +162,9 @@ def produce(args, project, rows):
         if calls + 1 > args.stock_budget:
             raise RuntimeError("图库 API 调用已达到 60 次本期上限")
         directory = project / "assets" / "stock" / args.id
+        filters = ["--sources", args.source] if args.source in {"pexels", "pixabay"} else []
         run_command(["node", str(Path(__file__).with_name("find-media.mjs")), "--q", args.query,
+                     *filters, "--min-width", str(args.width), "--min-height", str(args.height),
                      "--type", args.media_type, "--n", str(args.count), "--out", str(directory),
                      "--project", str(project)], timeout=900)
         entry.update(tool="find-media.mjs", path=str(directory), sourceType="stock-footage", api_calls=1)

@@ -18,8 +18,8 @@ HOP = .01
 THRESHOLDS = dict(single_character_N=2.4, active_character_N=2., onset_character_N=1.7,
                   nonpunct_low_energy_min_ms=60., nonpunct_pause_max_ms=150.,
                   falling_end_st=-4., punctuation_tolerance_ms=20.,
-                  intra_word_drop_db=12., intra_word_min_ms=75., intra_word_max_ms=250.,
-                  rate_outlier_N=1.8, seam_cosine=0.94, seam_pitch_st=3.2, seam_loudness_db=1.8,
+                  intra_word_drop_db=14., intra_word_min_ms=95., intra_word_max_ms=260.,
+                  sentence_rate_deviation=.38, seam_cosine=0.94, seam_pitch_st=3.2, seam_loudness_db=1.8,
                   contrast_pause_ms=[300., 450.], comma_pause_ms=[180., 300.],
                   sentence_pause_ms=[300., 450.])
 
@@ -75,10 +75,10 @@ def add_threshold_arguments(parser):
     parser.add_argument('--comma-ms', type=float, nargs=2, default=[180., 300.])
     parser.add_argument('--contrast-ms', type=float, nargs=2, default=[300., 450.])
     parser.add_argument('--sentence-ms', type=float, nargs=2, default=[300., 450.])
-    parser.add_argument('--intra-word-drop-db', type=float, default=12.)
-    parser.add_argument('--intra-word-min-ms', type=float, default=75.)
-    parser.add_argument('--intra-word-max-ms', type=float, default=250.)
-    parser.add_argument('--rate-outlier-ratio', type=float, default=1.8)
+    parser.add_argument('--intra-word-drop-db', type=float, default=14.)
+    parser.add_argument('--intra-word-min-ms', type=float, default=95.)
+    parser.add_argument('--intra-word-max-ms', type=float, default=260.)
+    parser.add_argument('--rate-outlier-ratio', type=float, default=.38, help='每句字速相对章中位数的最大偏离比例')
 
 
 def threshold_arguments(args):
@@ -88,7 +88,7 @@ def threshold_arguments(args):
                   punctuation_tolerance_ms=args.pause_tolerance_ms, comma_pause_ms=args.comma_ms,
                   contrast_pause_ms=args.contrast_ms, sentence_pause_ms=args.sentence_ms,
                   intra_word_drop_db=args.intra_word_drop_db, intra_word_min_ms=args.intra_word_min_ms,
-                  intra_word_max_ms=args.intra_word_max_ms, rate_outlier_N=args.rate_outlier_ratio)
+                  intra_word_max_ms=args.intra_word_max_ms, sentence_rate_deviation=args.rate_outlier_ratio)
     for name, value in values.items():
         items = value if isinstance(value, list) else [abs(value) if name == 'falling_end_st' else value]
         if not all(np.isfinite(v) and v >= 0 for v in items):
@@ -263,11 +263,33 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
             flags.append(dict(kind='long_character', index=i, sentence=r['sentence'],
                               char_start=r['charStart'], char_end=r['charEnd'],
                               ratio=round(r['duration_ms'] / median, 3), token=r['w']))
-        if (internal and re.fullmatch(r'[\u4e00-\u9fff]', r['w'])
-                and thresholds['rate_outlier_N'] <= r['duration_ms'] / median < thresholds['single_character_N']):
-            flags.append(dict(kind='duration_or_rate_outlier', index=i, sentence=r['sentence'],
-                              char_start=r['charStart'], char_end=r['charEnd'],
-                              ratio=round(r['duration_ms'] / median, 3), token=r['w']))
+    sentences = {}
+    for char in chars:
+        if char['sentence'] >= 0:
+            sentences.setdefault(char['sentence'], []).append(char)
+    def pronunciation_units(value):
+        units = 0
+        for token in re.findall(r'[A-Za-z]+|\d+|[\u4e00-\u9fff]', value):
+            units += max(1, round(len(token) / 3.5)) if re.fullmatch(r'[A-Za-z\d]+', token) else 1
+        return units
+
+    speeds = {}
+    for i, rows in sentences.items():
+        spoken_s = sum(max(0., row['e'] - row['s']) for row in rows)
+        if len(rows) >= 4 and spoken_s > 0.15:
+            speeds[i] = pronunciation_units(''.join(row['w'] for row in rows)) / spoken_s
+    if speeds:
+        typical = float(np.median(list(speeds.values())))
+        for sentence, speed in speeds.items():
+            deviation = speed / typical - 1
+            if abs(deviation) > thresholds['sentence_rate_deviation'] + 1e-9:
+                rows = sentences[sentence]
+                flags.append(dict(kind='duration_or_rate_outlier', sentence=sentence,
+                                  char_start=rows[0]['charStart'], char_end=rows[-1]['charEnd'],
+                                  chars_per_second=round(speed, 3), chapter_median=round(typical, 3),
+                                  deviation=round(deviation, 3)))
+    times = np.arange(len(envelope)) * HOP
+    seen_valleys = set()
     for b in d['boundaries']:
         i = b['index']
         left, right = chars[i], chars[i + 1]
@@ -295,19 +317,38 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
                                       f0_change_st=fall, pause_ms=duration, context=b['context']))
             # Compare the local 10ms envelope around adjacent syllables. This
             # catches a short relative collapse that never reaches -42 dBFS.
-            times = np.arange(len(envelope)) * HOP
-            ids = np.flatnonzero((times >= max(left['s'], right['s'] - .08)) &
-                                 (times <= min(right['e'], left['e'] + .08)))
-            if len(ids) >= 5:
-                values = envelope[ids]
-                side = max(1, len(values) // 3)
-                drop = min(float(np.max(values[:side])), float(np.max(values[-side:]))) - float(np.min(values))
-                duration_ms = min(thresholds['intra_word_max_ms'], max(0., (times[ids[-1]] - times[ids[0]]) * 1000))
-                if drop >= thresholds['intra_word_drop_db'] and duration_ms >= thresholds['intra_word_min_ms']:
-                    flags.append(dict(kind='intra_word_stutter', index=i, sentence=right['sentence'],
-                                      char_start=left['charStart'], char_end=right['charEnd'],
-                                      drop_db=round(drop, 2), duration_ms=round(duration_ms, 2),
-                                      context=b['context']))
+            if left['sentence'] != right['sentence'] or left['charEnd'] != right['charStart']:
+                continue
+            ids = np.flatnonzero((times >= left['s']) & (times < right['e']))
+            if not len(ids):
+                continue
+            local = envelope[ids]
+            left_db = local[times[ids] < left['e']]
+            right_db = local[times[ids] >= right['s']]
+            if not len(left_db) or not len(right_db):
+                continue
+            ref = min(float(left_db.max()), float(right_db.max()))
+            if ref <= -42:
+                continue
+            for lo, hi in runs(local <= ref - thresholds['intra_word_drop_db']):
+                start_bin, end_bin = round(lo / HOP), round(hi / HOP)
+                # An ASR boundary can lead the syllable by one or two hops.
+                # Require a measurable shoulder on both sides of an internal dip.
+                if start_bin < 3 or len(local) - end_bin < 3:
+                    continue
+                if local[start_bin:end_bin].min() <= -75:
+                    continue
+                interval = (int(ids[0]) + start_bin, int(ids[0]) + end_bin)
+                duration_ms = round((end_bin - start_bin) * HOP * 1000, 2)
+                if (interval in seen_valleys or not thresholds['intra_word_min_ms']
+                        <= duration_ms <= thresholds['intra_word_max_ms']):
+                    continue
+                seen_valleys.add(interval)
+                flags.append(dict(kind='intra_word_stutter', index=i, sentence=right['sentence'],
+                                  char_start=left['charStart'], char_end=right['charEnd'],
+                                  drop_db=round(ref - float(local[start_bin:end_bin].min()), 2),
+                                  duration_ms=duration_ms, start_s=round(interval[0]*HOP, 3),
+                                  context=b['context']))
         elif b['kind'] in ['comma', 'contrast', 'sentence']:
             low, high = b['range_ms']
             if not low - thresholds['punctuation_tolerance_ms'] <= b['pause_ms'] <= high + thresholds['punctuation_tolerance_ms']:

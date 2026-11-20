@@ -40,10 +40,13 @@ class ProduceAssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory)
             result = produce_asset.main(["--kind", "rec-task", "--project", str(project),
+                                         "--output", str(project / "assets/rec-task/task.json"),
                                          "--id", "task", "--input", str(project), "--prompt", "录首页"])
             self.assertEqual(result, 0)
             row = json.loads((project / "asset-ledger.jsonl").read_text().splitlines()[0])
             self.assertEqual(row["sourceType"], "recording")
+            self.assertFalse(Path(row["path"]).is_absolute())
+            self.assertTrue((project / row["path"]).resolve().is_relative_to(project.resolve()))
             self.assertTrue((project / row["path"]).is_file())
 
 

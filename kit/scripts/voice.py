@@ -11,6 +11,7 @@ import sys
 import tempfile
 import urllib.error
 import urllib.request
+from urllib.parse import urlsplit
 import wave
 from pathlib import Path
 
@@ -112,7 +113,7 @@ def _clone_reference(brand):
     clone = qwen.get("clone", {})
     ref = Path(clone.get("refAudio", ""))
     if not ref.is_absolute():
-        ref = TOOLKIT / ref
+        ref = config.parent / ref
     if not ref.is_file():
         raise ValueError(f"缺少声音参考音频：{ref}")
     return ref, clone.get("refText", ""), qwen.get("language", "Chinese")
@@ -124,6 +125,8 @@ def _remote_batch(texts, brand, backend, temperature):
     endpoint = os.environ.get(env_name)
     if not endpoint:
         raise ValueError(f"{env_name} 未设置，无法使用 {backend} 配音后端")
+    if urlsplit(endpoint).scheme != "https" or not urlsplit(endpoint).hostname:
+        raise ValueError("克隆参考音频必须使用已配置的 HTTPS 端点")
     ref_audio, ref_text, language = _clone_reference(os.environ.get("YICE_VOICE_BRAND", brand))
     payload = {
         "text": texts,
@@ -140,7 +143,8 @@ def _remote_batch(texts, brand, backend, temperature):
         with urllib.request.urlopen(request, timeout=int(os.environ.get("YICE_TTS_TIMEOUT", "900"))) as response:
             result = json.loads(response.read().decode())
     except (urllib.error.URLError, TimeoutError) as exc:
-        raise RuntimeError(f"{backend} 配音端点请求失败：{exc}") from exc
+        status = getattr(exc, "code", type(exc).__name__)
+        raise RuntimeError(f"{backend} 配音端点请求失败（{status}）") from None
     outputs = result.get("outputs") if isinstance(result, dict) else None
     if not isinstance(outputs, list):
         item = result if isinstance(result, dict) and result.get("audio_base64") else None

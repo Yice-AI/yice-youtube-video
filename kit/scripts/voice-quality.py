@@ -2,6 +2,7 @@
 import difflib
 import math
 import re
+from functools import lru_cache
 
 NUMBER = r'(?:\d+(?:\.\d+)?|[零〇一二两三四五六七八九十百千万亿]+)'
 DIGITS = dict(zip('零〇一二两三四五六七八九', [0, 0, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9]))
@@ -41,7 +42,19 @@ def numeric(value):
     return float(total + section + digit)
 
 
+@lru_cache(maxsize=1)
+def simplifier():
+    try:
+        from opencc import OpenCC
+    except ImportError:
+        table = str.maketrans("攝沒針員個兩邊這覺段間團隊裡裡說剪輯軟體樣視頻鏡頭開場實驗應該還錄終點時長", "摄没针员个两边这觉段间团队里里说剪辑软体样视频镜头开场实验应该还录终点时长")
+        return lambda value: value.translate(table)
+    return OpenCC('t2s').convert
+
+
 def characters(value):
+    value = simplifier()(value)
+    value = value.translate(str.maketrans({'它': '他', '她': '他'}))
     return ''.join(char.lower() for char in value if char.isalnum())
 
 
@@ -60,7 +73,8 @@ def audit(text, transcription, exceptions=None, threshold=.97):
     if raw is None:
         raw = ''.join(segment.get('text', ''.join(word['word'] for word in segment.get('words', [])))
                       for segment in transcription.get('segments', []))
-    heard, events, mappings = raw, [], {}
+    text, heard = simplifier()(text), simplifier()(raw)
+    events, mappings = [], {}
 
     def replace(intended, recognized, kind, reason):
         nonlocal heard

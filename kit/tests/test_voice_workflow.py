@@ -82,6 +82,14 @@ class VoiceWorkflowTests(unittest.TestCase):
         self.assertIn('Mbps', json.dumps(result['number_unit']))
         self.assertEqual(expected, '三十张一百三十二兆十五兆，Codex检查张数。')
 
+    def test_mixed_language_speed_counts_pronunciation_units(self):
+        vc = voice.load_voice_tool('voice-check')
+        wav = self.root / 'mixed.wav'
+        durations = [0.18] * 6 + [0.098] * 11
+        aligned, _ = synthetic(wav, '甲乙丙丁戊己。摄影师是Harness。', durations=durations)
+        result = vc.check_chapter(wav, aligned)
+        self.assertEqual([a for a in result['alerts'] if a['kind'] == 'duration_or_rate_outlier'], [])
+
     def test_wrong_number_and_unregistered_chinese_typo_never_pass(self):
         for expected, heard, rules in [('三十兆', '31Mbps', {}), ('十五', '五十', {'十五':'五十'}),
                                        ('十五兆', '五十兆', {'number_unit': {'十五兆':'五十兆'}}),
