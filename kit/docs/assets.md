@@ -1,5 +1,21 @@
 # 素材入口与许可账本
 
+## 剪辑时按需造画面
+
+六类素材统一从 `produce-asset.sh` 进入。命令会在项目根目录原子更新 `asset-ledger.jsonl`，并在请求前检查 image2 `$5.00` 与图库 60 次整期预算。
+
+```bash
+KIT=/绝对路径/yice-youtube-video/kit
+"$KIT/scripts/produce-asset.sh" --kind metaphor-image --project "$EPISODE" \
+  --id opening-metaphor --prompt '真实摄影感的中文教程开场隐喻' --json
+"$KIT/scripts/produce-asset.sh" --kind motion-video --project "$EPISODE" \
+  --id moving-screen --prompt '夜间工作台上的电脑界面反光' --duration 4 --json
+"$KIT/scripts/produce-asset.sh" --kind rec-task --project "$EPISODE" \
+  --id rec-home --input /项目目录 --prompt '录制首页操作与点击轨迹' --json
+```
+
+`motion-video` 只有在 `YICE_MODAL_SPEND_LIMIT_USD=0` 或 `YICE_MODAL_GUARD_FILE` 明确记录 `spend_limit_usd: 0` 时才会提交。`prop-cutout` 复用既有 `props.py`，`web-capture`、`stock-footage`、`rec-task` 分别复用本目录的网页、图库和录屏入口。
+
 所有入口均不登录、不注册。素材落盘后将来源 URL、抓取日期、许可链接、作者/署名、镜头号、文件与 SHA-256 记入每期 `asset-ledger.jsonl`（字段见模板）。媒体库 `.media/manifest.jsonl` 负责文件复用，不能代替许可账本。
 
 ## icon / 官方标志

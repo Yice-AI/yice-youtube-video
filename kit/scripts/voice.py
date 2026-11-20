@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """T61 的章级 MLX 配音、Whisper 字级估计、captions.align 和换幕静音封装。"""
 import argparse
+import base64
 import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
+import urllib.error
+import urllib.request
 import wave
 from pathlib import Path
 
@@ -55,7 +59,11 @@ def parse_script(path):
     return chapters
 
 
-def generate_jobs(jobs, brand):
+def generate_jobs(jobs, brand, backend="modal", candidates=3):
+    if backend in {"modal", "kaggle"}:
+        for job in jobs:
+            generate_modal_job(job, brand, backend)
+        return
     import random
     sys.path[:0] = [str(TOOLKIT / "local/tools"), str(TOOLKIT / "tools")]
     from local_voiceover import MLXBackend, load_clone
@@ -77,14 +85,142 @@ def generate_jobs(jobs, brand):
             raise RuntimeError(f"MLX 未生成有效 WAV：{target}")
 
 
-def generate_raw(chapters, output, brand, seeds=(42, 43)):
+def semantic_chunks(text, minimum=3, maximum=5, min_chars=60, max_chars=120):
+    """按句末标点切成适合 TTS 的语义组，保留原文顺序。"""
+    sentences = [part.strip() for part in re.findall(r"[^。！？!?]+[。！？!?]*", text) if part.strip()]
+    chunks, current = [], []
+    size = 0
+    for sentence in sentences or [text.strip()]:
+        if current and (len(current) >= maximum or (size >= min_chars and size + len(sentence) > max_chars)):
+            chunks.append("".join(current))
+            current, size = [], 0
+        current.append(sentence)
+        size += len(sentence)
+    if current:
+        chunks.append("".join(current))
+    if len(chunks) > 1 and len(chunks[-1]) < min_chars:
+        chunks[-2] += chunks.pop()
+    return chunks or [text]
+
+
+def _clone_reference(brand):
+    config = TOOLKIT / "brands" / brand / "voice.json"
+    if not config.is_file():
+        raise ValueError(f"缺少声音配置：{config}")
+    data = json.loads(config.read_text())
+    qwen = data.get("qwen3", {})
+    clone = qwen.get("clone", {})
+    ref = Path(clone.get("refAudio", ""))
+    if not ref.is_absolute():
+        ref = TOOLKIT / ref
+    if not ref.is_file():
+        raise ValueError(f"缺少声音参考音频：{ref}")
+    return ref, clone.get("refText", ""), qwen.get("language", "Chinese")
+
+
+def _remote_batch(texts, brand, backend, temperature):
+    """通过 HTTPS 直传 Base64 参考音频，严禁把 clone 请求改写为 R2。"""
+    env_name = "MODAL_QWEN3_TTS_ENDPOINT_URL" if backend == "modal" else "KAGGLE_TTS_ENDPOINT_URL"
+    endpoint = os.environ.get(env_name)
+    if not endpoint:
+        raise ValueError(f"{env_name} 未设置，无法使用 {backend} 配音后端")
+    ref_audio, ref_text, language = _clone_reference(os.environ.get("YICE_VOICE_BRAND", brand))
+    payload = {
+        "text": texts,
+        "mode": "clone",
+        "language": language,
+        "output_format": "wav",
+        "ref_audio_base64": base64.b64encode(ref_audio.read_bytes()).decode("ascii"),
+        "ref_text": ref_text,
+        "temperature": temperature,
+    }
+    request = urllib.request.Request(endpoint, data=json.dumps(payload).encode(),
+                                     headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=int(os.environ.get("YICE_TTS_TIMEOUT", "900"))) as response:
+            result = json.loads(response.read().decode())
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise RuntimeError(f"{backend} 配音端点请求失败：{exc}") from exc
+    outputs = result.get("outputs") if isinstance(result, dict) else None
+    if not isinstance(outputs, list):
+        item = result if isinstance(result, dict) and result.get("audio_base64") else None
+        outputs = [item] if item else []
+    if len(outputs) != len(texts):
+        raise RuntimeError(f"{backend} 配音返回 {len(outputs)} 段，预期 {len(texts)} 段")
+    audio = []
+    for index, item in enumerate(outputs):
+        encoded = item.get("audio_base64") if isinstance(item, dict) else None
+        if not encoded:
+            raise RuntimeError(f"{backend} 配音输出 {index} 缺少 audio_base64")
+        audio.append(base64.b64decode(encoded))
+    return audio
+
+
+def _concat_wavs(paths, target, crossfade_ms=10):
+    """拼接同采样率 WAV，句组边界做 10ms 交叉淡化。"""
+    if not paths:
+        raise ValueError("没有可拼接的句组音频")
+    segments = []
+    params = None
+    for path in paths:
+        with wave.open(str(path), "rb") as source:
+            current = source.getparams()
+            if params is None:
+                params = current
+            if (current.nchannels, current.sampwidth, current.framerate) != (params.nchannels, params.sampwidth, params.framerate):
+                raise ValueError("句组音频采样参数不一致")
+            segments.append(source.readframes(source.getnframes()))
+    width = params.sampwidth
+    if width != 2:
+        with wave.open(str(target), "wb") as output:
+            output.setparams(params)
+            output.writeframes(b"".join(segments))
+        return
+    import array
+    merged = array.array("h")
+    overlap = max(0, round(params.framerate * crossfade_ms / 1000))
+    for raw in segments:
+        current = array.array("h")
+        current.frombytes(raw)
+        if not merged:
+            merged.extend(current)
+            continue
+        n = min(overlap, len(merged), len(current))
+        for i in range(n):
+            a = (n - i) / n
+            b = i / n
+            merged[len(merged) - n + i] = max(-32768, min(32767, round(merged[len(merged) - n + i] * a + current[i] * b)))
+        merged.extend(current[n:])
+    with wave.open(str(target), "wb") as output:
+        output.setparams(params)
+        output.writeframes(merged.tobytes())
+
+
+def generate_modal_job(job, brand, backend="modal"):
+    target = Path(job["path"])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    chunks = semantic_chunks(job["text"])
+    temperatures = [0.65, 0.72, 0.78]
+    temperature = temperatures[int(job.get("seed", 0)) % len(temperatures)]
+    with tempfile.TemporaryDirectory(prefix="yice-tts-") as temporary:
+        raw = []
+        for index, data in enumerate(_remote_batch(chunks, brand, backend, temperature)):
+            path = Path(temporary) / f"chunk-{index:03}.wav"
+            path.write_bytes(data)
+            raw.append(path)
+        _concat_wavs(raw, target)
+    if not target.is_file() or target.stat().st_size <= 44:
+        raise RuntimeError(f"{backend} 未生成有效 WAV：{target}")
+
+
+def generate_raw(chapters, output, brand, seeds=(42, 43), backend="local", candidates=3):
     jobs = [dict(text=chapter["text"], seed=seed,
                  path=str(output / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
             for chapter in chapters for seed in seeds]
-    generate_jobs(jobs, brand)
+    generate_jobs(jobs, brand, backend=backend, candidates=candidates)
 
 
-def make_generator(brand, folder, reuse=None):
+def make_generator(brand, folder, reuse=None, backend="modal", candidates=3):
     import shutil
     folder = Path(folder)
     cached = json.loads(Path(reuse).read_text()) if reuse else []
@@ -123,7 +259,8 @@ def make_generator(brand, folder, reuse=None):
             env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1"}
             with (folder / f"generation-{serial:03}.log").open("w") as log:
                 subprocess.run([python, str(Path(__file__).resolve()), str(request), "--output", str(folder),
-                                "--brand", brand, "--generation-jobs", str(worker_jobs)],
+                                "--brand", brand, "--backend", backend, "--candidates", str(candidates),
+                                "--generation-jobs", str(worker_jobs)],
                                env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
     return generate
 
@@ -326,7 +463,10 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
         # Close pauses against the ACTUAL padded waveform; never add padding twice.
         current = output / record["path"]
         final_edits = []
-        for attempt in range(4):
+        # ``regularize`` closes all measured semantic pauses in one pass. A
+        # second pass re-measures the same lexical boundary as zero-length and
+        # inserts the target pause again, duplicating silence on short chunks.
+        for attempt in range(1):
             destination = output / "analysis" / f"final-semantic-{chapter['id']}-{attempt}.wav"
             final_alignment, edits = post_tool.regularize(
                 current, final_alignment, destination, destination.with_suffix(".npz"))
@@ -364,6 +504,10 @@ def main():
     parser.add_argument("--asr-prompt", default="", help="领域词表；不要提供完整台词诱导识别")
     parser.add_argument("--asr-threshold", type=float, default=.97)
     parser.add_argument("--seeds", default="42,43")
+    parser.add_argument("--backend", choices=["modal", "kaggle", "local"], default="modal",
+                        help="配音后端，默认 Modal；local 仅作离线兜底")
+    parser.add_argument("--candidates", type=int, default=3,
+                        help="每个语义句组的温度候选数，默认3")
     parser.add_argument("--chapters", help="只处理指定章号，如 00,01")
     parser.add_argument("--reuse-candidates", type=Path, help="显式哈希候选缓存；复跑时保留原始生成证据")
     parser.add_argument("--max-repair-rounds", type=int, default=3)
@@ -382,10 +526,11 @@ def main():
         seeds = quality.seeds(args.seeds)
     except ValueError as exc:
         parser.error(str(exc))
-    if not 0 <= args.silence <= 2 or not 0 < args.asr_threshold <= 1 or not 0 <= args.max_repair_rounds <= 3:
-        parser.error("换幕静音须为0–2秒，ASR阈值须为(0,1]，修复轮数须为0–3")
+    if (not 0 <= args.silence <= 2 or not 0 < args.asr_threshold <= 1 or
+            not 0 <= args.max_repair_rounds <= 3 or not 1 <= args.candidates <= 8):
+        parser.error("换幕静音须为0–2秒，ASR阈值须为(0,1]，修复轮数须为0–3，候选数须为1–8")
     if args.generation_jobs:
-        generate_jobs(json.loads(args.generation_jobs.read_text()), args.brand)
+        generate_jobs(json.loads(args.generation_jobs.read_text()), args.brand, backend=args.backend, candidates=args.candidates)
         return
     chapters, output = parse_script(args.script), args.output.resolve()
     if args.chapters:
@@ -394,7 +539,7 @@ def main():
             parser.error("存在未知章号")
         chapters = [chapter for chapter in chapters if chapter["id"] in requested]
     if args.generate_only:
-        generate_raw(chapters, output / "raw", args.brand, seeds)
+        generate_raw(chapters, output / "raw", args.brand, seeds, backend=args.backend, candidates=args.candidates)
         return
     if output.exists() and any(output.iterdir()):
         parser.error(f"输出目录不是空目录，拒绝覆盖：{output}")
@@ -411,7 +556,7 @@ def main():
     (output / "raw").mkdir(parents=True, exist_ok=True)
     (output / "analysis").mkdir()
     write_json(output / "analysis/script-manifest.json", {"chapters": chapters})
-    generate = make_generator(args.brand, output / "generation", args.reuse_candidates)
+    generate = make_generator(args.brand, output / "generation", args.reuse_candidates, args.backend, args.candidates)
     transcribe = make_transcriber(args.asr_model, args.asr_prompt, output / "analysis/asr")
     jobs = [dict(chapter=chapter["id"], text=chapter["text"], seed=seed,
                  path=str(output / "raw" / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))

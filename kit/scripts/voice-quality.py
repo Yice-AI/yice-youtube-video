@@ -123,8 +123,12 @@ def audit(text, transcription, exceptions=None, threshold=.97):
         a, b = numeric(intended), numeric(recognized)
         if a is not None and b is not None and a != b:
             continue  # Never waive a changed number, even via a legacy mapping.
-        intended_numbers = [numeric(match[0]) for match in re.finditer(NUMBER, intended)]
-        heard_numbers = [numeric(match[0]) for match in re.finditer(NUMBER, recognized)]
+        # ``百分之七十三`` contains the prefix ``百``; compare its numeric
+        # payload with ``七十三%`` instead of treating that prefix as 100.
+        intended_numeric_text = intended.replace('百分之', '')
+        recognized_numeric_text = recognized.replace('%', '')
+        intended_numbers = [numeric(match[0]) for match in re.finditer(NUMBER, intended_numeric_text)]
+        heard_numbers = [numeric(match[0]) for match in re.finditer(NUMBER, recognized_numeric_text)]
         if intended_numbers and heard_numbers and intended_numbers != heard_numbers:
             continue
         replace(intended, recognized, kind, '调用者逐项提供的明确放行记录')
@@ -135,6 +139,7 @@ def audit(text, transcription, exceptions=None, threshold=.97):
                 events=events, number_unit=[e for e in events if e['kind'] == 'number_unit'],
                 english_name=[e for e in events if e['kind'] == 'english_name'],
                 homophone=[e for e in events if e['kind'] == 'homophone'],
+                homophone_suspect=[e for e in delta if e['kind'] != 'equal'],
                 normalizations=dict(sorted(mappings.items(), key=lambda pair: -len(pair[1]))), raw_text=raw)
 
 

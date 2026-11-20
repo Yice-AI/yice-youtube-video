@@ -18,6 +18,8 @@ HOP = .01
 THRESHOLDS = dict(single_character_N=2.4, active_character_N=2., onset_character_N=1.7,
                   nonpunct_low_energy_min_ms=60., nonpunct_pause_max_ms=150.,
                   falling_end_st=-4., punctuation_tolerance_ms=20.,
+                  intra_word_drop_db=12., intra_word_min_ms=75., intra_word_max_ms=250.,
+                  rate_outlier_N=1.8, seam_cosine=0.94, seam_pitch_st=3.2, seam_loudness_db=1.8,
                   contrast_pause_ms=[300., 450.], comma_pause_ms=[180., 300.],
                   sentence_pause_ms=[300., 450.])
 
@@ -73,6 +75,10 @@ def add_threshold_arguments(parser):
     parser.add_argument('--comma-ms', type=float, nargs=2, default=[180., 300.])
     parser.add_argument('--contrast-ms', type=float, nargs=2, default=[300., 450.])
     parser.add_argument('--sentence-ms', type=float, nargs=2, default=[300., 450.])
+    parser.add_argument('--intra-word-drop-db', type=float, default=12.)
+    parser.add_argument('--intra-word-min-ms', type=float, default=75.)
+    parser.add_argument('--intra-word-max-ms', type=float, default=250.)
+    parser.add_argument('--rate-outlier-ratio', type=float, default=1.8)
 
 
 def threshold_arguments(args):
@@ -80,7 +86,9 @@ def threshold_arguments(args):
                   onset_character_N=args.onset_ratio, nonpunct_low_energy_min_ms=args.hesitation_ms,
                   nonpunct_pause_max_ms=args.nonpunct_max_ms, falling_end_st=-args.fall_semitones,
                   punctuation_tolerance_ms=args.pause_tolerance_ms, comma_pause_ms=args.comma_ms,
-                  contrast_pause_ms=args.contrast_ms, sentence_pause_ms=args.sentence_ms)
+                  contrast_pause_ms=args.contrast_ms, sentence_pause_ms=args.sentence_ms,
+                  intra_word_drop_db=args.intra_word_drop_db, intra_word_min_ms=args.intra_word_min_ms,
+                  intra_word_max_ms=args.intra_word_max_ms, rate_outlier_N=args.rate_outlier_ratio)
     for name, value in values.items():
         items = value if isinstance(value, list) else [abs(value) if name == 'falling_end_st' else value]
         if not all(np.isfinite(v) and v >= 0 for v in items):
@@ -222,8 +230,10 @@ def measure(path, alignment, cache=None, thresholds=None):
                 text=text, median_char_ms=round(med * 1000, 3),
                 relative_quiet_threshold_dbfs=round(threshold, 3),
                 absolute_silence_45db=absolute, relative_quiet=quiet,
+                db=np.asarray(ac['db']).tolist(),
                 characters=chars, boundaries=boundaries,
                 sentences=[dict(start=a, end=b, text=s) for a, b, s in sranges],
+                chunk_seams=alignment.get('chunk_seams', []),
                 measurement_version=4, duplicate_boundary_attributions_suppressed=suppressed,
                 method='Whisper word alignment; multi-character words evenly apportioned; '
                        'raw-to-post mapping follows exact edits; pYIN 60–450Hz/10ms hop; '
@@ -239,6 +249,7 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
     """
     thresholds = {**THRESHOLDS, **(thresholds or {})}
     d = measurement
+    envelope = np.asarray(d.get('db', []), dtype=float)
     median = chapter_median_ms or d['median_char_ms']
     chars = d['characters']
     flags = []
@@ -250,6 +261,11 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
                 and r['duration_ms'] / median >= thresholds['single_character_N']
                 and r['active_ms'] / median >= thresholds['active_character_N']):
             flags.append(dict(kind='long_character', index=i, sentence=r['sentence'],
+                              char_start=r['charStart'], char_end=r['charEnd'],
+                              ratio=round(r['duration_ms'] / median, 3), token=r['w']))
+        if (internal and re.fullmatch(r'[\u4e00-\u9fff]', r['w'])
+                and thresholds['rate_outlier_N'] <= r['duration_ms'] / median < thresholds['single_character_N']):
+            flags.append(dict(kind='duration_or_rate_outlier', index=i, sentence=r['sentence'],
                               char_start=r['charStart'], char_end=r['charEnd'],
                               ratio=round(r['duration_ms'] / median, 3), token=r['w']))
     for b in d['boundaries']:
@@ -273,6 +289,25 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
                                   sentence=right['sentence'], char_start=left['charStart'],
                                   char_end=right['charEnd'], context=b['context'],
                                   onset_ratio=round(ratio, 3), pause_ms=duration, f0_change_st=fall))
+                if 'mid_sentence_falling_end' in reasons:
+                    flags.append(dict(kind='mid_sentence_fall', index=i, sentence=right['sentence'],
+                                      char_start=left['charStart'], char_end=right['charEnd'],
+                                      f0_change_st=fall, pause_ms=duration, context=b['context']))
+            # Compare the local 10ms envelope around adjacent syllables. This
+            # catches a short relative collapse that never reaches -42 dBFS.
+            times = np.arange(len(envelope)) * HOP
+            ids = np.flatnonzero((times >= max(left['s'], right['s'] - .08)) &
+                                 (times <= min(right['e'], left['e'] + .08)))
+            if len(ids) >= 5:
+                values = envelope[ids]
+                side = max(1, len(values) // 3)
+                drop = min(float(np.max(values[:side])), float(np.max(values[-side:]))) - float(np.min(values))
+                duration_ms = min(thresholds['intra_word_max_ms'], max(0., (times[ids[-1]] - times[ids[0]]) * 1000))
+                if drop >= thresholds['intra_word_drop_db'] and duration_ms >= thresholds['intra_word_min_ms']:
+                    flags.append(dict(kind='intra_word_stutter', index=i, sentence=right['sentence'],
+                                      char_start=left['charStart'], char_end=right['charEnd'],
+                                      drop_db=round(drop, 2), duration_ms=round(duration_ms, 2),
+                                      context=b['context']))
         elif b['kind'] in ['comma', 'contrast', 'sentence']:
             low, high = b['range_ms']
             if not low - thresholds['punctuation_tolerance_ms'] <= b['pause_ms'] <= high + thresholds['punctuation_tolerance_ms']:
@@ -280,6 +315,14 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
                                   char_start=left['charStart'], char_end=right['charEnd'],
                                   context=b['context'], pause_class=b['kind'],
                                   pause_ms=b['pause_ms'], expected_ms=b['range_ms']))
+    for seam in d.get('chunk_seams', []):
+        if not isinstance(seam, dict):
+            continue
+        cosine, pitch, loudness = seam.get('mfcc_mean_cosine'), seam.get('pitch_shift_semitones'), seam.get('loudness_delta_db')
+        if ((cosine is not None and cosine < thresholds['seam_cosine']) or
+                (pitch is not None and abs(pitch) > thresholds['seam_pitch_st']) or
+                 (loudness is not None and abs(loudness) > thresholds['seam_loudness_db'])):
+            flags.append(dict(kind='chunk_seam_jump', seam=seam))
     return flags
 
 def check_chapter(audio, alignment, *, chapter=None, cache=None, thresholds=None):

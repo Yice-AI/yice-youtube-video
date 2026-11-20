@@ -5,7 +5,7 @@ import {analyzeRendered} from './cinema-frames.mjs';
 import {probeCompositions} from './cinema-probe.mjs';
 import {mediaCoverage} from './media-coverage.mjs';
 
-export const DEFAULT_CINEMA_LIMITS=Object.freeze({maxStillSeconds:2.5,minReadTextPx:28,maxNoCameraRatio:.5,pixelDelta:10,changedFraction:.002,minTranslationPx:.5,minScaleChange:.001,minRealRatio:.3,minChangesPerSecond:.45});
+export const DEFAULT_CINEMA_LIMITS=Object.freeze({maxStillSeconds:2.5,minReadTextPx:28,maxNoCameraRatio:.5,pixelDelta:10,changedFraction:.002,minTranslationPx:.5,minScaleChange:.001,minRealRatio:.3,minChangesPerSecond:.45,maxNearStaticSourceSeconds:1.8});
 
 export function cinemaLimits(overrides={}){
   const limits={...DEFAULT_CINEMA_LIMITS,...overrides};
@@ -18,10 +18,17 @@ export function evaluateCinema({scenes,frames,probe,media,limits={}}){
   limits=cinemaLimits(limits);const findings=[];
   if(!scenes?.length)throw new Error('画面检查需要镜头列表');
   for(const scene of scenes){
+    const viewports=[scene.props?.viewport,...(scene.props?.viewports||[]),scene.props?.left,scene.props?.right,scene.viewport].filter(Boolean);
+    for(const viewport of viewports){const width=Number(viewport.width??viewport.w),height=Number(viewport.height??viewport.h);if(Number.isFinite(width)&&Number.isFinite(height)&&width/height<1.35)findings.push({severity:'error',code:'horizontal_aspect_cropped',scenes:[scene.id],message:'16:9 承载窗口宽高比小于1.35',actual:{width,height,ratio:width/height}});}
     const row=frames.scenes.find(s=>s.id===scene.id);
     if(!row||!row.frames){findings.push({severity:'error',code:'cinema_input_missing',scenes:[scene.id],message:'缺少该镜头成片帧'});continue;}
     const runs=row.stillRuns.filter(r=>r.seconds>limits.maxStillSeconds+1e-8);
     if(runs.length)findings.push({severity:'error',code:'shot_still_too_long',scenes:[scene.id],message:`镜头内静止超过 ${limits.maxStillSeconds}s`,actual:row.longestStillSeconds,runs});
+    const sourceVideo = scene.sourceType === 'recording' || scene.sourceType === 'camera' ||
+      ['device-stage','laptop-3d','filmed-screen','cursor-zoom','phone-cam','cinematic-broll','terminal-over-footage','suspect-focus','footage-bigword'].includes(scene.recipe);
+    const staticRuns = row.stillRuns.filter(r=>r.seconds>limits.maxNearStaticSourceSeconds+1e-8);
+    if(sourceVideo && staticRuns.length)findings.push({severity:'error',code:'near_static_source',scenes:[scene.id],message:`源画面连续静止超过 ${limits.maxNearStaticSourceSeconds}s`,runs:staticRuns});
+    for(const box of row.blankBoxes||[])if(box.blank===true||Number(box.variance??1)<.002)findings.push({severity:'error',code:'blank_or_low_variance_box',scenes:[scene.id],message:'检测到空白或低方差画面框',box});
   }
   for(const region of probe.readings){
     if(region.error||!Number.isFinite(region.effectiveTextHeightPx))findings.push({severity:'error',code:'readability_unmeasured',scenes:[region.scene],region:region.region,message:region.error||'重点区域字高未测得'});
@@ -29,6 +36,7 @@ export function evaluateCinema({scenes,frames,probe,media,limits={}}){
   }
   const missingCamera=scenes.filter(s=>!probe.camera.some(c=>c.id===s.id));
   if(missingCamera.length)findings.push({severity:'error',code:'cinema_input_missing',scenes:missingCamera.map(s=>s.id),message:'缺少实际机位层采样'});
+  for(const row of probe.camera||[])if(row.aspect?.length)findings.push({severity:'error',code:'horizontal_aspect_cropped',scenes:[row.id],message:'成片媒体窗口宽高比小于1.35或存在高风险cover裁切',boxes:row.aspect});
   const noCamera=scenes.filter(s=>!probe.camera.find(c=>c.id===s.id)?.moving).map(s=>s.id),ratio=noCamera.length/scenes.length;
   if(ratio>limits.maxNoCameraRatio+1e-8)findings.push({severity:'error',code:'camera_motion_ratio_low',scenes:noCamera,actual:ratio,message:`无推/移/视差的镜头占比 ${(ratio*100).toFixed(1)}%，超过 ${limits.maxNoCameraRatio*100}%`});
   if(!Number.isFinite(media?.realRatio))findings.push({severity:'error',code:'media_coverage_unmeasured',message:'未核对实际素材文件与占时长'});

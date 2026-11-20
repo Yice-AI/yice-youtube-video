@@ -303,5 +303,273 @@
     "text": "这就搞定了",
     "ink": "blue",
     "tier": "default"
+  },
+  "shot-wall": {
+    "stage": "charcoal",
+    "showTitle": false,
+    "window": 60,
+    "rows": [
+      {
+        "label": "参考频道 A",
+        "shots": [
+          {
+            "d": 2.5,
+            "k": "real"
+          },
+          {
+            "d": 1.2,
+            "k": "real"
+          },
+          {
+            "d": 3,
+            "k": "screen"
+          },
+          {
+            "d": 1.8,
+            "k": "real"
+          },
+          {
+            "d": 2.2,
+            "k": "graphic"
+          },
+          {
+            "d": 4,
+            "k": "real"
+          },
+          {
+            "d": 1.5,
+            "k": "real"
+          },
+          {
+            "d": 2.8,
+            "k": "screen"
+          },
+          {
+            "d": 3.5,
+            "k": "real"
+          },
+          {
+            "d": 1.6,
+            "k": "real"
+          },
+          {
+            "d": 2.4,
+            "k": "graphic"
+          },
+          {
+            "d": 5,
+            "k": "real"
+          },
+          {
+            "d": 2,
+            "k": "real"
+          },
+          {
+            "d": 3.3,
+            "k": "screen"
+          },
+          {
+            "d": 4.2,
+            "k": "real"
+          },
+          {
+            "d": 1.9,
+            "k": "real"
+          },
+          {
+            "d": 2.6,
+            "k": "real"
+          },
+          {
+            "d": 3.1,
+            "k": "graphic"
+          },
+          {
+            "d": 4.4,
+            "k": "real"
+          },
+          {
+            "d": 2.0,
+            "k": "real"
+          },
+          {
+            "d": 4.0,
+            "k": "real"
+          }
+        ],
+        "at": 0.2,
+        "sweep": 3.2
+      },
+      {
+        "label": "我们 · 首版",
+        "shots": [
+          {
+            "d": 3.5,
+            "k": "graphic"
+          },
+          {
+            "d": 4,
+            "k": "graphic"
+          },
+          {
+            "d": 3,
+            "k": "real"
+          },
+          {
+            "d": 4.5,
+            "k": "graphic"
+          },
+          {
+            "d": 5,
+            "k": "screen"
+          },
+          {
+            "d": 4,
+            "k": "graphic"
+          },
+          {
+            "d": 6,
+            "k": "graphic"
+          },
+          {
+            "d": 5,
+            "k": "graphic"
+          },
+          {
+            "d": 5,
+            "k": "screen"
+          }
+        ],
+        "at": 1.2,
+        "sweep": 2.4,
+        "focus": 2
+      }
+    ],
+    "source": "示例数据 · 成片换成自测逐镜表"
+  },
+  "broll-caption": {
+    "media": "@assets/footage.mp4",
+    "caption": [
+      "问题出在哪"
+    ],
+    "side": "left",
+    "cutZoom": [
+      {
+        "at": 1.6,
+        "scale": 1.3
+      }
+    ],
+    "mark": {
+      "kind": "underline"
+    },
+    "credit": "Pexels · 示例素材"
+  },
+  "phone-cam": {
+    "media": "@assets/phone.mp4",
+    "badge": "手机实拍",
+    "speed": 4,
+    "focus": {
+      "x": 700,
+      "y": 380,
+      "w": 420,
+      "h": 160,
+      "at": 1.6,
+      "scale": 1.5
+    },
+    "label": "一家一家去找",
+    "stamp": {
+      "text": "行",
+      "at": 3.2
+    }
+  },
+  "split-compare": {
+    "left": "@assets/left.mp4",
+    "right": "@assets/right.mp4",
+    "focusTimeline": [
+      {
+        "at": 0.8,
+        "side": "left"
+      }
+    ]
+  },
+  "blueprint-diagram": {
+    "topology": "flow",
+    "nodes": [
+      {
+        "id": "input",
+        "title": "输入",
+        "at": 0.2
+      },
+      {
+        "id": "model",
+        "title": "模型",
+        "at": 0.5
+      },
+      {
+        "id": "output",
+        "title": "结果",
+        "at": 0.8
+      }
+    ],
+    "edges": [
+      {
+        "from": "input",
+        "to": "model",
+        "at": 0.35
+      },
+      {
+        "from": "model",
+        "to": "output",
+        "at": 0.65
+      }
+    ]
+  },
+  "cinematic-broll": {
+    "media": "@assets/broll.mp4",
+    "tag": "真实证据"
+  },
+  "terminal-over-footage": {
+    "media": "@assets/broll.mp4",
+    "lines": [
+      {
+        "text": "$ render --quality high",
+        "at": 0.3
+      },
+      {
+        "text": "✓ completed",
+        "at": 0.9
+      }
+    ]
+  },
+  "suspect-focus": {
+    "media": "@assets/evidence.png",
+    "label": "重点证据"
+  },
+  "footage-bigword": {
+    "media": "@assets/broll.mp4",
+    "text": "卡顿"
+  },
+  "desk-dispatch": {
+    "items": [
+      {
+        "label": "录屏",
+        "media": "@assets/screen.mp4"
+      },
+      {
+        "label": "旁白"
+      }
+    ]
+  },
+  "ruler-measure": {
+    "rows": [
+      {
+        "label": "实测画面",
+        "value": 72
+      },
+      {
+        "label": "实拍素材",
+        "value": 38
+      }
+    ]
   }
 }

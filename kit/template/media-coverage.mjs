@@ -10,7 +10,7 @@ export function sceneMediaClass(scene,media,ledger=[]){
   if(['brand-hero','sticker-text'].includes(recipe))return 'graphics';
   if(['cutout-stack','reaction-cutout'].includes(recipe))return 'cutout';
   if(['news-card','social-post','device-stage','laptop-3d','filmed-screen','cursor-zoom','hand-mark','doc-zoom','rec-zoom','editor'].includes(recipe))return 'screenshot';
-  if(['stock-shot','action-montage'].includes(recipe))return media.some(m=>m.video)?'real_video':'photo';
+  if(['stock-shot','action-montage','broll-caption','phone-cam'].includes(recipe))return media.some(m=>m.video)?'real_video':'photo';
   if(['photo-path','photo-word','quote-fragments'].includes(recipe))return 'photo';
   if(['paper-break','visual-contrast'].includes(recipe))return 'cutout';
   return real.has(scene.mediaClass)?scene.mediaClass:'graphics';

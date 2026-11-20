@@ -3,15 +3,88 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { RECORDING_CONTAINERS, prepareVocab, vocabLayout } from './vocab-props.mjs';
 
-export const SOURCE_TYPES = ['recording', 'code_animation', 'third_party', 'web_capture', 'image2'];
+export const SOURCE_TYPES = ['recording', 'code_animation', 'third_party', 'web_capture', 'image2', 'camera'];
 export const DEFAULT_VISUAL_LIMITS = Object.freeze({
   maxBareRecordingSeconds: 20, minNonRecordingRatio: 0.4, minSourceTypes: 3,
   maxRecipeUses: 4, minTransitionKinds: 0, maxPreviousRecipeOverlap: 0.7, minNewRecipes: 1,
   minRecordingContainerKinds: 2,
-  minTitleFreeRatio: 0.4, maxConsecutiveLayout: 3,
+  minTitleFreeRatio: 0.4, maxConsecutiveLayout: 3, maxMaterialUses: 3,
+  strictRecipeOnly: false,
 });
 const EPS = 1e-6;
 const round = n => Math.round(n * 1e6) / 1e6;
+
+function collectStrings(value, out = []) {
+  if (typeof value === 'string') out.push(value);
+  else if (Array.isArray(value)) value.forEach(v => collectStrings(v, out));
+  else if (value && typeof value === 'object') Object.values(value).forEach(v => collectStrings(v, out));
+  return out;
+}
+
+function collectMediaRefs(value, out = []) {
+  if (typeof value === 'string' && value.startsWith('@media/')) out.push(value.split(/[?#]/, 1)[0]);
+  else if (Array.isArray(value)) value.forEach(v => collectMediaRefs(v, out));
+  else if (value && typeof value === 'object') Object.values(value).forEach(v => collectMediaRefs(v, out));
+  return out;
+}
+
+// 这些规则对应成片审片时最容易漏掉的三类硬伤：截断字、制作占位词/拍号、以及只剩纸面底纹的镜头。
+const KNOWN_RECIPES = new Set([
+  'news-card','social-post','chat-bubble','device-stage','laptop-3d','filmed-screen','cursor-zoom',
+  'terminal-run','code-diff','bar-compare','progress-ring','rank-race','concept-hub','photo-path',
+  'hand-mark','word-swap','headline-slam','action-montage','quote-fragments','visual-contrast',
+  'cutout-stack','paper-break','brand-hero','sticker-text','reaction-cutout','shot-wall','broll-caption',
+  'phone-cam','split-compare','blueprint-diagram','cinematic-broll','terminal-over-footage','suspect-focus',
+  'footage-bigword','desk-dispatch','ruler-measure','stock-shot','doc-zoom','rec-zoom','editor'
+]);
+
+export function auditVisualIntegrity(scenes, config) {
+  const findings = [], materialCounts = {}, materialScenes = {};
+  const fail = (code, message, details) => findings.push({ severity: 'error', code, message, details });
+  const placeholder = /临时替代|占位|待补|参考频道|当前版|自测逐镜数据/;
+  const shotNumber = /(?:^|[^A-Za-z0-9])B\d{2}-\d{2}[a-z]?(?:$|[^A-Za-z0-9])/;
+  const truncated = /Johnny Harri(?:$|\s|[·：:])|Harnes(?:$|\s|[·：:])|还是P(?:$|\s|[·：:])|最后一(?:$|\s|[，。！？·：:])|约1(?:$|\s|[·：:])/;
+  for (const scene of scenes) {
+    const visible = [scene.props, scene.spec, scene.layers, scene.overlays, scene.visual].filter(Boolean);
+    const strings = collectStrings(visible);
+    const bad = strings.filter(text => placeholder.test(text) || shotNumber.test(text) || truncated.test(text));
+    if (bad.length) fail('ocr_text_suspect', `${scene.id} 上屏文本疑似截断、占位词或拍号`, { scene: scene.id, texts: [...new Set(bad)] });
+    const refs = collectMediaRefs([scene.media, ...visible]);
+    for (const ref of refs) {
+      materialCounts[ref] = (materialCounts[ref] || 0) + 1;
+      (materialScenes[ref] ||= []).push(scene.id);
+    }
+    const paperOnly = refs.length > 0 && refs.every(ref => /(?:^|\/)paper\.jpg$/i.test(ref)) &&
+      scene.recipe !== 'news-card' && !['props', 'spec'].some(key => {
+        const v = scene[key]; return v && /(?:items|clips|images|left|right|title|text|caption|word|rows)/.test(JSON.stringify(v));
+      });
+    if (paperOnly) fail('blank_frame_candidate', `${scene.id} 只有纸面底纹，可能出现空白帧`, { scene: scene.id, media: refs });
+    if (config.strictRecipeOnly && !KNOWN_RECIPES.has(scene.recipe)) {
+      fail('strict_recipe_only', `${scene.id} 使用未登记配方 ${scene.recipe}`, { scene: scene.id, recipe: scene.recipe });
+    }
+    const viewports = [scene.props?.viewport, ...(scene.props?.viewports || []), scene.props?.left, scene.props?.right,
+      ...(scene.props?.windows || []), scene.viewport].filter(Boolean);
+    for (const viewport of viewports) {
+      const width = Number(viewport.width ?? viewport.w), height = Number(viewport.height ?? viewport.h);
+      if (Number.isFinite(width) && Number.isFinite(height) && width / height < 1.35) {
+        fail('horizontal_aspect_cropped', `${scene.id} 的横屏承载窗口宽高比 ${round(width / height)} 小于 1.35`, { scene: scene.id, width, height, ratio: round(width / height) });
+      }
+      if (viewport.objectFit === 'cover' && Number(viewport.cropWidthRatio ?? 0) > .15) {
+        fail('horizontal_aspect_cropped', `${scene.id} 的 cover 裁掉超过15%横向内容`, { scene: scene.id, cropWidthRatio: viewport.cropWidthRatio });
+      }
+    }
+    for (const box of [...(scene.props?.boxes || []), ...(scene.visual?.boxes || [])]) {
+      if (box.blank === true || Number(box.variance ?? 1) < .002) {
+        fail('blank_or_low_variance_box', `${scene.id} 存在空白或低方差画面框`, { scene: scene.id, box });
+      }
+    }
+  }
+  const repeated = Object.fromEntries(Object.entries(materialCounts).filter(([, count]) => count > config.maxMaterialUses));
+  if (Object.keys(repeated).length) {
+    fail('material_repeated', `同一素材出现次数超过 ${config.maxMaterialUses} 次`, Object.fromEntries(Object.entries(repeated).map(([ref, count]) => [ref, { count, scenes: materialScenes[ref] }])));
+  }
+  return { findings, materialCounts };
+}
 
 function union(intervals) {
   const result = [];
@@ -41,16 +114,17 @@ function inferMedia(media, recipe, assumptions) {
   if (media.sourceType) return sourceType(media.sourceType);
   const src = String(Array.isArray(media.src) ? media.src[0] : media.src || '');
   let type = recipe === 'rec-zoom' || RECORDING_CONTAINERS.includes(recipe) ? 'recording' : ['doc-zoom', 'news-card'].includes(recipe) ? 'web_capture' :
-    recipe === 'stock-shot' ? 'third_party' : /@assets\/|\/props\/|\/image-\d/.test(src) ? 'image2' :
+    ['stock-shot', 'broll-caption'].includes(recipe) ? 'third_party' : recipe === 'phone-cam' ? 'camera' : /@assets\/|\/props\/|\/image-\d/.test(src) ? 'image2' :
     /\.(mp4|mov|webm)(?:[?#]|$)/i.test(src) ? 'recording' : null;
   if (type) assumptions.add(`兼容旧镜头表：${recipe || '未注明配方'} / ${src} → ${type}；新素材请显式写 sourceType。`);
   return type;
 }
 
 export function evaluateVisualVariety({ beats, episode = {}, timing = [], buildReport = [], previous = null, limits = {}, assetLedger = [], thumbnailManifest = {} }) {
-  const config = { ...DEFAULT_VISUAL_LIMITS, ...(episode.visual?.limits || {}), ...limits };
+  const config = { ...DEFAULT_VISUAL_LIMITS, strictRecipeOnly: episode.visual?.strictRecipeOnly ?? DEFAULT_VISUAL_LIMITS.strictRecipeOnly,
+    ...(episode.visual?.limits || {}), ...limits };
   for (const [key, value] of Object.entries(config)) {
-    if (!(key in DEFAULT_VISUAL_LIMITS) || !Number.isFinite(value) || value < 0) throw new Error(`无效 visual.limits.${key}`);
+    if (!(key in DEFAULT_VISUAL_LIMITS) || (key === 'strictRecipeOnly' ? typeof value !== 'boolean' : !Number.isFinite(value) || value < 0)) throw new Error(`无效 visual.limits.${key}`);
   }
   if (config.minNonRecordingRatio > 1 || config.maxPreviousRecipeOverlap > 1 || config.minTitleFreeRatio > 1) throw new Error('比例阈值必须在 0–1 之间');
   let scenes = Array.isArray(beats) ? beats : beats.scenes || beats.shots;
@@ -162,6 +236,8 @@ export function evaluateVisualVariety({ beats, episode = {}, timing = [], buildR
   if(titleFreeRatio+EPS<config.minTitleFreeRatio)fail('title_free_ratio_low',`不出左上标题的镜头不足 ${config.minTitleFreeRatio*100}%`,{actual:round(titleFreeRatio),titleFreeScenes,totalScenes:timeline.length});
   const repeatedLayouts=layoutRuns.filter(r=>r.count>config.maxConsecutiveLayout);
   if(repeatedLayouts.length)fail('layout_repeated',`同一版式骨架连续超过 ${config.maxConsecutiveLayout} 镜`,repeatedLayouts);
+  const integrity = auditVisualIntegrity(scenes, config);
+  findings.push(...integrity.findings);
   let comparison = { status: 'no_previous', note: '未提供上一期指纹；仅首期可省略，后续请配置 visual.previousFingerprint。' };
   if (previous) {
     if (!previous.recipeCounts || !Object.keys(previous.recipeCounts).length) throw new Error('上一期视觉指纹缺少 recipeCounts');
@@ -178,7 +254,7 @@ export function evaluateVisualVariety({ beats, episode = {}, timing = [], buildR
   const commentary=assetLedger.filter(a=>a.tier==='commentary'&&(thumbnailIds.has(a.id)||thumbnailScenes.has(a.scene)||a.role==='thumbnail'||a.usage==='thumbnail'||a.thumbnail===true));
   for(const scene of scenes)if((scene.role==='thumbnail'||thumbnailScenes.has(scene.id))&&scene.props?.tier==='commentary')commentary.push({id:scene.id});
   if(commentary.length)fail('commentary_in_thumbnail','缩略图含仅允许正文评论的人物素材',{assets:commentary.map(a=>a.id)});
-  return { ok: findings.length === 0, findings, limits: config, fingerprint, comparison, assumptions: [...assumptions] };
+  return { ok: findings.length === 0, findings, limits: config, fingerprint, comparison, assumptions: [...assumptions], integrity: { materialCounts: integrity.materialCounts } };
 }
 
 export function checkVisualVariety(root, { previousPath, outputDir = root } = {}) {

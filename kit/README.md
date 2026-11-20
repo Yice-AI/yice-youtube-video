@@ -27,6 +27,7 @@ DO_NOT_TRACK=1 npm run check -- --rendered "$PROJECT/renders/render-时间戳.mp
 | 新一期 | 默认项目放 toolkit/local/episodes，可用 `new-episode.sh ep02 --dir /项目目录` 指定。已有剧本目录可继续用；只补缺少的文件，保留已有剧本、幕表和配置。目录里的 episode.id 不符则停止。 |
 | 配音 | 每章一次连续 MLX 8bit 生成，默认每幕前插 0.2 秒静音；〔核〕不朗读。voice/ 输出章 WAV、firstCharTime/anchors 时间轴、manifest、voice.srt；raw/ 和 analysis/ 保留原音与对齐依据。重新生成用新的空输出目录。 |
 | 素材 | 手工素材放 assets/local；道具和库存图放 assets/props、assets/stock。assets/media 由 build 重建。录屏复用 toolkit/local/tools/rec/rec.sh，例如 `rec.sh 60 /绝对路径/demo.mov`，同时保存独立鼠标轨迹。 |
+| 剪辑时造画面 | `kit/scripts/produce-asset.sh --kind metaphor-image|prop-cutout|motion-video|web-capture|stock-footage|rec-task`。每次成功调用原子写入项目 `asset-ledger.jsonl`，自动检查 image2 `$5`、图库 60 次和 Modal `spend_limit_usd=0`。 |
 | 真实素材候选 | `find-media.sh --q 'laptop' --type photo --n 8` 合并 Commons/NASA/Archive，先出许可清单和候选拼图；选定 ID 后再下载、转 MP4 并入账。见 [素材入口](docs/assets.md)。 |
 | 抠图剪报 | `cutout.sh 照片 --project 目录 --id 名称 --source-json 来源记录.json --angle -3`，本地生成透明 PNG、白边纸纹投影版并入账；支持先裁切主体。见 [抠图说明](docs/assets.md#透明抠图与剪报)。 |
 | 道具 | `props.sh props.json --case-dir /本案统一道具目录 --budget 2`；计划格式见 template/props.example.json，每件 candidates=N。图片在 images/，深炭检查图在 checks/；把 images 路径填进 episode.json 的 @assets/。所有批次必须共用同一个 case-dir，成功候选不重复付费。 |

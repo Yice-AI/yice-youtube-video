@@ -55,13 +55,26 @@ def regularize(path, alignment, destination, cache, scene_boundaries=(), scene_p
         target = (low + high) / 2 - padding
         if target < .03:
             raise ValueError('Scene padding exceeds semantic pause budget')
+        verified_alignment_gap = (
+            not b['pause_interval'] and b.get('asr_gap_ms', 0) / 1000 > high and
+            any(a <= left['e'] and z >= right['s']
+                for a, z in measurements.get('absolute_silence_45db', []))
+        )
         if b['pause_interval']:
             a, z = b['pause_interval']
+        elif verified_alignment_gap:
+            # Whisper can leave a large word-time gap even when the waveform
+            # contains verified absolute silence. Trim that silence to the
+            # semantic target instead of treating the boundary as zero-length
+            # and inserting a second pause.
+            a, z = left['e'], right['s']
         else:
             # Insert at the aligned lexical boundary, not inside the previous
             # word. Edge fades suppress clicks without discarding phonemes.
-            center = (left['e'] + right['s']) / 2
-            at = round(center * sr) / sr
+            # Place an inserted pause exactly after the left lexical item. A
+            # rounded midpoint can land a fraction after ``left['e']`` and
+            # make the end-time mapper extend the preceding character.
+            at = round(left['e'] * sr) / sr
             a = z = at
         delta = target - (z - a)
         fade = round(fade_ms / 1000 * sr)
@@ -70,7 +83,10 @@ def regularize(path, alignment, destination, cache, scene_boundaries=(), scene_p
             count = round(delta * sr)
             edits.append(dict(start_s=at / sr, end_s=at / sr,
                               new_duration_s=count / sr, insert_samples=count,
-                              sample_epsilon_s=.5 / sr,
+                              # Allow two samples of alignment quantization so
+                              # the left character's end remains before the
+                              # inserted pause rather than absorbing it.
+                              sample_epsilon_s=2 / sr,
                               kind='insert', char_boundary=b['char_boundary'],
                               pause_class=b['kind'], before_ms=b['pause_ms'],
                               intended_final_ms=round((target + padding) * 1000, 3),
@@ -89,10 +105,31 @@ def regularize(path, alignment, destination, cache, scene_boundaries=(), scene_p
                               pause_class=b['kind'], before_ms=b['pause_ms'],
                               intended_final_ms=round((target + padding) * 1000, 3),
                               scene_padding_ms=padding * 1000))
+    # A single low-energy interval can be attributed to two nearby punctuation
+    # boundaries after Whisper's word-time interpolation.  Keep the stronger
+    # semantic edit and record the suppressed one instead of aborting the whole
+    # chapter.  The old hard failure made short, independently generated chunks
+    # impossible to assemble when their boundaries landed close together.
     edits.sort(key=lambda e: e['start_s'])
-    for left, right in zip(edits, edits[1:]):
-        if left['end_s'] > right['start_s']:
-            raise ValueError('Overlapping pause edits')
+    resolved, suppressed = [], []
+    priority = {'sentence': 3, 'contrast': 3, 'comma': 2, 'list': 1, 'none': 0}
+    for edit in edits:
+        current = edit
+        while current is not None and resolved and current['start_s'] < resolved[-1]['end_s']:
+            previous = resolved[-1]
+            current_key = (priority.get(current.get('pause_class'), 0),
+                           abs(current.get('before_ms', 0) - current.get('intended_final_ms', 0)))
+            previous_key = (priority.get(previous.get('pause_class'), 0),
+                            abs(previous.get('before_ms', 0) - previous.get('intended_final_ms', 0)))
+            if current_key > previous_key:
+                suppressed.append(previous)
+                resolved.pop()
+            else:
+                suppressed.append(current)
+                current = None
+        if current is not None:
+            resolved.append(current)
+    edits = resolved
     for e in reversed(edits):
         a, b = round(e['start_s'] * sr), round(e['end_s'] * sr)
         fade = round(fade_ms / 1000 * sr)
@@ -119,6 +156,61 @@ def regularize(path, alignment, destination, cache, scene_boundaries=(), scene_p
     destination.parent.mkdir(parents=True, exist_ok=True)
     sf.write(destination, x, sr, subtype='FLOAT')
     updated['semantic_pause_edits'] = edits
+    updated['suppressed_pause_edits'] = suppressed
+    return updated, edits
+
+
+def trim_nonpunct_pauses(path, alignment, destination, cache, *, thresholds=None,
+                         target_ms=120., fade_ms=10.):
+    """Trim verified low-energy gaps at non-punctuation boundaries.
+
+    Qwen3-TTS can insert a long breath-like gap inside a sentence.  It is safe
+    to shorten only the measured low-energy interval, with a small crossfade;
+    cutting voiced samples or fabricating a boundary is prohibited.
+    """
+    x, sr = sf.read(path, always_2d=True)
+    x = x.mean(axis=1)
+    measurements = pd.measure(path, alignment, cache, thresholds)
+    maximum = float((thresholds or pd.THRESHOLDS)['nonpunct_pause_max_ms'])
+    target = min(float(target_ms), max(20., maximum - 10.)) / 1000.
+    fade = max(1, round(fade_ms / 1000 * sr))
+    edits = []
+    for boundary in measurements['boundaries']:
+        if boundary['kind'] != 'none' or not boundary['pause_interval']:
+            continue
+        a, z = boundary['pause_interval']
+        if boundary['pause_ms'] <= maximum or z - a <= target:
+            continue
+        loss = round((z - a - target) * sr)
+        middle = round((a + z) * .5 * sr)
+        left = middle - (loss - fade) // 2
+        right = left + loss - fade
+        begin, end = left - fade, right + fade
+        if begin < round(a * sr) or end > round(z * sr) or end <= begin:
+            continue
+        edits.append(dict(start_s=begin / sr, end_s=end / sr,
+                          new_duration_s=fade / sr, kind='nonpunct_trim',
+                          char_boundary=boundary['char_boundary'],
+                          pause_class=boundary['kind'], before_ms=boundary['pause_ms'],
+                          intended_final_ms=round(target * 1000, 3)))
+    edits.sort(key=lambda e: e['start_s'])
+    for left, right in zip(edits, edits[1:]):
+        if left['end_s'] > right['start_s']:
+            raise ValueError('Overlapping non-punctuation trims')
+    for edit in reversed(edits):
+        a, b = round(edit['start_s'] * sr), round(edit['end_s'] * sr)
+        n = round(edit['new_duration_s'] * sr)
+        t = np.linspace(0, 1, n)
+        blend = x[a:a+n] * (1 - t) + x[b-n:b] * t
+        x = np.r_[x[:a], blend, x[b:]]
+    updated = copy.deepcopy(alignment)
+    for row in updated['mapped']:
+        row['s'] = map_time(row['s'], edits, 'start')
+        row['e'] = map_time(row['e'], edits, 'end')
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(destination, x, sr, subtype='FLOAT')
+    updated['nonpunct_pause_edits'] = edits
     return updated, edits
 
 def breath_candidates(samples, rate, alignment, acoustic):
@@ -275,7 +367,11 @@ def postprocess(audio, alignment, output, *, speed=1.08, breath_db=-12.,
         destination = temp / 'semantic.wav'
         updated, pauses = regularize(prepared, updated, destination, temp / 'breaths.npz',
                                     scene_boundaries, scene_padding, fade_ms, thresholds)
-        levels = normalize_lufs(destination, temp / 'normalized.wav', lufs)
+        nonpunct = temp / 'nonpunct.wav'
+        updated, nonpunct_edits = trim_nonpunct_pauses(
+            destination, updated, nonpunct, temp / 'nonpunct.npz', thresholds=thresholds,
+            fade_ms=fade_ms)
+        levels = normalize_lufs(nonpunct, temp / 'normalized.wav', lufs)
         samples, rate = sf.read(temp / 'normalized.wav')
         temporary = output.with_name(output.stem + '.tmp.wav')
         sf.write(temporary, samples, rate, subtype='PCM_24')
@@ -283,6 +379,8 @@ def postprocess(audio, alignment, output, *, speed=1.08, breath_db=-12.,
     updated['postprocessing'] = dict(speed=speed, breath_gain_db=breath_db,
                                     breath_events=breaths, breath_trims=trims,
                                     semantic_pause_edits=pauses, fade_ms=fade_ms,
+                                    suppressed_pause_edits=updated.get('suppressed_pause_edits', []),
+                                    nonpunct_pause_edits=nonpunct_edits,
                                     scene_padding_s=scene_padding,
                                     scene_boundaries=list(scene_boundaries),
                                     duration_s=len(samples) / rate, loudness=levels)

@@ -73,6 +73,17 @@ class VoiceCheckTests(unittest.TestCase):
         audio, aligned = self.synth(gaps={1: .23})
         self.assertTrue(any("nonpunct_pause" in f.get("reasons", []) for f in self.scan(audio, aligned)["alerts"]))
 
+    def test_intra_word_micro_dip_is_flagged(self):
+        audio, aligned = self.synth(text="甲乙丙丁戊己。")
+        samples, rate = sf.read(audio)
+        right = aligned["mapped"][2]
+        start = round(right["s"] * rate) + round(.05 * rate)
+        end = start + round(.04 * rate)
+        samples[start:end] *= .02
+        sf.write(audio, samples, rate, subtype="PCM_24")
+        alerts = self.scan(audio, aligned)["alerts"]
+        self.assertTrue(any(flag["kind"] == "intra_word_stutter" for flag in alerts))
+
     def test_legal_comma_pause_is_not_flagged(self):
         audio, aligned = self.synth(text="甲乙，丙丁戊己。", gaps={1: .24})
         self.assertEqual(self.scan(audio, aligned)["alerts"], [])

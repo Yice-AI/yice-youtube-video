@@ -76,7 +76,8 @@ export async function probeCompositions(root,scenes,{outputDir=root,limits={}}={
         return result;
       },{duration,recipe:scene.recipe});
       const reframes=await page.evaluate(()=>JSON.parse(document.querySelector('.yf-cam')?.dataset.reframes||'[]'));
-      camera.push({id:scene.id,...cameraMotion(samples,limits),reframes,measurements:samples});
+      const aspect=await page.evaluate(()=>[...document.querySelectorAll('.v-media')].map((element,index)=>{const box=element.getBoundingClientRect(),style=getComputedStyle(element);const sourceWidth=element.naturalWidth||element.videoWidth||0,sourceHeight=element.naturalHeight||element.videoHeight||0,sourceRatio=sourceHeight?sourceWidth/sourceHeight:Infinity,ratio=box.height?box.width/box.height:Infinity;return {index,width:box.width,height:box.height,ratio,sourceRatio,objectFit:style.objectFit};}).filter(row=>row.sourceRatio>=1.35&&(row.ratio<1.35||row.objectFit==='cover'&&row.ratio<1.5)));
+      camera.push({id:scene.id,...cameraMotion(samples,limits),reframes,measurements:samples,aspect});
       const regions=readingRegions(scene);if(!regions.length&&scene.sourceType==='web_capture')unmarked.push(scene.id);
       for(const [index,region] of regions.entries()){
         const time=region.at??Math.max(.55,duration-.75);

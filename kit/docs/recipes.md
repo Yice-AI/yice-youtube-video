@@ -298,4 +298,101 @@ text最多10字，stage推荐charcoal；每章最多一次。逐字砸入，位�
 {"enter":"directional-wipe","layers":[{"kind":"grain-overlay","strength":0.06},{"kind":"light-sweep-pass","at":0.3},{"kind":"notification-stack","items":[{"text":"已下载","at":1.0},{"text":"已打包","at":1.4}]}]}
 ```
 
+## EP03 新增三种配方
+
+这三种配方是为 EP03 加的。共同规则：
+- 都走 `recipe + props` 接口。
+- 只用三种舞台、三种功能色、三种 Yice 字体。
+- 默认硬切。
+
+自动分类如下：
+
+| 配方 | 素材源 sourceType | 真东西口径 | 版式骨架 |
+|---|---|---|---|
+| shot-wall | code_animation | 不计（图表） | `shot-wall` |
+| broll-caption | third_party | 实拍；纯照片时记照片 | `footage-caption` |
+| phone-cam | camera | 实拍 | `full-footage` |
+
+素材源新增了一类 `camera`，指本人用相机或手机实拍的画面。它不算录屏，所以不计入 B 族录屏容器。
+
+### shot-wall — 自测逐镜数据画成镜头墙
+
+**什么时候用**：要表达“一分钟里每个镜头多长、是什么类型”。参考频道的画面一律不进片：频道名只以文字出现，色块全部来自我们自己的逐镜测量。
+
+**画面**：顶部是 `window` 秒的时间尺，每秒一个小刻度，每 10 秒一个时间码。每行是一个频道，一镜一个色块，色块宽度按实测镜长。颜色：
+- 绿 `#5FA36E`：实拍、照片、抠图。这是本配方专用的数据色，只代表这一类。
+- 中灰：截图、录屏。
+- 浅灰：图形、文字。
+
+荧光色播放头从左往右扫，经过一块就点亮一块，绿块点亮时会轻轻弹一下。右侧计数器按播放头位置累计绿块秒数，下面写“真东西 xx%”，分母是该行的实际总长。
+
+**参数**
+- `rows`：1–4 行，每行 `{label, sub?, shots:[{d,k}], at?, sweep?, done?, focus?, focusAt?}`。
+  - `k` 只能是 `real` / `screen` / `graphic`。
+  - `shots` 的总时长不能超过 `window`。
+  - `done:true` 表示该行入场时已经点亮完，用来接上一镜继续加行。
+  - `focus` 是这一行里某块的索引，会在这块上画蓝墨圈。
+- `zoom`：`{row, second, scale:1.1–2.5, at, back?}`，推近到指定行、指定秒；可选 `back` 时刻拉回全景。
+- `stamp`：`{text, at, x?, y?, size?}`，盖红章。
+- `legend:false` 关闭图例。
+- `source`：左下出处小字。
+
+**数据怎么来**：从 `annotated-shots.json` 换算 `k`：
+- `real_video`、`photo`、`cutout` → `real`
+- `screenshot` → `screen`
+- 其余 → `graphic`
+
+```json
+{"recipe":"shot-wall","stage":"charcoal","props":{"stage":"charcoal","showTitle":false,"window":60,"rows":[{"label":"参考频道 A","shots":[{"d":2.5,"k":"real"},{"d":3,"k":"screen"},{"d":2.2,"k":"graphic"}],"at":0.2,"sweep":3.2},{"label":"我们 · 首版","shots":[{"d":3.5,"k":"graphic"},{"d":3,"k":"real"}],"at":1.2,"sweep":2.4,"focus":1}],"zoom":{"row":0,"second":22,"scale":1.55,"at":1.2,"back":2.3},"source":"自测逐镜数据 · 不含原片画面"}}
+```
+
+### broll-caption — 实拍空镜加手写标注
+
+**什么时候用**：放第三方实拍视频或照片，配一两行短字。它和 stock-shot 的骨架不同：stock-shot 是满幅、压暗一侧、宋体大标题；broll-caption 是把素材当成一张大照片铺在纸面上，再贴一张写了字的纸条。
+
+**画面**
+- 素材框 1760×990，约占画面 84%，四周露出纸边，倾斜 −0.6°，镜头匀速推近到 1.08。
+- 纸条用胶带固定在素材框左下角或右下角。字是 Yice Sans Heavy，一行 96px，两行 78px，一个字一个字写出来。
+- 可以加一条蓝墨下划线，或者一个蓝墨圈。
+
+**参数**
+- `media`：必填。
+- `caption`：字符串或 1–2 行数组，每行最多 12 字。
+- `side`：`left` / `right`。
+- `fontSize`：64–140。
+- `cutZoom`：最多 2 次跳切推近，格式 `[{at, scale:1–2.5, rect?}]`。
+- `mark`：`{kind:"underline"|"circle", target?, at?}`。
+- `kb`：`{from, to, origin}`，覆盖默认推近。
+- `credit`：右下角的出处纸签。
+
+```json
+{"recipe":"broll-caption","props":{"media":"@assets/footage.mp4","caption":["问题出在哪"],"side":"left","cutZoom":[{"at":1.6,"scale":1.3}],"mark":{"kind":"underline"},"credit":"Pexels · 作者名"}}
+```
+
+### phone-cam — 手机实拍屏幕
+
+**什么时候用**：放一策用手机拍屏幕的素材。这类素材本身就是真拍，有景深、反光和手持感。放进 device-stage 之类的录屏容器会变成“屏幕里套屏幕”，所以单独用这个配方。
+
+**画面**
+- 满幅显示。默认裁大 4%，盖住稳像留下的黑边。整镜匀速推近到 1.06。
+- 上下各有一层渐暗，保证角标和大字读得清。
+- 左上角标“● 手机实拍”，红点按 0.5 秒节奏闪。
+- 不加任何模拟摩尔纹或扫描线：传 `moire` 会直接报错。
+
+**参数**
+- `media`：必填。
+- `crop`：1–1.2。
+- `push`：`{from, to, duration}`。
+- `focus`：`{x,y,w,h,at,scale:1.1–2.5}`，在 `at` 时推近到这个框，0.4 秒后画蓝墨圈。
+- `speed`：右上角显示“×N 快进”。
+- `badge`：角标文字。
+- `label` / `labelAt`：左下宋体大字。
+- `stamp`：`{text, at, x?, y?, size?}`，盖红章。
+
+**素材准备**：手机原片可以直接是 4K、HEVC 的 `.MOV` / `.mov`，交给现有视频预处理。拍摄要求见 EP03 的 asset-needs（横拍、斜一点、带桌边、先清掉隐私）。
+
+```json
+{"recipe":"phone-cam","props":{"media":{"src":"@phone/P05.mov","start":5},"focus":{"x":420,"y":130,"w":460,"h":230,"at":2.0,"scale":1.6},"label":"又磨了几轮","labelAt":3.6,"stamp":{"text":"还不够好","at":2.8}}}
+```
+
 第二批真实素材配方见 [recipes-second-batch.md](recipes-second-batch.md)，人物库与双档规则见 [people.md](people.md)。

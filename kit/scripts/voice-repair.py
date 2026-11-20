@@ -116,7 +116,9 @@ def final_scan(chapter, audio, alignment, folder, transcribe, exceptions, thresh
     folder.mkdir(parents=True, exist_ok=True)
     (folder/'analysis').mkdir(exist_ok=True)
     edits = []
-    for attempt in range(4):
+    # One pass already regularizes every measured boundary. Repeating it can
+    # treat an inserted pause as a fresh zero-length boundary and duplicate it.
+    for attempt in range(1):
         destination = folder/'analysis'/f'semantic-{attempt}.wav'
         alignment, changes = post.regularize(audio, alignment, destination, destination.with_suffix('.npz'))
         edits.extend(changes)
@@ -288,6 +290,8 @@ def main(argv=None):
     parser.add_argument('--asr-model', default='mlx-community/whisper-large-v3-turbo')
     parser.add_argument('--asr-prompt', default='')
     parser.add_argument('--reuse-candidates', type=Path)
+    parser.add_argument('--backend', choices=['modal', 'kaggle', 'local'], default='modal')
+    parser.add_argument('--candidates', type=int, default=3)
     parser.add_argument('--max-rounds', type=int, default=3)
     parser.add_argument('--lufs', type=float, default=-16.)
     args = parser.parse_args(argv)
@@ -299,7 +303,10 @@ def main(argv=None):
     chapter = dict(id='00', text=text, scenes=[dict(id='0-1', text=text)])
     exceptions = json.loads(args.normalizations.read_text()) if args.normalizations else {}
     transcribe = v.make_transcriber(args.asr_model, args.asr_prompt, args.output/'asr')
-    generate = v.make_generator(args.brand, args.output/'generation', args.reuse_candidates)
+    if not 1 <= args.candidates <= 8:
+        parser.error('候选数须为1–8')
+    generate = v.make_generator(args.brand, args.output/'generation', args.reuse_candidates,
+                                args.backend, args.candidates)
     checked = check_tool.check_chapter(args.audio, alignment)
     audit = quality.audit(text, transcribe(args.audio), exceptions, args.asr_threshold)
     checked['ok'] = checked['ok'] and audit['ok']
