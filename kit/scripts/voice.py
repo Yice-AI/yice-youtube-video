@@ -274,7 +274,7 @@ def make_transcriber(model, prompt, folder):
     def transcribe(audio):
         os.environ.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1")
         sha = hashlib.sha256(Path(audio).read_bytes()).hexdigest()
-        settings = hashlib.sha256(json.dumps(dict(model=model, prompt=prompt, temperature=0), sort_keys=True).encode()).hexdigest()[:12]
+        settings = hashlib.sha256(json.dumps(dict(model=model, prompt=prompt, temperature=0, chunk_v=6), sort_keys=True).encode()).hexdigest()[:12]
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{sha}-{settings}.json"
         if path.exists():
@@ -283,8 +283,76 @@ def make_transcriber(model, prompt, folder):
                 raise ValueError("ASR 缓存不属于当前音频")
             return value["transcript"]
         import mlx_whisper
-        result = mlx_whisper.transcribe(str(audio), path_or_hf_repo=model, language="zh",
-                                       initial_prompt=prompt or None, temperature=0, word_timestamps=True, verbose=False)
+        y, sr = None, 0
+        try:
+            import numpy as np
+            import soundfile as sf
+            data, sr = sf.read(str(audio))
+            y = data[:, 0] if data.ndim > 1 else data
+        except Exception:
+            y = None
+        if y is None or sr <= 0 or len(y) / sr <= 26.0:
+            result = mlx_whisper.transcribe(str(audio), path_or_hf_repo=model, language="zh",
+                                           initial_prompt=prompt or None, temperature=0, word_timestamps=True, verbose=False)
+        else:
+            import tempfile
+            hop, start, total = max(1, int(0.02 * sr)), 0, len(y)
+            segments, texts = [], []
+            while start < total:
+                remaining = total - start
+                if remaining / sr <= 25.0:
+                    end = total
+                else:
+                    lo, hi = start + int(15.8 * sr), min(total - hop, start + int(18.8 * sr))
+                    quiet = [float(np.sqrt(np.mean(y[p:p + hop] ** 2))) < 10 ** (-45 / 20) for p in range(lo, hi, hop)]
+                    best_len, best_mid, run_start = 0, None, None
+                    for idx, is_q in enumerate(quiet + [False]):
+                        if is_q and run_start is None:
+                            run_start = idx
+                        elif not is_q and run_start is not None:
+                            if idx - run_start > best_len:
+                                best_len = idx - run_start
+                                best_mid = lo + ((run_start + idx) * hop) // 2
+                            run_start = None
+                    if best_mid is not None and best_len >= 4:
+                        end = best_mid
+                    else:
+                        rms = [float(np.sqrt(np.mean(y[p:p + hop * 2] ** 2))) for p in range(lo, hi, hop * 2)]
+                        end = lo + int(np.argmin(rms)) * hop * 2 if rms else start + int(21.0 * sr)
+                with tempfile.NamedTemporaryFile(suffix=".wav") as tmp:
+                    sf.write(tmp.name, y[start:end], sr)
+                    chunk = mlx_whisper.transcribe(tmp.name, path_or_hf_repo=model, language="zh",
+                                                  initial_prompt=prompt or None, temperature=0, word_timestamps=True, verbose=False)
+                off = start / sr
+                texts.append(chunk.get("text", ""))
+                for seg in chunk.get("segments", []):
+                    words = [dict(w, start=w["start"] + off, end=w["end"] + off) for w in seg.get("words", [])]
+                    segments.append(dict(seg, start=seg["start"] + off, end=seg["end"] + off, words=words))
+                start = end
+            result = dict(text="".join(texts), segments=segments)
+        if y is not None and sr > 0 and isinstance(result.get("segments"), list):
+            clean_segs, clean_texts = [], []
+            sil_amp = 10 ** (-44 / 20)
+            step = max(1, int(0.01 * sr))
+            for seg in result["segments"]:
+                words = seg.get("words") or []
+                probs = [float(w.get("probability", 1.0)) for w in words]
+                sa, sb = max(0, int(float(seg.get("start", 0.0)) * sr)), min(len(y), max(1, int(float(seg.get("end", 0.0)) * sr)))
+                seg_rms = float(np.sqrt(np.mean(y[sa:sb] ** 2))) if sb > sa else 0.0
+                if seg_rms < sil_amp and seg.get("avg_logprob", 0.0) < -1.2 and probs and max(probs) < 0.12:
+                    continue
+                trimmed = []
+                for w in words:
+                    ws, we = float(w["start"]), float(w["end"])
+                    if we - ws > 0.36:
+                        a, b = max(0, int(ws * sr)), min(len(y), int((we - 0.06) * sr))
+                        while a + step < b and float(np.sqrt(np.mean(y[a:a + step] ** 2))) < sil_amp:
+                            a += step
+                        ws = min(we - 0.06, a / sr)
+                    trimmed.append({**w, "start": ws})
+                clean_segs.append({**seg, "words": trimmed})
+                clean_texts.append(seg.get("text", ""))
+            result = {**result, "text": "".join(clean_texts), "segments": clean_segs}
         write_json(path, dict(sha256=sha, model=model, prompt=prompt, transcript=result))
         return result
     return transcribe
