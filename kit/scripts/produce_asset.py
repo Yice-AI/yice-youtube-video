@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-KINDS = {"metaphor-image", "prop-cutout", "motion-video", "web-capture", "stock-footage", "rec-task"}
+KINDS = {"web-cam", "metaphor-image", "prop-cutout", "motion-video", "web-capture", "stock-footage", "rec-task"}
 
 
 def now():
@@ -106,6 +106,14 @@ def output_file(project, kind, requested=None, suffix=".mp4"):
 
 
 def produce(args, project, rows):
+    if args.kind == "web-cam":
+        command = ["node", str(Path(__file__).with_name("record-web-cam.mjs")),
+                   "--project", str(project), "--id", args.id, "--seconds", str(args.seconds if args.seconds is not None else args.duration)]
+        for key in ("url", "scene", "source", "highlight", "actions", "fps"):
+            value = getattr(args, key)
+            if value is not None:
+                command.extend(["--" + key, str(value)])
+        return json.loads(run_command(command))
     prompt = (args.prompt or "").strip()
     source = args.source or args.url or args.query or ""
     entry = {"id": args.id, "kind": args.kind, "sourceType": args.kind,
@@ -190,6 +198,10 @@ def main(argv=None):
     parser.add_argument("--project")
     parser.add_argument("--id", default="asset")
     parser.add_argument("--prompt", "-p")
+    parser.add_argument("--highlight")
+    parser.add_argument("--actions")
+    parser.add_argument("--seconds", type=float)
+    parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--url")
     parser.add_argument("--query")
     parser.add_argument("--source")
@@ -201,7 +213,7 @@ def main(argv=None):
     parser.add_argument("--width", "-W", type=int, default=1920)
     parser.add_argument("--height", "-H", type=int, default=1080)
     parser.add_argument("--aspect", choices=["16:9", "9:16", "1:1", "4:3", "3:2"], default="16:9")
-    parser.add_argument("--duration", type=float, default=5)
+    parser.add_argument("--duration", type=float)
     parser.add_argument("--count", type=int, default=8)
     parser.add_argument("--media-type", choices=["photo", "video"], default="video")
     parser.add_argument("--quality", choices=["fast", "standard"], default="fast")
@@ -211,6 +223,8 @@ def main(argv=None):
     parser.add_argument("--cost", type=float, default=0.0)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.duration is None:
+        args.duration = 6 if args.kind == "web-cam" else 5
     if args.width < 1 or args.height < 1 or args.duration <= 0 or args.cost < 0:
         parser.error("尺寸、时长和费用必须为正数")
     project = project_path(args.project)
