@@ -12,7 +12,8 @@ import numpy as np
 import soundfile as sf
 from scipy.signal import resample_poly
 
-PUNCT = set('，。！？；：、,.!?;:')
+PUNCT = set('，。！？；：、…,.!?;:')
+QUOTES = set('“”‘’"\'')
 END = set('。！？.!?')
 HOP = .01
 THRESHOLDS = dict(single_character_N=2.4, active_character_N=2., onset_character_N=1.7,
@@ -151,20 +152,27 @@ def pitch_stats(ac, a, b):
 
 
 def sentence_ranges(text):
-    return [(m.start(), m.end(), m.group()) for m in re.finditer(r'[^。！？.!?]+[。！？.!?]?', text)]
+    return [(m.start(), m.end(), m.group()) for m in re.finditer(r'[^。！？.!?]+[。！？.!?]+[”"’\'\）)]*|[^。！？.!?]+$', text) if any(c.isalnum() for c in m.group())]
 
 
 def pause_class(text, left, right, thresholds=None):
     thresholds = {**THRESHOLDS, **(thresholds or {})}
     between = text[left['charEnd']:right['charStart']]
     punct = ''.join(c for c in between if c in PUNCT)
+    has_quote = any(c in QUOTES for c in between)
+    if '…' in punct:
+        return 'ellipsis', [200., 850.], punct
     if any(c in END for c in punct):
         return 'sentence', thresholds['sentence_pause_ms'], punct
     if any(c in '，,;；' for c in punct):
         context = text[max(0, left['charStart'] - 12):right['charStart'] + 10]
         contrast = bool(re.search(r'(没有[,，]得[是用]|[,，](?:但|不过|而是|却|得是|得用|反而)|[;；])', context))
         return ('contrast', thresholds['contrast_pause_ms'], punct) if contrast else ('comma', thresholds['comma_pause_ms'], punct)
-    return ('list', [120, 300], punct) if punct else ('none', [0, thresholds['nonpunct_pause_max_ms']], punct)
+    if punct:
+        return ('list', [80., 320.], punct)
+    if has_quote:
+        return ('quote', [0., 420.], '“”')
+    return ('none', [0, thresholds['nonpunct_pause_max_ms']], punct)
 
 
 def measure(path, alignment, cache=None, thresholds=None):
@@ -317,7 +325,8 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
                                       f0_change_st=fall, pause_ms=duration, context=b['context']))
             # Compare the local 10ms envelope around adjacent syllables. This
             # catches a short relative collapse that never reaches -42 dBFS.
-            if left['sentence'] != right['sentence'] or left['charEnd'] != right['charStart']:
+            if (left['sentence'] != right['sentence'] or left['charEnd'] != right['charStart']
+                    or bool(re.fullmatch('[A-Za-z]', left['w'])) != bool(re.fullmatch('[A-Za-z]', right['w']))):
                 continue
             ids = np.flatnonzero((times >= left['s']) & (times < right['e']))
             if not len(ids):

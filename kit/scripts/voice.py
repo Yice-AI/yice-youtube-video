@@ -347,13 +347,14 @@ def make_transcriber(model, prompt, folder):
                 if seg_rms < sil_amp and seg.get("avg_logprob", 0.0) < -1.2 and probs and max(probs) < 0.12:
                     continue
                 trimmed = []
+                word_sil = 10 ** (-38 / 20)
                 for w in words:
                     ws, we = float(w["start"]), float(w["end"])
-                    if we - ws > 0.36:
-                        a, b = max(0, int(ws * sr)), min(len(y), int((we - 0.06) * sr))
-                        while a + step < b and float(np.sqrt(np.mean(y[a:a + step] ** 2))) < sil_amp:
+                    if we - ws > 0.14:
+                        a, b = max(0, int(ws * sr)), min(len(y), int((we - 0.05) * sr))
+                        while a + step < b and float(np.sqrt(np.mean(y[a:a + step] ** 2))) < word_sil:
                             a += step
-                        ws = min(we - 0.06, a / sr)
+                        ws = min(we - 0.05, a / sr)
                     trimmed.append({**w, "start": ws})
                 clean_segs.append({**seg, "words": trimmed})
                 clean_texts.append(seg.get("text", ""))

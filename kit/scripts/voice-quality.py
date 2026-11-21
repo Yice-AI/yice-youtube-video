@@ -4,9 +4,12 @@ import math
 import re
 from functools import lru_cache
 
-NUMBER = r'(?:\d+(?:\.\d+)?|[零〇一二两三四五六七八九十百千万亿]+)'
+NUMBER = r'(?:\d+(?:\.\d+)?[万亿]?|[零〇一二两三四五六七八九十百千万亿]+(?:点[零〇一二两三四五六七八九]+)?)'
 DIGITS = dict(zip('零〇一二两三四五六七八九', [0, 0, 1, 2, 2, 3, 4, 5, 6, 7, 8, 9]))
-ENGLISH = {'Codex': ['CodeX', 'CODEX', 'Code X', 'codecs']}
+ENGLISH = {'Codex': ['CodeX', 'CODEX', 'Code X', 'codecs'],
+           'Claude': ['Cloudo', 'Cloud', 'claude'],
+           'Fireship': ['Fairship', 'Fire ship'],
+           'Hugging Face': ['Hogging Face', 'HuggingFace']}
 
 
 def seeds(value):
@@ -20,8 +23,16 @@ def seeds(value):
 
 
 def numeric(value):
-    if re.fullmatch(r'\d+(?:\.\d+)?', value):
-        return float(value)
+    m = re.fullmatch(r'(\d+(?:\.\d+)?)([万亿])?', value)
+    if m:
+        scale = {'万': 1e4, '亿': 1e8, None: 1.0}[m[2]]
+        return float(m[1]) * scale
+    if '点' in value:
+        whole, frac = value.split('点', 1)
+        w_val = numeric(whole) if whole else 0.0
+        if w_val is not None and frac and all(c in DIGITS for c in frac):
+            return float(f"{int(w_val)}.{''.join(str(DIGITS[c]) for c in frac)}")
+        return None
     if not re.fullmatch(r'[零〇一二两三四五六七八九十百千万亿]+', value):
         return None
     if all(char in DIGITS for char in value):
@@ -102,6 +113,13 @@ def audit(text, transcription, exceptions=None, threshold=.97):
                 replace(item[0], match[0], kind, '同值数字单位写法；兆/Mbps 是已登记的 ASR 转写差异，朗读文本不改'
                         if unit.lower() == 'mbps' else '同值数字/单位；照→兆仅限数字单位位置')
                 break
+    # Equivalent percentage notation: 百分之七十三 <-> 73%
+    expected_pct = [(m[0], numeric(m[1])) for m in re.finditer('百分之(' + NUMBER + ')', text)]
+    for match in list(re.finditer('(' + NUMBER + r')%', heard))[::-1]:
+        val = numeric(match[1])
+        opts = list(dict.fromkeys(full for full, v in expected_pct if v is not None and v == val))
+        if len(opts) == 1:
+            replace(opts[0], match[0], 'number_unit', '同值百分比写法')
     expected_numbers = {}
     for match in re.finditer(NUMBER, text):
         expected_numbers.setdefault(numeric(match[0]), []).append(match[0])
