@@ -6,13 +6,16 @@ import {createHash} from 'node:crypto';
 import {parseArgs} from 'node:util';
 import {recordBrowserFrames} from './browser-frames.mjs';
 
-const options = Object.fromEntries('project url id seconds highlight actions source scene fps'.split(' ').map(key => [key,{type:'string'}]));
+const options = Object.fromEntries('project url id seconds highlight actions source scene fps theme scale'.split(' ').map(key => [key,{type:'string'}]));
 const {values:args} = parseArgs({options});
 const url = new URL(args.url);
 const duration = Number(args.seconds ?? 6), fps = Number(args.fps ?? 30);
+const scale = Number(args.scale ?? 1.5);
+const colorScheme = args.theme === 'light' ? 'light' : 'dark';
 if (!args.project || !/^[\w-]+$/.test(args.id || '') || !['http:','https:','file:'].includes(url.protocol) || url.username || url.password)
   throw Error('需要 project、合法 id 与公开网页或本地文件 URL');
 if (!(duration >= 2 && duration <= 20 && fps === 30)) throw Error('要求 2–20 秒、30fps');
+if (!(scale >= 1 && scale <= 2.5)) throw Error('要求 scale 在 1.0–2.5 之间');
 const project = path.resolve(args.project);
 const folder = path.join(project,'assets/webcam',args.id);
 const actions = args.actions ? JSON.parse(args.actions.trimStart().startsWith('[') ? args.actions : fs.readFileSync(args.actions,'utf8')) : [];
@@ -22,29 +25,30 @@ const require = createRequire(path.join(project,'package.json'));
 const search = [project,process.cwd(),import.meta.dirname,...(process.env.NODE_PATH||'').split(path.delimiter),
   path.join(os.homedir(),'.codex/skills/guizang-social-card-skill')];
 const {chromium} = require(process.env.YICE_PLAYWRIGHT_MODULE || require.resolve('playwright-core',{paths:search}));
-const viewport = {width:1920,height:1080};
+const viewport = {width:Math.round(1920/scale),height:Math.round(1080/scale)};
+const cx0 = Math.round(viewport.width/2), cy0 = Math.round(viewport.height/2);
 const browser = await chromium.launch(process.env.YICE_CHROME_EXECUTABLE ? {executablePath:process.env.YICE_CHROME_EXECUTABLE} : {channel:'chrome'});
 const events = [];
-let position = {x:960,y:540};
-function log(t,kind,rect,scale) {
-  events.push({t,kind,...position,rect,recommendedCamera:{scale,cx:position.x,cy:position.y}});
+let position = {x:cx0,y:cy0};
+function log(t,kind,rect,camScale) {
+  events.push({t,kind,...position,rect,recommendedCamera:{scale:camScale,cx:Math.round(position.x*scale),cy:Math.round(position.y*scale)}});
 }
 try {
   fs.mkdirSync(path.dirname(folder),{recursive:true});
   fs.mkdirSync(folder);
 } catch (error) { await browser.close(); throw error; }
 try {
-  const page = await browser.newPage({viewport,acceptDownloads:false});
+  const page = await browser.newPage({viewport,deviceScaleFactor:scale,colorScheme,acceptDownloads:false});
   page.setDefaultTimeout(5000);
-  await page.addInitScript(()=>{
+  await page.addInitScript(({ix,iy})=>{
     addEventListener('DOMContentLoaded',()=>{
       const pointer=document.createElement('div');
       pointer.id='yice-capture-pointer';
-      pointer.style.cssText='position:fixed;left:0;top:0;transform:translate(960px,540px);z-index:2147483647;pointer-events:none;filter:drop-shadow(0 2px 3px #222)';
-      pointer.innerHTML='<svg width="26" height="36" viewBox="0 0 26 36"><path d="M2 2L23 20L13 21L10 31Z" fill="white" stroke="#151515" stroke-width="2"/></svg>';
+      pointer.style.cssText=`position:fixed;left:0;top:0;transform:translate(${ix}px,${iy}px);z-index:2147483647;pointer-events:none;filter:drop-shadow(0 2px 3px #000)`;
+      pointer.innerHTML='<svg width="24" height="34" viewBox="0 0 26 36"><path d="M2 2L23 20L13 21L10 31Z" fill="#ff745a" stroke="#f6f0df" stroke-width="2.2"/></svg>';
       document.documentElement.append(pointer);
     },{once:true});
-  });
+  },{ix:cx0,iy:cy0});
   const response=await page.goto(args.url,{waitUntil:'domcontentloaded'});
   if(response && !response.ok()) throw Error('网页响应 '+response.status());
   const steps = actions.map(action=>{
@@ -70,7 +74,7 @@ try {
       if(locator){
         const box=await locator.boundingBox();
         if(!box) throw Error('目标不可见');
-        scrollEnd=await page.evaluate(y=>Math.max(0,Math.min(document.documentElement.scrollHeight-innerHeight,y)),scrollStart+box.y+box.height/2-540);
+        scrollEnd=await page.evaluate(y=>Math.max(0,Math.min(document.documentElement.scrollHeight-innerHeight,y)),scrollStart+box.y+box.height/2-cy0);
         rect={x:box.x,y:box.y+scrollStart-scrollEnd,w:box.width,h:box.height};
         target={x:rect.x+rect.w/2,y:rect.y+rect.h/2};
       }else{
@@ -98,14 +102,15 @@ try {
       if(a.type==='highlight') await locator.evaluate((el,color)=>{
         el.style.backgroundImage='linear-gradient('+color+','+color+')';
         el.style.backgroundRepeat='no-repeat';
+        el.style.borderRadius='4px';
         el.animate([{backgroundSize:'0% 100%'},{backgroundSize:'100% 100%'}],{duration:330,fill:'forwards'});
-      },a.color||'rgba(255,224,102,.42)');
-      log(n/fps,a.type,rect,locator ? 1.75 : 1);
+      },a.color||'rgba(255,116,90,.34)');
+      log(n/fps,a.type,rect,locator ? 1.55 : 1);
       index++;start=n+1;
-    }else if(a.type==='move') log(n/fps,'move',rect,1.3);
+    }else if(a.type==='move') log(n/fps,'move',rect,1.25);
   }});
   await page.screenshot({path:path.join(folder,'still.png')});
-  fs.writeFileSync(path.join(folder,'cursor-track.json'),JSON.stringify({url:args.url,...viewport,fps,duration,events},null,2));
+  fs.writeFileSync(path.join(folder,'cursor-track.json'),JSON.stringify({url:args.url,width:1920,height:1080,cssViewport:viewport,deviceScaleFactor:scale,colorScheme,fps,duration,events},null,2));
   const rel=path.relative(project,folder);
   const entry={id:args.id,kind:'web_cam_recording',sourceType:'web_capture',url:args.url,source:args.source||url.hostname,
     path:rel+'/video.mp4',stillPath:rel+'/still.png',trackPath:rel+'/cursor-track.json',scene:args.scene||'',

@@ -63,7 +63,8 @@ class V3Kit(unittest.TestCase):
         for key in ("path","trackPath","stillPath"):
             self.assertTrue((self.project/entry[key]).stat().st_size)
         track = json.loads((self.project/entry["trackPath"]).read_text())
-        self.assertGreater(max(event["recommendedCamera"]["scale"] for event in track["events"]),1.3)
+        self.assertEqual((track["width"], track["height"], track["colorScheme"]), (1920, 1080, "dark"))
+        self.assertGreater(max(event["recommendedCamera"]["scale"] for event in track["events"]),1.2)
         self.assertTrue(self.audit("packed","--precheck","--target-seconds","12")["ok"])
 
     def test_missing(self):
@@ -89,3 +90,35 @@ class V3Kit(unittest.TestCase):
     def test_ocr(self):
         report = self.audit("private","--rendered",self.movie("/Users/demo"),expected=1)
         self.assertTrue(any(hit["term"]=="/Users/" and hit["seconds"]==0 for hit in report["ocr"]["hits"]))
+
+    def test_anti_clutter_and_editorial_stage(self):
+        import sys
+        sys.path.insert(0, str(SCRIPTS.parent))
+        from editorial import EditorialStage, printframe, caseleft
+
+        video = self.movie("Clean viewport")
+        wall_tl = self.project / "wall.json"
+        wall_tl.write_text(json.dumps({
+            "end": 6,
+            "shots": [{"id": "W1", "kind": "real_video", "start": 0, "end": 6,
+                       "files": ["source.png"] * 4}],
+        }))
+        report = self.audit("clutter", "--rendered", video, "--timeline", wall_tl, expected=1)
+        self.assertTrue(any("同屏堆砌" in err for err in report["errors"]))
+
+        broll_tl = self.project / "broll.json"
+        broll_tl.write_text(json.dumps({
+            "end": 6,
+            "shots": [{"id": "B1", "kind": "stock_broll", "start": 0, "end": 6, "files": ["source.png"]}],
+        }))
+        report2 = self.audit("broll-wall", "--rendered", video, "--timeline", broll_tl, expected=1)
+        self.assertTrue(any("stock_broll" in err for err in report2["errors"]))
+
+        stage = EditorialStage("看片室测试", duration=6.0)
+        stage.add_video(0, 6, "movie.mp4", 570, 172, 1220, 686, zoom_from=1.0, zoom_to=1.08)
+        stage.add_plate(0, 6, "测试镜头", caseleft("TEST", ["清晰", "视窗"], "单点聚焦") + printframe(570, 172, 1220, 686, "SPECIMEN"),
+                        head=("看片室", "UNIT TEST"), kind="real_video", files=["source.png"])
+        clean_tl = self.project / "clean.json"
+        stage.write_project(self.project / "stage", timeline_out=clean_tl)
+        self.assertIn("看片室", (self.project / "stage/index.html").read_text())
+        self.assertTrue(self.audit("clean-stage", "--rendered", video, "--timeline", clean_tl)["ok"])

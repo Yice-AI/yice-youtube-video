@@ -13,7 +13,7 @@ from pathlib import Path
 
 from review import run
 
-REAL = {"real_video", "web_cam", "screenshot", "stock_broll", "evidence_wall"}
+REAL = {"real_video", "web_cam", "screenshot", "stock_broll"}
 VISUAL = {".mp4", ".mov", ".webm", ".jpg", ".jpeg", ".png", ".webp", ".svg"}
 GENERATED = re.compile(r"image2|ltx2|generated|metaphor-image|motion-video|prop-cutout", re.I)
 
@@ -46,19 +46,30 @@ def precheck(args, errors):
 
 
 def timeline_metrics(data, duration, project, errors):
-    previous = real = continuous = longest = 0
+    previous = real = stock = breaks = continuous = longest = max_windows = 0
     for shot in sorted(data["shots"], key=lambda row: row["start"]):
         start, end, kind = shot["start"], shot["end"], shot["kind"]
-        if not (previous <= start < end <= duration + 0.2) or kind not in REAL | {"ai_generated", "text_card"}:
+        if kind == "evidence_wall":
+            errors.append(f"镜头 {shot.get('id')} 使用了已禁用的多宫格碎框证据墙（evidence_wall），请改用单主视窗或 A/B 双视窗")
+            continue
+        if not (previous <= start < end <= duration + 0.2) or kind not in REAL | {"ai_generated", "text_card", "chapter_break"}:
             raise ValueError(f"无效镜头 {shot.get('id')}")
         length = min(end, duration) - start
-        if kind != "text_card":
-            files = shot.get("files", [])
+        files = shot.get("files", [])
+        max_windows = max(max_windows, len(files))
+        if len(files) > 3:
+            errors.append(f"镜头 {shot.get('id')} 同屏堆砌 {len(files)} 个视窗（上限 3 个，严禁蚂蚁字碎框）")
+        if kind not in {"text_card", "chapter_break"}:
             if not files or not all((project / file).is_file() and (project / file).stat().st_size for file in files):
                 errors.append(f"镜头 {shot.get('id')} 缺少素材")
         if kind in REAL:
             real += length
-        if kind == "text_card":
+        if kind == "stock_broll":
+            stock += length
+        if kind == "chapter_break":
+            breaks += length
+            continuous = 0
+        elif kind == "text_card":
             continuous = length + (continuous if start - previous <= 0.6 else 0)
             longest = max(continuous, longest)
         else:
@@ -66,9 +77,14 @@ def timeline_metrics(data, duration, project, errors):
         previous = end
     if real / duration < 0.55:
         errors.append("实证覆盖率低于 55%")
+    if stock / duration > 0.15:
+        errors.append("图库空镜（stock_broll）占比超过 15%，严禁拿图库视频铺满当壁纸")
+    if breaks > max(8.5, duration * 0.15):
+        errors.append("片名与章节扉页（chapter_break）总长超标")
     if longest > 5:
         errors.append("连续纯字卡超过 5 秒")
-    return dict(real_ratio=real / duration, longest_text_card=longest)
+    return dict(real_ratio=real / duration, stock_broll_ratio=stock / duration,
+                longest_text_card=longest, max_windows_per_shot=max_windows)
 
 
 def scan_frames(args, duration, out, errors):

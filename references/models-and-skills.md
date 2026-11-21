@@ -4,7 +4,8 @@
 
 ### 第一路：Playwright 虚拟摄影师（网页 / GitHub / 文档 / Web 工具交互录屏）
 - **脚本**：`$KIT/scripts/record-web-cam.sh`（底层 `record-web-cam.mjs`，复用本机已装 Chrome + `playwright-core`，匿名干净上下文，零个人登录态泄露）
-- **能力**：打开任意公开 URL 或本地 Web Demo（`1920×1080`），按动作脚本执行平滑滚动（`scroll`）、可见光标移动与点击波纹（`click`）、输入框打字（`type`）、关键文本定位与荧光笔高亮（`highlight`），导出：
+- **默认视口铁律（v3.1）**：默认开启 **`--theme dark --scale 1.5`**（即 `1280×720` CSS 视口按 `1.5x` Retina 渲染出原生 `1920×1080` 高清帧），自动触发 GitHub / 文档站深色模式并把正文字号放大 `150%`，彻底消除刺眼纯白留白边与蚂蚁小字。
+- **能力**：打开任意公开 URL 或本地 Web Demo，按动作脚本执行平滑滚动（`scroll`）、珊瑚红光标移动与点击波纹（`click`）、输入框打字（`type`）、关键文本定位与珊瑚红半透明高亮（`highlight`），导出：
   - `video.mp4`（30fps H.264 `yuv420p`）
   - `still.png`（关键帧高清静图）
   - `cursor-track.json`（记录每次动作精确秒数 `t`、坐标 `x,y` 与目标元素 `rect`，供 HyperFrames 自动生成 Screen Studio 推近关键帧）
@@ -36,4 +37,5 @@
 - **Modal GPU 克隆配音**：`$KIT/scripts/voice.sh`
   - 端点由 `$YICE_TOOLKIT/.env` 的 `MODAL_QWEN3_TTS_ENDPOINT_URL` 提供；克隆参考音频直走 HTTPS Base64 内存传输，**绝不上传 R2 或任何外部存储桶**；Modal 账户锁定 `spend_limit_usd = 0`（只用 Starter 免费额度）。
 - **原生 HyperFrames 编排与渲染**：
+  - 统一使用开放式编辑部版式原语库 **`$KIT/editorial/editorial.py`**（深松墨绿主舞台 + 暖米纸扉页 + 四角 L 型取景框 + 20px 刻度尺 + 珊瑚红底线字幕）生成标准 HTML/SVG/GSAP 工程；
   - 优先复用本机已安装的 `hyperframes`（`0.9.52+`）、`gsap` 与 `playwright-core`；渲染输出 `1920×1080`、`30fps`、H.264 `yuv420p` MP4。
