@@ -215,6 +215,18 @@ class VoiceWorkflowTests(unittest.TestCase):
             voice.make_transcriber('model','new terms',self.root/'asr')(source)
         self.assertEqual(mocked.call_count,3)
 
+    def test_semantic_chunks_preserves_every_character_when_tail_merges(self):
+        text = (
+            "我的视频，是一个AI团队做的。经理Claude，员工Codex，摄影Harness。"
+            "我在里面，只干一件事：说“不行”。前两期出来，就是这样。一张卡片飞进来，停住。"
+            "下一张飞进来，再停住。像一份会自己翻页的PPT。我当时的原话是：“除了录屏、AI生成的图，就没有其他素材了。"
+            "每个视频都这样，那就很单调了。”问题出在哪？我的第一反应，跟你现在想的，大概一样。"
+        )
+        chunks = voice.semantic_chunks(text)
+        self.assertEqual("".join(chunks), text)
+        self.assertTrue(chunks[0].startswith("我的视频"))
+        self.assertTrue(chunks[-1].endswith("大概一样。"))
+
 
 if __name__=='__main__':
     unittest.main()

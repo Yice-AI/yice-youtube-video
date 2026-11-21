@@ -87,8 +87,12 @@ def generate_jobs(jobs, brand, backend="modal", candidates=3):
 
 
 def semantic_chunks(text, minimum=3, maximum=5, min_chars=60, max_chars=120):
-    """按句末标点切成适合 TTS 的语义组，保留原文顺序。"""
-    sentences = [part.strip() for part in re.findall(r"[^。！？!?]+[。！？!?]*", text) if part.strip()]
+    """按句末标点切成适合 TTS 的语义组，保留原文顺序（严防 chunks[-2] += pop() 下标漂移丢段）。"""
+    sentences = [
+        part.strip()
+        for part in re.findall(r'[^。！？!?]+[。！？!?]+[”"’\）)]*|[^。！？!?]+$', text)
+        if part.strip()
+    ]
     chunks, current = [], []
     size = 0
     for sentence in sentences or [text.strip()]:
@@ -100,7 +104,8 @@ def semantic_chunks(text, minimum=3, maximum=5, min_chars=60, max_chars=120):
     if current:
         chunks.append("".join(current))
     if len(chunks) > 1 and len(chunks[-1]) < min_chars:
-        chunks[-2] += chunks.pop()
+        tail = chunks.pop()
+        chunks[-1] = chunks[-1] + tail
     return chunks or [text]
 
 

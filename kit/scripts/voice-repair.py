@@ -21,26 +21,43 @@ check_tool = v.load_voice_tool('voice-check')
 post = v.load_voice_tool('voice-post')
 
 
-def cuts_for(audio, alignment):
+def cuts_for(audio, alignment, flagged=None):
     measurement = check_tool.measure(audio, alignment)
     sentences = check_tool.sentence_ranges(alignment['text'])
     groups = [[row for row in alignment['mapped'] if lo <= row['charStart'] < hi] for lo, hi, _ in sentences]
     if any(not group for group in groups):
         raise ValueError('修复句子缺少完整字时间')
-    cuts = [0.]
+    quiet_points = []
     for left, right in zip(groups, groups[1:]):
         center = (left[-1]['e'] + right[0]['s']) / 2
         quiet = [(a, b) for a, b in measurement['relative_quiet']
                  if b-a >= .04 and a >= left[-1]['s'] and b <= right[0]['e'] + .05
                  and abs((a+b)/2-center) <= .4]
-        if not quiet:
+        if quiet:
+            a, b = min(quiet, key=lambda pair: abs(sum(pair)/2-center))
+            quiet_points.append(((a+b)/2, True))
+        else:
+            quiet_points.append((center, False))
+    if flagged is None:
+        if any(not is_q for _, is_q in quiet_points):
             raise ValueError('句间没有已验证的自然低能量边界，拒绝剪入发声部分')
-        a, b = min(quiet, key=lambda pair: abs(sum(pair)/2-center))
-        cuts.append((a+b)/2)
-    cuts.append(sf.info(audio).duration)
+        cuts = [0.] + [pt for pt, _ in quiet_points] + [sf.info(audio).duration]
+    else:
+        flagged_set = set(flagged)
+        changed = True
+        while changed:
+            changed = False
+            for idx, (_, is_q) in enumerate(quiet_points):
+                if not is_q and ((idx in flagged_set) != (idx + 1 in flagged_set)):
+                    flagged_set.add(idx)
+                    flagged_set.add(idx + 1)
+                    changed = True
+        cuts = [0.] + [pt for pt, _ in quiet_points] + [sf.info(audio).duration]
     if not all(a < b for a, b in zip(cuts, cuts[1:])):
         raise ValueError('无效的整句边界')
-    return sentences, groups, cuts
+    if flagged is None:
+        return sentences, groups, cuts
+    return sentences, groups, (cuts, sorted(flagged_set), [is_q for _, is_q in quiet_points])
 
 
 def feature(samples, rate):
@@ -76,9 +93,13 @@ def flagged_sentences(text, check, audit):
 def splice(samples, rate, alignment, cuts, groups, replacements):
     output, mapped, splices = np.array([], dtype=float), [], []
     previous_replaced = False
+    covered = {idx for take in replacements.values() for idx in take.get('span', [take['sentence']])[1:]}
     for index, group in enumerate(groups):
+        if index in covered:
+            continue
         replaced = index in replacements
-        old = samples[round(cuts[index]*rate):round(cuts[index+1]*rate)].copy()
+        end_idx = replacements[index].get('span', [index])[-1] + 1 if replaced else index + 1
+        old = samples[round(cuts[index]*rate):round(cuts[end_idx]*rate)].copy()
         if replaced:
             take = replacements[index]
             chunk, candidate_rate = sf.read(take['processed'])
@@ -160,17 +181,27 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
         if not flagged:
             history.append(dict(round=round_number, error='内容/对齐不通过，但无法定位安全整句'))
             break
-        sentences, groups, cuts = cuts_for(current['audio'], current['alignment'])
+        sentences, groups, (cuts, expanded_flagged, quiet_flags) = cuts_for(current['audio'], current['alignment'], flagged=flagged)
+        flagged = expanded_flagged
+        # Merge adjacent flagged sentences ONLY when the boundary between them lacks verified natural quiet
+        spans = []
+        for idx in flagged:
+            if spans and idx == spans[-1][-1] + 1 and not quiet_flags[idx - 1]:
+                spans[-1].append(idx)
+            else:
+                spans.append([idx])
         samples, rate = sf.read(current['audio'])
         jobs = []
-        for index in flagged:
-            lo, hi, text = sentences[index]
-            leading = len(text)-len(text.lstrip())
+        for span in spans:
+            lo = sentences[span[0]][0]
+            hi = sentences[span[-1]][1]
+            span_text = chapter['text'][lo:hi]
+            leading = len(span_text) - len(span_text.lstrip())
             chapter_number = int(re.match(r'\d+', chapter['id'])[0]) if re.match(r'\d+', chapter['id']) else 0
             for candidate in range(candidates_per_sentence):
-                seed = 200000 + round_number*10000 + chapter_number*300 + index*candidates_per_sentence + candidate
-                jobs.append(dict(text=text.strip(), seed=seed, sentence=index, char_offset=lo+leading,
-                                 path=str(folder/f'sentence-{index:02}-seed-{seed}.wav')))
+                seed = 200000 + round_number*10000 + chapter_number*300 + span[0]*candidates_per_sentence + candidate
+                jobs.append(dict(text=span_text.strip(), seed=seed, sentence=span[0], span=span, char_offset=lo+leading,
+                                 path=str(folder/f'sentence-{span[0]:02}-seed-{seed}.wav')))
         generate(jobs)
         selections, screened = {}, []
         for job in jobs:
@@ -202,7 +233,8 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
                 new, new_rate = sf.read(processed)
                 if new_rate != rate:
                     raise ValueError('替换句采样率不同')
-                old = samples[round(cuts[job['sentence']]*rate):round(cuts[job['sentence']+1]*rate)]
+                span_end = job.get('span', [job['sentence']])[-1] + 1
+                old = samples[round(cuts[job['sentence']]*rate):round(cuts[span_end]*rate)]
                 match = continuity(old, new, rate)
                 checked = check_tool.check_chapter(processed, aligned, cache=raw.with_suffix('.check.npz'))
                 candidate.update(processed=str(processed), alignment=aligned, check=checked,
@@ -226,8 +258,9 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
         clips = folder/'clips'
         clips.mkdir()
         for index, take in selections.items():
-            old_center = (groups[index][0]['s']+groups[index][-1]['e'])/2
-            new_rows = [row for row in updated['alignment']['mapped'] if sentences[index][0] <= row['charStart'] < sentences[index][1]]
+            span_last = take.get('span', [index])[-1]
+            old_center = (groups[index][0]['s']+groups[span_last][-1]['e'])/2
+            new_rows = [row for row in updated['alignment']['mapped'] if sentences[index][0] <= row['charStart'] < sentences[span_last][1]]
             new_center = (new_rows[0]['s']+new_rows[-1]['e'])/2
             after, _ = sf.read(updated['audio'])
             for label, waveform, center in [('before', samples, old_center), ('after', after, new_center)]:
