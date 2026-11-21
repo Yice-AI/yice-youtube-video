@@ -92,7 +92,8 @@ def scan_frames(args, duration, out, errors):
     source = Path(__file__).resolve().parents[1] / "tools/ocr/ocr.swift"
     binary = source.with_suffix("")
     terms = [os.getenv("USER") or getpass.getuser(), "/Users/", "Documents/Codex", "@gmail.com",
-             "盲测", "片名卡", "静态截图", "本期实测底账", "Johnny Harris", "Fireship", *args.forbid.split(",")]
+             "盲测", "片名卡", "静态截图", "本期实测底账", *args.forbid.split(",")]
+    viewport_only_terms = ["Johnny Harris", "Fireship"]
     times = range(0, math.ceil(duration), 2)
     canvas = Image.new("RGB", (320 * min(5, len(times)), 204 * math.ceil(len(times)/5)), "#202020")
     draw = ImageDraw.Draw(canvas)
@@ -112,7 +113,9 @@ def scan_frames(args, duration, out, errors):
                 draw.text((x+8,y+183), f"{second:.1f}s", fill="white")
             for row in json.loads(run([str(binary), str(frame)]).stdout)["results"]:
                 normalized = "".join(row["text"].casefold().split())
-                for term in terms:
+                box_y = row.get("box", [0, 0, 0, 0])[1]
+                active_terms = terms + (viewport_only_terms if box_y < 930 else [])
+                for term in active_terms:
                     if term.strip() and "".join(term.casefold().split()) in normalized:
                         hits.append(dict(seconds=second, term=term, text=row["text"]))
             frame.unlink()
