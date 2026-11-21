@@ -174,11 +174,11 @@ class EditorialStage:
         vid = f"vp{idx}"
         tone_cls = f" tone-{tone}" if tone != "natural" else ""
         self.media_layers.append(
-            f'<div id="{vid}" class="clip viewport{tone_cls}" data-start="{start:.5f}" '
-            f'data-duration="{end - start:.5f}" data-track-index="{2 + (idx % 6)}" '
+            f'<div id="{vid}" class="viewport{tone_cls}" '
             f'style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">'
-            f'<video class="vp-inner" src="{html.escape(src)}" muted playsinline preload="auto" '
+            f'<video id="film{idx}" class="clip vp-inner" src="{html.escape(src)}" muted playsinline preload="auto" '
             f'data-start="{start:.5f}" data-duration="{end - start:.5f}" data-media-start="{media_start:.3f}" '
+            f'data-track-index="{2 + (idx % 6)}" '
             f'style="object-fit:{fit};transform-origin:{origin}"></video></div>'
         )
         if zoom_from != 1.0 or zoom_to != 1.0 or pan_x or pan_y:
@@ -295,17 +295,17 @@ class EditorialStage:
     def write_project(self, project_dir: Path, audio_src: str = "assets/mix.wav",
                       timeline_out: Path | None = None) -> None:
         css = """*{box-sizing:border-box}
-html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-family:"PingFang SC","Hiragino Sans GB",system-ui,sans-serif}
+html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-family:system-ui,sans-serif}
 #root{position:relative;width:100%;height:100%;overflow:hidden;background:radial-gradient(ellipse at 65% 37%,#243531 0%,#172322 53%,#111a19 100%)}
 .clip{position:absolute}
 .bg-fill{z-index:1}
-.viewport{z-index:2;overflow:hidden;background:#121b19;box-shadow:inset 0 0 0 1px rgba(246,240,223,.14)}
-.vp-inner{display:block;width:100%;height:100%;will-change:transform}
-.tone-paper-tint{background:#ebe3d2}
+.viewport{position:absolute;z-index:2;overflow:hidden;pointer-events:none}
+.clip.viewport{background:#121b19}
+.vp-inner{display:block;width:100%;height:100%;background:#121b19;will-change:transform}
+.tone-paper-tint.clip.viewport,.tone-paper-tint .vp-inner{background:#ebe3d2}
 .tone-paper-tint .vp-inner{filter:sepia(.08) brightness(.94) contrast(1.04)}
 .tone-dark-soft .vp-inner{filter:brightness(.93) contrast(1.05)}
-.tone-invert-log{background:#111918}
-.tone-invert-log .vp-inner{filter:invert(.92) hue-rotate(155deg) saturate(.75) contrast(1.12)}
+.tone-invert-log .vp-inner{background:#f4f4f4;filter:invert(.92) hue-rotate(155deg) saturate(.75) contrast(1.12)}
 .plate{inset:0;z-index:6;pointer-events:none}
 .cap{width:100%;left:0;bottom:44px;text-align:center;z-index:12}
 .cap span{display:inline-block;background:rgba(17,26,25,.94);color:#fff7e5;padding:9px 27px 13px;font-weight:650;font-size:42px;line-height:1.28;border-bottom:3px solid #ff745a;box-shadow:0 8px 24px rgba(0,0,0,.34)}
