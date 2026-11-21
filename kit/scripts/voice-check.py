@@ -192,7 +192,31 @@ def measure(path, alignment, cache=None, thresholds=None):
                 if b - a >= .05]
     chars = []
     sranges = sentence_ranges(text)
-    for i, r in enumerate(alignment['mapped']):
+    mapped_list = [dict(r) for r in alignment['mapped']]
+    clause_breaks = END | {'：', ':', '…', '；', ';'} | QUOTES
+    comma_breaks = {'，', ',', '、'}
+    for i, r in enumerate(mapped_list):
+        prev_end = mapped_list[i - 1]['charEnd'] if i else 0
+        between_prev = text[prev_end:r['charStart']]
+        is_major = i == 0 or any(c in clause_breaks for c in between_prev)
+        is_comma = any(c in comma_breaks for c in between_prev)
+        if is_major or is_comma:
+            min_q = .04 if is_major else .13
+            cand = [qb for qa, qb in quiet if r['s'] - .02 <= qa <= r['s'] + .22 and qb > r['s'] + .03 and qb - qa >= min_q]
+            if cand:
+                qb = max(cand)
+                k = i
+                while (k + 1 < len(mapped_list)
+                       and mapped_list[k + 1]['charStart'] == mapped_list[k]['charEnd']
+                       and qb >= mapped_list[k]['e'] - .03):
+                    k += 1
+                span_end = mapped_list[k]['e']
+                n_span = k - i + 1
+                if qb < span_end - .04 * n_span:
+                    for m in range(n_span):
+                        mapped_list[i + m]['s'] = qb + (span_end - qb) * m / n_span
+                        mapped_list[i + m]['e'] = qb + (span_end - qb) * (m + 1) / n_span
+    for i, r in enumerate(mapped_list):
         w = text[r['charStart']:r['charEnd']]
         sentence = next((j for j, (a, b, _) in enumerate(sranges) if a <= r['charStart'] < b), -1)
         q = sum(max(0, min(r['e'], b) - max(r['s'], a)) for a, b in quiet)

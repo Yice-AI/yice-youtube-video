@@ -38,16 +38,24 @@ def numeric(value):
     if all(char in DIGITS for char in value):
         return float(''.join(str(DIGITS[char]) for char in value))
     total = section = digit = 0
+    has_unit = False
     for char in value:
         if char in DIGITS:
+            if digit or (has_unit and digit):
+                return None
             digit = DIGITS[char]
+            if digit == 0 and not has_unit and not total:
+                continue
         elif char in '十百千':
+            has_unit = True
             section += (digit or 1) * {'十': 10, '百': 100, '千': 1000}[char]
             digit = 0
         elif char == '万':
+            has_unit = True
             total += (section + digit) * 10000
             section = digit = 0
         else:
+            has_unit = True
             total = (total + section + digit) * 100000000
             section = digit = 0
     return float(total + section + digit)
@@ -123,10 +131,19 @@ def audit(text, transcription, exceptions=None, threshold=.97):
     expected_numbers = {}
     for match in re.finditer(NUMBER, text):
         expected_numbers.setdefault(numeric(match[0]), []).append(match[0])
-    for match in list(re.finditer(NUMBER, heard))[::-1]:
-        variants = list(dict.fromkeys(expected_numbers.get(numeric(match[0]), [])))
+    for match in list(re.finditer(r'\d+(?:\.\d+)?[万亿]?', heard))[::-1]:
+        val = numeric(match[0])
+        variants = list(dict.fromkeys(expected_numbers.get(val, [])))
+        chosen = None
         if len(variants) == 1:
-            replace(variants[0], match[0], 'number_unit', '同值数字写法')
+            chosen = variants[0]
+        elif len(variants) > 1 and val == 2.0:
+            nxt = heard[match.end():match.end() + 1]
+            chosen = '两' if nxt in '秒家遍期段张个条次倍' and '两' in variants else variants[0]
+        if chosen and chosen != match[0]:
+            heard = heard[:match.start()] + chosen + heard[match.end():]
+            mappings[chosen] = match[0]
+            events.append(dict(kind='number_unit', intended=chosen, heard=match[0], reason='同值数字写法'))
     for intended, variants in ENGLISH.items():
         for variant in variants:
             replace(intended, variant, 'english_name', '明确英文专名别写')
