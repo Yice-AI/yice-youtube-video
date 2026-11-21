@@ -105,7 +105,30 @@ def scan_frames(args, duration, out, errors):
     return dict(sample_count=len(times), hits=hits)
 
 
+def voice_speed_checks(project):
+    findings = []
+    for directory, folders, names in os.walk(project):
+        folders[:] = [name for name in folders if not name.startswith(".") and name not in {"node_modules", "vendor", "assets", "render"}]
+        for name in names:
+            file = Path(directory) / name
+            if file.suffix not in {".py", ".sh", ".mjs", ".js", ".ts"}:
+                continue
+            code = "\n".join(line for line in file.read_text(errors="replace").splitlines()
+                             if not line.lstrip().startswith(("#", "//")))
+            if not re.search(r"voice/|chapter-", code):
+                continue
+            for match in re.finditer(r"\batempo\s*=\s*([^,\s'\";]+)", code):
+                try:
+                    if float(match[1]) == 1:
+                        continue
+                except ValueError:
+                    pass
+                findings.append(f"{file.relative_to(project)} 含人声素材及变速滤镜 {match[0]}，请核对原速拼接")
+    return findings
+
+
 def rendered(args, out, errors):
+    errors.extend(voice_speed_checks(args.project))
     probe = json.loads(run(["ffprobe", "-v", "error", "-show_format", "-show_streams",
                             "-of", "json", str(args.rendered)]).stdout)
     streams = probe["streams"]

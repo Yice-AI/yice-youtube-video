@@ -81,6 +81,11 @@ class V3Kit(unittest.TestCase):
             self.assertEqual(report["longest_text_card"],6 if kind=="text_card" else 0)
             self.assertTrue((self.project/kind/"contact-sheet.jpg").is_file())
 
+    def test_voice_speed(self):
+        (self.project / "build.sh").write_text("ffmpeg -i voice/chapter-00.wav -af atempo=0.71 output.wav")
+        report = self.audit("voice-speed", "--rendered", self.movie("Public evidence"), expected=1)
+        self.assertTrue(any("atempo=0.71" in error for error in report["errors"]))
+
     def test_ocr(self):
         report = self.audit("private","--rendered",self.movie("/Users/demo"),expected=1)
         self.assertTrue(any(hit["term"]=="/Users/" and hit["seconds"]==0 for hit in report["ocr"]["hits"]))
