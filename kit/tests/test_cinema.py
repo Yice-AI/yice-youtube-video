@@ -57,6 +57,27 @@ class CinemaTests(unittest.TestCase):
         data=fixture();data['probe']['readings'][0]['effectiveTextHeightPx']=20;data['limits']={'minReadTextPx':20};self.assertTrue(self.evaluate(data)['ok'])
         d=self.node("try{c.cinemaLimits({maxNoCameraRatio:1.1});}catch(e){console.log(JSON.stringify(e.message));}");self.assertIn('超出范围',d)
 
+    def test_cinema_recipes_count_real_media_unless_generated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'v.mp4').write_bytes(b'00');(root/'s.png').write_bytes(b'00');(root/'gen.png').write_bytes(b'00')
+            code=f"import {{mediaCoverage}} from {json.dumps((TEMPLATE/'media-coverage.mjs').as_uri())};console.log(JSON.stringify(mediaCoverage(input.root,input.scenes,input.report,{{}},input.ledger)));"
+            out=self.node(code,{
+                'root':tmp,
+                'scenes':[
+                    {'id':'S1','B':0,'E':4,'recipe':'split-compare','sourceType':'recording'},
+                    {'id':'S2','B':4,'E':7,'recipe':'desk-dispatch'},
+                    {'id':'S3','B':7,'E':10,'recipe':'footage-bigword','sourceType':'image2'},
+                ],
+                'report':[
+                    {'id':'S1','media':[{'url':'v.mp4','video':True}]},
+                    {'id':'S2','media':[{'url':'s.png'}]},
+                    {'id':'S3','media':[{'url':'gen.png'}]},
+                ],
+                'ledger':[{'path':'gen.png','mode':'metaphor-image','provider':'image2'}]
+            })
+            self.assertAlmostEqual(out['realSeconds'],7.0)
+            self.assertAlmostEqual(out['realRatio'],0.7)
+
     def test_actual_video_frames_and_missing_tail(self):
         with tempfile.TemporaryDirectory() as tmp:
             file=Path(tmp)/'still.mp4';subprocess.run(['ffmpeg','-v','error','-f','lavfi','-i','color=c=gray:s=256x144:r=24:d=1.5','-c:v','libx264','-y',str(file)],check=True,capture_output=True)
