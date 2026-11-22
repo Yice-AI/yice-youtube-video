@@ -1,5 +1,6 @@
 """本地素材装箱、成片规格、时间轴和抽帧文字检查。"""
 import argparse
+from collections import Counter
 import getpass
 import hashlib
 import json
@@ -8,14 +9,180 @@ import os
 import re
 import subprocess
 import tempfile
+import struct
 from fractions import Fraction
 from pathlib import Path
 
 from review import run
 
-REAL = {"real_video", "web_cam", "screenshot", "stock_broll"}
+REAL = {"real_video", "web_cam", "screenshot"}
 VISUAL = {".mp4", ".mov", ".webm", ".jpg", ".jpeg", ".png", ".webp", ".svg"}
 GENERATED = re.compile(r"image2|ltx2|generated|metaphor-image|motion-video|prop-cutout", re.I)
+
+
+def _probe_video(path: Path) -> tuple[float, int, int]:
+    probe = json.loads(run(["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=width,height",
+                            "-select_streams", "v:0", "-of", "json", str(path)]).stdout)
+    stream = probe["streams"][0]
+    return float(probe["format"]["duration"]), int(stream["width"]), int(stream["height"])
+
+
+def pixel_dead_frame_gate(rendered: Path, duration: float, errors: list[str], timeline: dict | None = None) -> dict:
+    """直接从 MP4 抽 2fps 小帧，拦截真实连续静止画面。"""
+    limit = max(0.0, duration - 3.0)
+    proc = subprocess.run([
+        "ffmpeg", "-v", "error", "-i", str(rendered), "-vf", "fps=2,scale=64:36:flags=bilinear,format=gray",
+        "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"
+    ], check=True, capture_output=True)
+    size = 64 * 36
+    previous = None
+    run_start = None
+    run_count = 0
+    dead_runs = []
+    static_ok = [
+        (float(shot["start"]), float(shot["end"]))
+        for shot in (timeline or {}).get("shots", [])
+        if shot.get("kind") == "explainer_graphic"
+    ]
+    for index in range(0, len(proc.stdout), size):
+        frame = proc.stdout[index:index + size]
+        if len(frame) != size:
+            break
+        if previous is not None:
+            change = sum(abs(a - b) for a, b in zip(previous, frame)) / (size * 255)
+            timestamp = index / size / 2
+            is_static_ok = any(start <= timestamp < end for start, end in static_ok)
+            if change < 0.004 and timestamp < limit and not is_static_ok:
+                if run_start is None:
+                    run_start = max(0.0, timestamp - 0.5)
+                    run_count = 0
+                run_count += 1
+            else:
+                if run_start is not None and run_count / 2 > 4.5:
+                    dead_runs.append((run_start, timestamp))
+                run_start, run_count = None, 0
+        previous = frame
+    if run_start is not None and run_count / 2 > 4.5:
+        dead_runs.append((run_start, min(duration, run_start + run_count / 2)))
+    for start, end in dead_runs:
+        errors.append(f"v4 真像素死镜：{start:.2f}–{end:.2f}s 连续帧差低于 0.4%")
+    return {"sample_fps": 2, "dead_runs": [{"start": a, "end": b} for a, b in dead_runs]}
+
+
+def black_frame_gate(rendered: Path, timeline: dict, duration: float, errors: list[str]) -> dict:
+    """按真实像素平均亮度拦截非故意黑帧。"""
+    sample_fps = 2
+    proc = subprocess.run([
+        "ffmpeg", "-v", "error", "-i", str(rendered),
+        "-vf", "fps=2,scale=64:36:flags=bilinear,format=gray",
+        "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"
+    ], check=True, capture_output=True)
+    size = 64 * 36
+    threshold = 6.0
+    intentional = []
+    for shot in timeline.get("shots", []):
+        if shot.get("intentional_black") or shot.get("name") == "黑场":
+            intentional.append((float(shot["start"]), float(shot["end"])))
+
+    def is_intentional(at):
+        return any(start <= at < end for start, end in intentional)
+
+    black_times = []
+    for index in range(0, len(proc.stdout), size):
+        frame = proc.stdout[index:index + size]
+        if len(frame) != size:
+            break
+        average = sum(frame) / size
+        at = index / size / sample_fps
+        if average < threshold and at < duration:
+            black_times.append({"start": at, "end": min(duration, at + 1 / sample_fps), "average_luma": average,
+                                "intentional": is_intentional(at)})
+    unexpected = [item for item in black_times if not item["intentional"]]
+    for item in unexpected:
+        errors.append(f"v4 黑帧：{item['start']:.2f}–{item['end']:.2f}s 平均亮度 {item['average_luma']:.2f} < 6.0")
+    return {"sample_fps": sample_fps, "threshold": threshold, "black_frames": black_times,
+            "unexpected_black_frames": unexpected}
+
+
+def _dhash(path: Path, second: float) -> int:
+    from PIL import Image
+    with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
+        run(["ffmpeg", "-v", "error", "-y", "-ss", f"{second:.3f}", "-i", str(path), "-frames:v", "1", tmp.name])
+        image = Image.open(tmp.name).convert("L").resize((9, 8))
+        pixels = list(image.get_flattened_data()) if hasattr(image, "get_flattened_data") else list(image.getdata())
+    bits = 0
+    for row in range(8):
+        for col in range(8):
+            bits = (bits << 1) | int(pixels[row * 9 + col] > pixels[row * 9 + col + 1])
+    return bits
+
+
+def dhash_gate(rendered: Path, timeline: dict, errors: list[str]) -> dict:
+    shots = sorted(timeline.get("shots", []), key=lambda row: float(row["start"]))
+    hashes = []
+    for shot in shots:
+        start, end = float(shot["start"]), float(shot["end"])
+        if end <= start:
+            continue
+        at = (start + end) / 2
+        hashes.append({"shot": shot.get("id", "?"), "at": at, "hash": _dhash(rendered, at)})
+    groups = []
+    for item in hashes:
+        group = next((g for g in groups if (g[0]["hash"] ^ item["hash"]).bit_count() <= 4), None)
+        if group is None:
+            groups.append([item])
+        else:
+            group.append(item)
+    repeats = [group for group in groups if len(group) > 4]
+    for group in repeats:
+        errors.append("v4 dHash 跨镜重复超过 4 次：" + ", ".join(item["shot"] for item in group))
+    return {"shot_samples": len(hashes), "duplicate_groups": [[item["shot"] for item in group] for group in repeats]}
+
+
+def _rms_window(wav: Path, start: float = 0.0, duration: float | None = None) -> float:
+    args = ["ffmpeg", "-v", "error", "-ss", f"{start:.3f}", "-i", str(wav)]
+    if duration is not None:
+        args += ["-t", f"{duration:.3f}"]
+    args += ["-ac", "1", "-ar", "8000", "-f", "f32le", "pipe:1"]
+    raw = subprocess.run(args, check=True, capture_output=True).stdout
+    values = struct.iter_unpack("<f", raw)
+    squares = [sample[0] * sample[0] for sample in values]
+    return math.sqrt(sum(squares) / len(squares)) if squares else 0.0
+
+
+def music_drop_acoustic_gate(rendered: Path, timeline: dict, errors: list[str]) -> dict:
+    drops = timeline.get("music_drops", [])
+    bed = rendered.parent / "bed-only.wav"
+    if len(drops) < 4:
+        errors.append("v4 声学门禁要求至少 4 个 Music Drop")
+        return {"bed_only": str(bed), "drop_count": len(drops)}
+    if not bed.is_file():
+        errors.append(f"v4 缺少纯伴奏轨：{bed}")
+        return {"bed_only": str(bed), "drop_count": len(drops)}
+    average = _rms_window(bed)
+    measurements = []
+    for start, end in drops:
+        rms = _rms_window(bed, float(start), float(end) - float(start))
+        db = 20 * math.log10(max(rms, 1e-12) / max(average, 1e-12))
+        measurements.append({"start": start, "end": end, "rms_db_vs_average": db})
+        if db > -22:
+            errors.append(f"v4 Music Drop 衰减不足：{start}–{end}s 为 {db:.1f} dB")
+    return {"bed_only": str(bed), "drop_count": len(drops), "average_rms": average, "drops": measurements}
+
+
+def subzone_gate(project: Path, errors: list[str]) -> dict:
+    findings = []
+    for file in project.rglob("*.html"):
+        if "vendor" in file.parts:
+            continue
+        text = file.read_text(errors="replace")
+        for match in re.finditer(r"<text\b[^>]*?\by\s*=\s*[\"']([0-9.]+)[\"'][^>]*>(.*?)</text>", text, re.S | re.I):
+            y = float(match.group(1))
+            if y >= 900:
+                findings.append({"file": str(file), "y": y, "text": re.sub(r"<[^>]+>", "", match.group(2)).strip()[:80]})
+    for finding in findings:
+        errors.append(f"v4 字幕安全区冲突：{finding['file']} y={finding['y']:.0f} 「{finding['text']}」")
+    return {"violations": findings}
 
 
 def precheck(args, errors):
@@ -45,14 +212,71 @@ def precheck(args, errors):
     return dict(required=required, assets=len(digests), missing=missing)
 
 
-def timeline_metrics(data, duration, project, errors):
+def _v4_timeline_metrics(data, duration, errors):
+    """执行 v4 的反复用、沉浸布局、节奏与 Music Drop 门禁。"""
+    shots = sorted(data.get("shots", []), key=lambda row: row["start"])
+    file_counts = Counter()
+    slice_counts = Counter()
+    layout_seconds = Counter()
+    actions = []
+    for shot in shots:
+        length = max(0.0, min(float(shot["end"]), duration) - float(shot["start"]))
+        layout_seconds[shot.get("layout", "split_box")] += length
+        files = shot.get("files", [])
+        media_start = shot.get("media_start", shot.get("mediaStart", 0.0))
+        for file in files:
+            file_counts[str(file)] += 1
+            slice_counts[(str(file), round(float(media_start), 1))] += 1
+        start = float(shot["start"])
+        for beat in shot.get("beats", []):
+            value = float(beat)
+            actions.append(start + value if 0 <= value < length else value)
+    actions = sorted(value for value in actions if 0 <= value <= duration)
+    intervals = [b - a for a, b in zip(actions, actions[1:]) if b >= a]
+    avg_beat_interval = sum(intervals) / len(intervals) if intervals else duration
+    max_beat_gap = max(intervals, default=duration)
+    immersive = sum(layout_seconds[name] for name in ("fullbleed", "print_desk", "ab_compare"))
+    music_drops = data.get("music_drops", [])
+    if not music_drops:
+        music_drops = [mark for mark in data.get("sound_marks", []) if mark.get("kind") == "music_drop"]
+    metrics = {
+        "max_file_reuse": max(file_counts.values(), default=0),
+        "max_slice_reuse": max(slice_counts.values(), default=0),
+        "split_box_ratio": layout_seconds["split_box"] / duration,
+        "immersive_ratio": immersive / duration,
+        "avg_beat_interval": avg_beat_interval,
+        "max_beat_gap": max_beat_gap,
+        "music_drop_count": len(music_drops),
+        "layout_seconds": dict(layout_seconds),
+    }
+    # 文件名统计只作报告。v4 的重复门禁必须以成片中点 dHash 为准，避免通过改名或
+    # 依赖后置 JSON 统计制造假阳性。
+    if metrics["split_box_ratio"] > 0.22:
+        errors.append("v4 split_box 占比超过 22%")
+    if metrics["immersive_ratio"] < 0.65:
+        errors.append("v4 满屏跟焦、相纸桌面与 A/B 沉浸布局占比低于 65%")
+    if metrics["avg_beat_interval"] > 2.5:
+        errors.append("v4 平均视觉动作间隔超过 2.5 秒")
+    if metrics["max_beat_gap"] > 3.8:
+        errors.append("v4 存在超过 3.8 秒的静止空档")
+    if metrics["music_drop_count"] < 4:
+        errors.append("v4 Music Drop 少于 4 处")
+    if metrics["max_file_reuse"] > 4:
+        errors.append(f"v4 单文件复用超过 4 次：{metrics['max_file_reuse']} 次")
+    return metrics
+
+
+def timeline_metrics(data, duration, project, errors, *, v4=False):
     previous = real = stock = breaks = continuous = longest = max_windows = 0
     for shot in sorted(data["shots"], key=lambda row: row["start"]):
         start, end, kind = shot["start"], shot["end"], shot["kind"]
+        if kind == "text_card" and start < previous <= end:
+            # 允许叠在满屏实录上的短字卡，字卡自身仍由 HyperFrames layout gate 检查。
+            continue
         if kind == "evidence_wall":
             errors.append(f"镜头 {shot.get('id')} 使用了已禁用的多宫格碎框证据墙（evidence_wall），请改用单主视窗或 A/B 双视窗")
             continue
-        if not (previous <= start < end <= duration + 0.2) or kind not in REAL | {"ai_generated", "text_card", "chapter_break"}:
+        if not (previous <= start < end <= duration + 0.2) or kind not in REAL | {"stock_broll", "ai_generated", "text_card", "chapter_break", "explainer_graphic"}:
             raise ValueError(f"无效镜头 {shot.get('id')}")
         length = min(end, duration) - start
         files = shot.get("files", [])
@@ -83,8 +307,11 @@ def timeline_metrics(data, duration, project, errors):
         errors.append("片名与章节扉页（chapter_break）总长超标")
     if longest > 5:
         errors.append("连续纯字卡超过 5 秒")
-    return dict(real_ratio=real / duration, stock_broll_ratio=stock / duration,
-                longest_text_card=longest, max_windows_per_shot=max_windows)
+    result = dict(real_ratio=real / duration, stock_broll_ratio=stock / duration,
+                  longest_text_card=longest, max_windows_per_shot=max_windows)
+    if v4:
+        result.update(_v4_timeline_metrics(data, duration, errors))
+    return result
 
 
 def scan_frames(args, duration, out, errors):
@@ -159,9 +386,10 @@ def rendered(args, out, errors):
         errors.append("成片规格不符")
     result = dict(duration=duration, fps=fps, width=video["width"], height=video["height"])
     expected = args.expected_duration
+    timeline = None
     if args.timeline:
         timeline = json.loads(args.timeline.read_text())
-        result.update(timeline_metrics(timeline, duration, args.project, errors))
+        result.update(timeline_metrics(timeline, duration, args.project, errors, v4=args.v4))
         if expected is None:
             expected = timeline.get("end")
     if expected is not None and not abs(expected-duration) <= 0.2:
@@ -176,6 +404,15 @@ def rendered(args, out, errors):
         if value is None or not low <= value <= high:
             errors.append(f"{key} 超出范围或无法测量")
     result["ocr"] = scan_frames(args, duration, out, errors)
+    if args.v4:
+        if timeline is None:
+            errors.append("v4 需要真实 shot-timeline.json 才能做跨镜像素审计")
+        else:
+            result["pixel_gate"] = pixel_dead_frame_gate(args.rendered, duration, errors, timeline)
+            result["black_frame_gate"] = black_frame_gate(args.rendered, timeline, duration, errors)
+            result["dhash_gate"] = dhash_gate(args.rendered, timeline, errors)
+            result["music_drop_acoustic"] = music_drop_acoustic_gate(args.rendered, timeline, errors)
+        result["subzone_gate"] = subzone_gate(args.project, errors)
     return result
 
 
@@ -191,6 +428,7 @@ def main():
     parser.add_argument("--target-seconds", type=float, default=60)
     parser.add_argument("--min-assets-per-min", type=float, default=5)
     parser.add_argument("--forbid", default="")
+    parser.add_argument("--v4", action="store_true", help="启用 Skill v4.0 头部创作硬门禁")
     args = parser.parse_args()
     errors = []
     out = args.out or args.project
@@ -204,6 +442,8 @@ def main():
         errors.append(str(exc) or "缺少有效视频流")
     report = json.dumps(dict(ok=not errors, errors=errors, **metrics), ensure_ascii=False, indent=2)
     (out / "audit-v3-report.json").write_text(report + "\n")
+    if args.v4:
+        (out / "audit-v4-report.json").write_text(report + "\n")
     print(report)
     return int(bool(errors))
 
