@@ -266,7 +266,106 @@ def _v4_timeline_metrics(data, duration, errors):
     return metrics
 
 
-def timeline_metrics(data, duration, project, errors, *, v4=False):
+
+def _v5_timeline_metrics(data, duration, project, errors):
+    """Skill v5 防循环、唯一素材和从容节奏门禁。"""
+    counts = Counter()
+    names_by_digest = {}
+    digests_by_path = {}
+    short_sources = []
+    short = []
+    spans = []
+    dynamic_duration = 0.0
+    static_duration = 0.0
+    forbidden = []
+    for shot in data.get("shots", []):
+        start, end = float(shot.get("start", 0)), float(shot.get("end", 0))
+        span = end - start
+        spans.append(span)
+        if span < 2.5 and not shot.get("montage_countdown"):
+            short.append(shot.get("id", "?"))
+        files = shot.get("files", [])
+        has_dynamic_video = any(Path(rel).suffix.lower() == ".mp4" for rel in files)
+        has_static_image = any(Path(rel).suffix.lower() in {".png", ".jpg", ".jpeg"} for rel in files)
+        if has_dynamic_video:
+            dynamic_duration += span
+        elif has_static_image:
+            static_duration += span
+        for rel in files:
+            media = project / rel
+            identity = rel
+            if media.is_file():
+                if media not in digests_by_path:
+                    with media.open("rb") as source:
+                        digests_by_path[media] = hashlib.file_digest(source, "sha256").hexdigest()
+                identity = names_by_digest.setdefault(digests_by_path[media], rel)
+            counts[identity] += 1
+            rel_name = Path(rel).name
+            if re.search(r"v5-frame-", rel_name, re.I) or re.search(r"EP03-全片-.*\.mp4$", rel_name, re.I):
+                forbidden.append(rel)
+            if rel.lower().endswith(".mp4"):
+                media = project / rel
+                if media.is_file():
+                    try:
+                        probe = run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(media)])
+                        source_duration = float(probe.stdout.strip())
+                        offset = float(shot.get("media_start", 0))
+                        is_graphic = shot.get("kind") == "explainer_graphic"
+                        required = span + offset
+                        if is_graphic:
+                            required += 0.35
+                        elif shot.get("kind") == "web_cam":
+                            required += 1.0
+                        # 编码时长只允许一帧取整偏差。
+                        if source_duration + 1/30 < required or (is_graphic and source_duration - required > 1/30):
+                            short_sources.append({"shot": shot.get("id"), "source": rel,
+                                                  "actual": source_duration, "required": required})
+                            errors.append(f"v5 素材时长不符 {rel}: 实际 {source_duration:.3f}s，要求 {required:.3f}s")
+                    except (ValueError, subprocess.SubprocessError):
+                        errors.append(f"v5 无法读取素材时长 {rel}")
+                else:
+                    errors.append(f"v5 镜头 {shot.get('id','?')} 缺少素材 {rel}")
+    repeated = {name: n for name, n in counts.items() if n > 1}
+    repeated_twice = {name: n for name, n in repeated.items() if n == 2}
+    if len(repeated_twice) > 2 or any(n > 2 for n in repeated.values()):
+        errors.append(f"v5 素材复用超限: {repeated}")
+    static_reuse = {name: n for name, n in counts.items() if Path(name).suffix.lower() in {'.png','.jpg','.jpeg'} and n != 1}
+    graphic_reuse = {name: n for name, n in counts.items() if 'exp-' in Path(name).name and n != 1}
+    if static_reuse:
+        errors.append(f"v5 静态图必须只用一次: {static_reuse}")
+    if graphic_reuse:
+        errors.append(f"v5 解说动效必须只用一次: {graphic_reuse}")
+    if short:
+        errors.append(f"v5 存在短于 2.5 秒的非倒数镜头: {short}")
+    if not 65 <= len(spans) <= 90:
+        errors.append(f"v5 镜头数 {len(spans)} 不在 65–90")
+    average = sum(spans) / len(spans) if spans else 0
+    if average < 4.8:
+        errors.append(f"v5 平均镜长 {average:.2f}s 小于 4.8s")
+    moving_ratio = dynamic_duration / duration if duration else 0.0
+    static_ratio = static_duration / duration if duration else 0.0
+    if moving_ratio < 0.82:
+        errors.append(f"v5 动态视频镜头占比 {moving_ratio:.3f} 低于 0.82")
+    if static_ratio > 0.10:
+        errors.append(f"v5 静态图镜头占比 {static_ratio:.3f} 高于 0.10")
+    if forbidden:
+        errors.append(f"v5 禁止使用伪素材: {sorted(set(forbidden))}")
+    loop_files = []
+    for html_file in project.rglob('index.html'):
+        try:
+            if re.search(r'<video[^>\n]*\bloop\b', html_file.read_text(errors='replace'), re.I):
+                loop_files.append(str(html_file.relative_to(project)))
+        except OSError:
+            continue
+    if loop_files:
+        errors.append(f"v5 发现 video loop: {loop_files}")
+    return {"no_loop_restart_gate": {"loop_files": loop_files, "short_sources": short_sources},
+            "strict_uniqueness_gate": {"reuse": counts, "repeated": repeated},
+            "calm_pacing_gate": {"shot_count": len(spans), "average_shot": average, "source_shot_count": len(spans), "short_shots": short},
+            "moving_video_ratio_gate": {"dynamic_video_ratio": moving_ratio, "static_image_ratio": static_ratio,
+                                         "forbidden_pseudo_assets": sorted(set(forbidden))}}
+
+def timeline_metrics(data, duration, project, errors, *, v4=False, v5=False):
     previous = real = stock = breaks = continuous = longest = max_windows = 0
     for shot in sorted(data["shots"], key=lambda row: row["start"]):
         start, end, kind = shot["start"], shot["end"], shot["kind"]
@@ -311,6 +410,8 @@ def timeline_metrics(data, duration, project, errors, *, v4=False):
                   longest_text_card=longest, max_windows_per_shot=max_windows)
     if v4:
         result.update(_v4_timeline_metrics(data, duration, errors))
+    if v5:
+        result.update(_v5_timeline_metrics(data, duration, project, errors))
     return result
 
 
@@ -389,7 +490,7 @@ def rendered(args, out, errors):
     timeline = None
     if args.timeline:
         timeline = json.loads(args.timeline.read_text())
-        result.update(timeline_metrics(timeline, duration, args.project, errors, v4=args.v4))
+        result.update(timeline_metrics(timeline, duration, args.project, errors, v4=args.v4 or args.v5, v5=args.v5))
         if expected is None:
             expected = timeline.get("end")
     if expected is not None and not abs(expected-duration) <= 0.2:
@@ -404,7 +505,7 @@ def rendered(args, out, errors):
         if value is None or not low <= value <= high:
             errors.append(f"{key} 超出范围或无法测量")
     result["ocr"] = scan_frames(args, duration, out, errors)
-    if args.v4:
+    if args.v4 or args.v5:
         if timeline is None:
             errors.append("v4 需要真实 shot-timeline.json 才能做跨镜像素审计")
         else:
@@ -429,6 +530,7 @@ def main():
     parser.add_argument("--min-assets-per-min", type=float, default=5)
     parser.add_argument("--forbid", default="")
     parser.add_argument("--v4", action="store_true", help="启用 Skill v4.0 头部创作硬门禁")
+    parser.add_argument("--v5", action="store_true", help="启用 Skill v5.0 自治成片硬门禁")
     args = parser.parse_args()
     errors = []
     out = args.out or args.project
@@ -444,6 +546,8 @@ def main():
     (out / "audit-v3-report.json").write_text(report + "\n")
     if args.v4:
         (out / "audit-v4-report.json").write_text(report + "\n")
+    if args.v5:
+        (out / "audit-v5-report.json").write_text(report + "\n")
     print(report)
     return int(bool(errors))
 

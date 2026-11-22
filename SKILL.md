@@ -1,9 +1,9 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频的整套制作体系（v4.0）：旁白稿 → Modal GPU 克隆配音与五维卡顿检测 → 逐镜语义《镜头表》 → 满屏连续多点跟焦实录（Playwright 1.5x 深色虚拟摄影师、软件真操作微距）× 花叔 8 大解说动画语法引擎（kit/explainer：y2_vox 调查桌胶带剪报与 12fps 荧光笔、t3_finance_chart 经济学人动态柱线图、t2_keynote_ui 展开、y3_whiteboard 推导链、y5_kinetic_type 动态重音）→ 通透无黑盒字幕与 Music Drop 母带混音 → audit-v3.py --v4 真像素防死镜/防黑帧/dHash防重硬门禁。8–10 分钟、不露脸、AI 工具实战。Use when 用户要做/剪/规划/返修一期一策 YouTube 视频、采集第三方或录屏素材、审片、开新一期，或提到“下一期视频”“剪出来”“YouTube 教程”“导演层”。
+description: 一策 YouTube 中文教程与深度科技视频的整套制作体系（v5.0）：旁白稿 → Modal GPU 克隆配音与五维卡顿检测 → 逐镜语义《镜头表》 → 满屏连续多点跟焦实录（Playwright 1.5x 深色虚拟摄影师、软件真操作微距）× 花叔 8 大解说动画语法引擎（kit/explainer：y2_vox 调查桌胶带剪报与 12fps 荧光笔、t3_finance_chart 经济学人动态柱线图、t2_keynote_ui 展开、y3_whiteboard 推导链、y5_kinetic_type 动态重音）→ 通透无黑盒字幕与 Music Drop 母带混音 → audit-v3.py --v4 真像素防死镜/防黑帧/dHash防重硬门禁。8–10 分钟、不露脸、AI 工具实战。Use when 用户要做/剪/规划/返修一期一策 YouTube 视频、采集第三方或录屏素材、审片、开新一期，或提到“下一期视频”“剪出来”“YouTube 教程”“导演层”。
 ---
 
-# 一策 YouTube 视频制作（v4.0 · 满屏实操跟焦 × 解说动画引擎 × 真像素硬门禁）
+# 一策 YouTube 视频制作（v5.0 · 满屏实操跟焦 × 解说动画引擎 × 真像素硬门禁）
 
 ## 核心架构铁律（对标子木 #6 / 松小鼠 #1 / Vox #7 与花叔开源体系确立）
 
@@ -49,3 +49,9 @@ description: 一策 YouTube 中文教程与深度科技视频的整套制作体�
 - **100% 隐私打码**：成片任意一帧不得露出本机用户名、`Users/...`、`$HOME`、邮箱、IP、私人会话标题或头像；克隆参考音频严禁上传公开存储。
 - **实测数字铁律**：片中所有数字必须来自可复核实测底账，严禁编造或逻辑自相矛盾。
 - **外部操作红线**：GitHub 固定使用 `Yice-AI <251089126+Yice-AI@users.noreply.github.com>`；未经用户明确同意，严禁 `git push`、打标签、上传或发布；Modal 严守 `spend_limit_usd = 0`；绝不触碰 `/Users/micra/Documents/Codex/yice-seo-site/`。
+
+## Skill v5.0 自治制片入口
+
+给定主题或文稿后，使用 `kit/scripts/autopilot-episode.sh` 生成语义句群和唯一素材账本，再由 `SemanticBeatPlanner`、`ExactDurationExplainerBuilder` 与 `WebCamBatchRecorder` 组织 3.0–8.5 秒从容镜头。所有视频镜头不得使用 `loop`，解说动效按镜头槽位精确生成并在末尾 Hold。
+
+交付前运行 `audit-v3.py --v5`。该门禁检查素材源时长、循环属性、唯一素材复用和平均镜长，并使用 `kit/scripts/inspect-motion.py` 输出 1.0 秒步进胶片条供连贯性复核。浅色米纸镜头由 `EditorialStage.light_zones` 自动启用深墨色高对比字幕。

@@ -17,6 +17,9 @@ export function wallReason({ status = 200, title = '', text = '', password = fal
 import {recordAsset} from '../template/asset-ledger.mjs';
 export {recordAsset};
 
+const DEFAULT_PLAYWRIGHT_MODULE = '/opt/homebrew/lib/node_modules/openclaw/node_modules/playwright-core';
+const DEFAULT_CHROME_EXECUTABLE = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+
 export async function capturePage({ project, url, id = 'web-page', seconds = 7, scene = '', sourceName, highlight,
   license = '原页面权利人保留；短段引用，发布用途待核对', licenseUrl, details=false, scroll=true }) {
   const target = new URL(url);
@@ -26,9 +29,11 @@ export async function capturePage({ project, url, id = 'web-page', seconds = 7, 
   project = path.resolve(project);
   const output = path.join(project, 'assets/web', id); fs.mkdirSync(output,{recursive:true});
   const require = createRequire(path.join(project, 'package.json'));
-  const { chromium } = require(process.env.YICE_PLAYWRIGHT_MODULE || 'playwright-core');
+  const playwrightModule = process.env.YICE_PLAYWRIGHT_MODULE ||
+    (fs.existsSync(DEFAULT_PLAYWRIGHT_MODULE) ? DEFAULT_PLAYWRIGHT_MODULE : 'playwright-core');
+  const { chromium } = require(playwrightModule);
   const launch = { headless:true };
-  if (process.env.YICE_CHROME_EXECUTABLE) launch.executablePath = process.env.YICE_CHROME_EXECUTABLE;
+  if (process.env.YICE_CHROME_EXECUTABLE || fs.existsSync(DEFAULT_CHROME_EXECUTABLE)) launch.executablePath = process.env.YICE_CHROME_EXECUTABLE || DEFAULT_CHROME_EXECUTABLE;
   else launch.channel = 'chrome';
   const browser = await chromium.launch(launch);
   const result = { id, url, sourceName:sourceName || target.hostname, capturedAt:new Date().toISOString(),

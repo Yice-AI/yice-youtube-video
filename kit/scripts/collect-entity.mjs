@@ -9,6 +9,11 @@ import {publicUrl,pressPermission,classifyLinks,latestAnnouncement} from './enti
 import {recordAsset} from '../template/asset-ledger.mjs';
 import {candidateSheet} from './find-media.mjs';
 
+const DEFAULT_PLAYWRIGHT_MODULE = '/opt/homebrew/lib/node_modules/openclaw/node_modules/playwright-core';
+const DEFAULT_CHROME_EXECUTABLE = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+if (!process.env.YICE_PLAYWRIGHT_MODULE && fs.existsSync(DEFAULT_PLAYWRIGHT_MODULE)) process.env.YICE_PLAYWRIGHT_MODULE = DEFAULT_PLAYWRIGHT_MODULE;
+if (!process.env.YICE_CHROME_EXECUTABLE && fs.existsSync(DEFAULT_CHROME_EXECUTABLE)) process.env.YICE_CHROME_EXECUTABLE = DEFAULT_CHROME_EXECUTABLE;
+
 const sha=bytes=>createHash('sha256').update(bytes).digest('hex');
 const editorial='原页面/素材权利人保留；仅用于有来源的正文评论或产品说明，不作为公有领域素材。';
 export const slug=value=>value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g,'-').replace(/^-|-$/g,'')||'entity';

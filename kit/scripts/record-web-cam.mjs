@@ -8,6 +8,8 @@ import {recordBrowserFrames} from './browser-frames.mjs';
 
 const options = Object.fromEntries('project url id seconds highlight actions source scene fps theme scale'.split(' ').map(key => [key,{type:'string'}]));
 const {values:args} = parseArgs({options});
+const DEFAULT_PLAYWRIGHT_MODULE = '/opt/homebrew/lib/node_modules/openclaw/node_modules/playwright-core';
+const DEFAULT_CHROME_EXECUTABLE = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const url = new URL(args.url);
 const duration = Number(args.seconds ?? 6), fps = Number(args.fps ?? 30);
 const scale = Number(args.scale ?? 1.5);
@@ -24,10 +26,15 @@ if (!Array.isArray(actions)) throw Error('actions 需要数组');
 const require = createRequire(path.join(project,'package.json'));
 const search = [project,process.cwd(),import.meta.dirname,...(process.env.NODE_PATH||'').split(path.delimiter),
   path.join(os.homedir(),'.codex/skills/guizang-social-card-skill')];
-const {chromium} = require(process.env.YICE_PLAYWRIGHT_MODULE || require.resolve('playwright-core',{paths:search}));
+const playwrightModule = process.env.YICE_PLAYWRIGHT_MODULE ||
+  (fs.existsSync(DEFAULT_PLAYWRIGHT_MODULE) ? DEFAULT_PLAYWRIGHT_MODULE : null) ||
+  require.resolve('playwright-core',{paths:search});
+const {chromium} = require(playwrightModule);
 const viewport = {width:Math.round(1920/scale),height:Math.round(1080/scale)};
 const cx0 = Math.round(viewport.width/2), cy0 = Math.round(viewport.height/2);
-const browser = await chromium.launch(process.env.YICE_CHROME_EXECUTABLE ? {executablePath:process.env.YICE_CHROME_EXECUTABLE} : {channel:'chrome'});
+const chromeExecutable = process.env.YICE_CHROME_EXECUTABLE ||
+  (fs.existsSync(DEFAULT_CHROME_EXECUTABLE) ? DEFAULT_CHROME_EXECUTABLE : null);
+const browser = await chromium.launch(chromeExecutable ? {executablePath:chromeExecutable} : {channel:'chrome'});
 const events = [];
 let position = {x:cx0,y:cy0};
 function log(t,kind,rect,camScale) {
@@ -39,7 +46,7 @@ try {
 } catch (error) { await browser.close(); throw error; }
 try {
   const page = await browser.newPage({viewport,deviceScaleFactor:scale,colorScheme,acceptDownloads:false});
-  page.setDefaultTimeout(5000);
+  page.setDefaultTimeout(30000);
   await page.addInitScript(({ix,iy})=>{
     addEventListener('DOMContentLoaded',()=>{
       const pointer=document.createElement('div');
@@ -49,7 +56,8 @@ try {
       document.documentElement.append(pointer);
     },{once:true});
   },{ix:cx0,iy:cy0});
-  const response=await page.goto(args.url,{waitUntil:'domcontentloaded'});
+  const response=await page.goto(args.url,{waitUntil:'domcontentloaded',timeout:30000});
+  await page.waitForTimeout(700);
   if(response && !response.ok()) throw Error('网页响应 '+response.status());
   const steps = actions.map(action=>{
     if(!['wait','scroll','move','click','type','highlight'].includes(action.type)) throw Error('未知动作 '+action.type);

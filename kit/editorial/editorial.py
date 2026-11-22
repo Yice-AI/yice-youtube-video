@@ -152,6 +152,7 @@ class EditorialStage:
         self.shots: list[dict] = []
         self.sound_marks: list[tuple[str, float]] = []
         self.music_drops: list[tuple[float, float]] = []
+        self.light_zones: list[tuple[float, float]] = []
         self._camera_move_history: list[str] = []
 
     def _shot(self, name: str, kind: str, start: float, end: float, files: list[str],
@@ -183,6 +184,7 @@ class EditorialStage:
         chapter_pill: str | None = None,
         checklist: list[tuple[float, str]] | None = None,
         callouts: list[dict] | None = None,
+        sfx: bool = False,
     ) -> str:
         """铺满 1920×1080 的连续跟焦镜头，并登记可审计的视觉 beats。
 
@@ -199,10 +201,20 @@ class EditorialStage:
         tone_cls = f" tone-{tone}" if tone != "natural" else ""
         self.media_layers.append(
             f'<div id="{vid}" class="viewport fullbleed{tone_cls}" style="left:0;top:0;width:1920px;height:1080px">'
-            f'<video id="film{idx}" class="clip vp-inner" src="{html.escape(src)}" muted loop playsinline preload="auto" '
+            f'<video id="film{idx}" class="clip vp-inner" src="{html.escape(src)}" muted playsinline preload="auto" '
             f'data-start="{start:.5f}" data-duration="{end - start:.5f}" data-media-start="{media_start:.3f}" '
             f'data-track-index="2" style="object-fit:cover;transform-origin:50% 50%"></video></div>'
         )
+        if camera_moves is None:
+            span = max(0.1, end - start)
+            if motion == "push":
+                camera_moves = [(0.0, 1.0, 960.0, 540.0), (span, 1.08, 960.0, 540.0)]
+            elif motion == "pull":
+                camera_moves = [(0.0, 1.08, 960.0, 540.0), (span, 1.0, 960.0, 540.0)]
+            elif motion == "glide":
+                camera_moves = [(0.0, 1.05, 860.0, 540.0), (span, 1.05, 1060.0, 540.0)]
+            else:
+                camera_moves = [(0.0, 1.0, 960.0, 540.0), (span, 1.02, 960.0, 540.0)]
         moves = sorted(camera_moves or [], key=lambda row: row[0])
         beats = [float(row[0]) for row in moves]
         for index, row in enumerate(moves):
@@ -230,7 +242,8 @@ class EditorialStage:
             self.scripts.append(
                 f"tl.to('#{vid} .vp-inner',{{scale:{safe_scale:.3f},x:{safe_x:.1f},y:{safe_y:.1f},duration:{duration:.3f},ease:'{ease}',immediateRender:false}},{local_at:.5f});"
             )
-            self.sound_marks.append(("whoosh", round(local_at, 5)))
+            if sfx:
+                self.sound_marks.append(("whoosh", round(local_at, 5)))
         overlay_id = f"rig-{len(self.plates)}"
         overlay = []
         if chapter_pill:
@@ -285,6 +298,8 @@ class EditorialStage:
     ) -> str:
         """将截图或剪报按相纸卡片步进摆上桌面。"""
         bg = "#202824" if bg_style == "dark_desk" else PAPER
+        if bg_style != "dark_desk":
+            self.light_zones.append((float(start), float(end)))
         body = f'<rect width="1920" height="1080" fill="{bg}"/>'
         if header:
             body += txt(92, 96, header, 38, IVORY if bg_style == "dark_desk" else INK, weight=750)
@@ -296,11 +311,12 @@ class EditorialStage:
                 local_at += start
             local_at = max(start, min(end, local_at))
             card = (
-                f'<g class="print-item" id="print-{len(self.plates)}-{index}" transform="translate({x} {y}) rotate({angle} {w/2:.2f} {h/2:.2f})" opacity="0">'
+                f'<g transform="translate({x} {y}) rotate({angle} {w/2:.2f} {h/2:.2f})">'
+                f'<g class="print-item" id="print-{len(self.plates)}-{index}" opacity="0">'
                 f'<rect x="-14" y="-14" width="{w+28}" height="{h+28}" rx="3" fill="#fffaf0"/>'
                 f'<rect x="-4" y="-4" width="{w+8}" height="{h+8}" fill="none" stroke="#d5c8aa" stroke-width="2"/>'
                 f'<image href="{html.escape(str(src))}" x="0" y="0" width="{w}" height="{h}" preserveAspectRatio="xMidYMid slice"/>'
-                f'<text x="0" y="{h+48}" fill="{INK}" font-size="24" font-family="monospace">{html.escape(str(tag))}</text></g>'
+                f'<text x="0" y="{h+48}" fill="{INK}" font-size="24" font-family="monospace">{html.escape(str(tag))}</text></g></g>'
             )
             body += card
             self.scripts.append(
@@ -347,7 +363,7 @@ class EditorialStage:
         self.media_layers.append(
             f'<div id="{vid}" class="viewport{tone_cls}" '
             f'style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">'
-            f'<video id="film{idx}" class="clip vp-inner" src="{html.escape(src)}" muted loop playsinline preload="auto" '
+            f'<video id="film{idx}" class="clip vp-inner" src="{html.escape(src)}" muted playsinline preload="auto" '
             f'data-start="{start:.5f}" data-duration="{end - start:.5f}" data-media-start="{media_start:.3f}" '
             f'data-track-index="{2 + (idx % 6)}" '
             f'style="object-fit:{fit};transform-origin:{origin}"></video></div>'
@@ -414,6 +430,8 @@ class EditorialStage:
     ) -> str:
         sid = f"s{len(self.plates)}"
         if bg:
+            if bg == PAPER:
+                self.light_zones.append((float(start), float(end)))
             self.bg_layers.append(
                 f'<div class="clip bg-fill" data-start="{start:.5f}" data-duration="{end - start:.5f}" '
                 f'data-track-index="1" style="inset:0;background:{bg}"></div>'
@@ -460,8 +478,10 @@ class EditorialStage:
             raise ValueError("字幕样式必须是 clean_cinema 或 editorial_box")
         for cue in cues:
             st, en, text = cue["start"], cue["end"], cue["text"]
+            on_light = any(a <= (st + en) / 2 <= b for a, b in self.light_zones)
+            cls = "cap caption-on-light" if on_light else "cap"
             self.captions.append(
-                f'<div class="clip cap" data-start="{st:.5f}" data-duration="{en - st:.5f}" '
+                f'<div class="clip {cls}" data-start="{st:.5f}" data-duration="{en - st:.5f}" '
                 f'data-track-index="15" data-caption-style="{style}" data-layout-allow-caption-zone><span>{html.escape(text)}</span></div>'
             )
 
@@ -484,6 +504,8 @@ html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-
 .cap{width:100%;left:0;bottom:44px;text-align:center;z-index:12}
 .cap span{display:inline-block;color:#fffaf0;padding:9px 27px 13px;font-weight:750;font-size:44px;line-height:1.28;-webkit-text-stroke:1.5px rgba(12,18,17,.88);text-shadow:0 2px 6px rgba(0,0,0,.85),0 6px 22px rgba(0,0,0,.65);border-bottom:3px solid #ff745a}
 .cap[data-caption-style="editorial_box"] span{background:rgba(17,26,25,.94);box-shadow:0 8px 24px rgba(0,0,0,.34)}
+.caption-on-light span{color:#172322;border:0;-webkit-text-stroke:0;text-shadow:none;background:rgba(255,250,240,.86);border-radius:8px;padding:4px 16px}
+.caption-on-light{bottom:44px}
 .chapter-pill{position:absolute;left:72px;top:54px;padding:10px 18px;border:1px solid rgba(255,250,240,.42);border-radius:22px;color:#fffaf0;background:rgba(20,29,27,.54);backdrop-filter:blur(10px);font:600 22px/1.1 system-ui,sans-serif}
 .rig-checklist{position:absolute;right:72px;top:54px;display:grid;gap:10px;padding:14px 18px;border-radius:14px;background:rgba(20,29,27,.88);backdrop-filter:blur(10px);color:#fffaf0;font:600 20px/1.2 system-ui,sans-serif}
 .check-row{display:flex;gap:10px;align-items:center;opacity:1;color:#fffaf0}.check-row.checked{color:#ffb29f}.check-row.checked i{color:#ff745a}.check-row i{font-style:normal;color:#fffaf0}
