@@ -222,12 +222,13 @@ class EditorialStage:
         self.add_overlays(start,end,overlays)
         return sid
 
-    def add_overlays(self, start, end, overlays):
+    def add_overlays(self, start, end, overlays, *, nle_plate=None):
         if not 1 <= len(overlays) <= 2:
             raise ValueError('叠层镜头需要一至两个明确的贴图动作')
         shot = self.shots[-1]
         shot['has_motion_overlay'] = True
         beats = shot.setdefault('beats', [])
+        nle_windows = []
         for index, overlay in enumerate(overlays):
             at = float(overlay['at'])
             hold = float(overlay.get('duration',end-start-at))
@@ -244,7 +245,7 @@ class EditorialStage:
                 body = f'<path fill="#101b1bd9" fill-rule="evenodd" d="M0 0H1920V1080H0Z {shape}"/>'
                 body += rect(x,y,w,h,'none',f'rx="14" stroke="{CORAL}" stroke-width="5" '
                                             'style="filter:drop-shadow(0 0 12px #ff745a)"')
-                body += group('rise',rect(x,y-49,min(700,85+len(label)*28),44,INK,'rx="8"')+txt(x+16,y-18,label,28))
+                body += '<g class="rise" data-layout-allow-overlap>'+rect(x,y-49,min(700,85+len(label)*28),44,INK,'rx="8"')+txt(x+16,y-18,label,28)+'</g>'
                 audio = 'pop'
             elif style == 'stat_badge':
                 value = float(overlay['value'])
@@ -259,11 +260,18 @@ class EditorialStage:
                 items = [str(item) for item in overlay.get('items',[])]
                 if not 1 <= len(items) <= 4 or not all(items):
                     raise ValueError('划线排疑需要一至四项文字')
-                body = rect(100,170,820,110+90*len(items),'#172322ea','rx="20"')+txt(136,238,label,39)
+                x,y = float(overlay.get('x',80)),float(overlay.get('y',152))
+                width = 728
+                body = rect(x,y,width,92+70*len(items),'#172322f5','rx="16" stroke="#7aaba0"')
+                body += txt(x+32,y+57,label,36,attrs='textLength="664" lengthAdjust="spacingAndGlyphs"' if len(label)*36>664 else '')
                 for i,item in enumerate(items):
-                    y = 324+90*i
-                    body += txt(143,y,item,min(48,730//len(item)))
-                    body += ln(138,y-16,min(883,143+len(item)*50),y-16,CORAL,7,f'class="strike-{i}"')
+                    baseline = y+121+70*i
+                    size = max(28,min(36,664//len(item)))
+                    fit = 'textLength="664" lengthAdjust="spacingAndGlyphs"' if len(item)*size>664 else ''
+                    body += txt(x+32,baseline,item,size,attrs=fit)
+                    body += ln(x+28,baseline-13,x+min(701,32+len(item)*size),baseline-13,CORAL,6,f'class="strike-{i}"')
+                if nle_plate:
+                    nle_windows.append((begin,begin+hold))
                 audio = 'marker'
             elif style == 'verdict_stamp':
                 if not label or len(label)>10:
@@ -272,6 +280,8 @@ class EditorialStage:
                 audio = 'stamp'
             else:
                 raise ValueError(f'未知动态贴图类型：{style}')
+            if style != 'spotlight_box':
+                body = '<g data-layout-allow-overlap>'+body+'</g>'
             plate = self.add_plate(begin,begin+hold,style,body,track=11+index)
             self.shots.pop()  # The overlay belongs to the underlying shot.
             if style == 'stat_badge':
@@ -293,6 +303,17 @@ class EditorialStage:
             self.sound_marks.append((audio,begin))
             beats.append(at)
         shot['beats'] = sorted(set(beats))
+        if nle_windows:
+            selector = f'#{nle_plate} .nle-bin'
+            finish = None
+            for begin, stop in sorted(nle_windows):
+                if finish is None or begin > finish:
+                    if finish is not None:
+                        self.scripts.append(f"tl.set('{selector}',{{autoAlpha:1,display:'inline'}},{finish:.5f});")
+                    self.scripts.append(f"tl.set('{selector}',{{autoAlpha:0,display:'none'}},{begin:.5f});")
+                finish = max(finish,stop) if finish is not None else stop
+            if finish < end-1e-6:
+                self.scripts.append(f"tl.set('{selector}',{{autoAlpha:1,display:'inline'}},{finish:.5f});")
 
     def add_triptych_cards(self, start, end, *, heading, cards):
         if not 2 <= len(cards) <= 4:

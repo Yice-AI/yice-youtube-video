@@ -5,8 +5,9 @@ import json
 INK, PANEL, PAPER, MUTED, CORAL = "#151c20", "#252e33", "#e7e9df", "#a5b7b6", "#ff8369"
 
 
-def label(x, y, value, size=32, color=PAPER):
-    return f'<text x="{x}" y="{y}" fill="{color}" font-size="{size}" font-family="Menlo,PingFang SC,sans-serif">{escape(str(value))}</text>'
+def label(x, y, value, size=32, color=PAPER, *, decorative=False):
+    layout = ' data-layout-ignore' if decorative else ''
+    return f'<text x="{x}" y="{y}" fill="{color}" font-size="{size}" font-family="Menlo,PingFang SC,sans-serif"{layout}>{escape(str(value))}</text>'
 
 
 def box(x, y, w, h, fill=PANEL, attrs=""):
@@ -27,16 +28,17 @@ def waveform(samples, x, y, w, h):
 def _nle(stage, start, end, data):
     monitor = data['monitor']
     stage.add_video(start,end,monitor,830,150,900,375,fit="contain",tone="natural")
-    body = label(80,190,"媒体箱",34) + label(835,131,"节目监视器",24,MUTED)
+    body = '<g class="nle-bin">' + label(80,190,"媒体箱",34)
     for i, media in enumerate(data['media'][:5]):
         body += label(85,250+54*i,media,29)
-    body += label(85, 492, f"镜长  {end-start:.2f}s", 24, MUTED)
+    body += label(85,492,f"镜长  {end-start:.2f}s",28,MUTED) + '</g>'
+    body += label(835,131,"节目监视器",24,MUTED,decorative=True)
     body += box(829, 487, 245, 39, INK)
-    body += '<g class="monitor-time">' + label(845, 516, "00:00:00:00", 24) + '</g>'
+    body += '<g class="monitor-time">' + label(845,516,"00:00:00:00",24,decorative=True) + '</g>'
     body += box(74,547,1765,325) + label(90,587,"剪辑序列",30)
     for i, name in enumerate(("V3 动效","V2 实录","V1 主画面","A1 人声","A2 配乐")):
         y=609+i*48
-        body+=label(94,y+28,name,24)+box(300,y,1470,35,"#1d2529")
+        body+=label(94,y+28,name,24,decorative=True)+box(300,y,1470,35,"#1d2529")
         if i < 3:
             for clip in data['tracks'][i]:
                 left,right=clip

@@ -262,9 +262,9 @@ def build_act(shots, root, folder, title, run):
                 if probe_video(monitor)<b-a+.2:
                     raise ValueError(f'工程台监视器视频过短：{key}')
                 data['monitor'] = install_asset(monitor,folder/'assets'/f'{key}-monitor{monitor.suffix}').relative_to(folder).as_posix()
-            add_workbench(stage,a,b,shot['studio_style'],shot.get('title',text),data)
+            base_plate = add_workbench(stage,a,b,shot['studio_style'],shot.get('title',text),data)
             if shot.get('overlays'):
-                stage.add_overlays(a,b,shot['overlays'])
+                stage.add_overlays(a,b,shot['overlays'],nle_plate=base_plate if shot['studio_style']=='nle_timeline' else None)
         elif mode == 'triptych_cards':
             cards = [dict(card,source=asset) for card,asset in zip(shot['cards'],assets)]
             stage.add_triptych_cards(a,b,heading=shot['heading'],cards=cards)

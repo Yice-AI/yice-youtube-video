@@ -5,6 +5,7 @@ import importlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -453,6 +454,40 @@ def test_studio_ui_reuses_callout_overlays(tmp_path):
     assert ('marker',.3) in stage.sound_marks and ('stamp',1.) in stage.sound_marks
     assert 'strike-0' in ''.join(stage.plates) and '通过' in ''.join(stage.plates)
     assert first_half_motion_density_gate([row],3)['motion_shots_by_half']==[1,0]
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
+def test_nle_strikethrough_replaces_bin_without_invading_monitor(tmp_path):
+    subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','color=#475853:s=320x180:r=30:d=4.5',
+                    '-c:v','libx264','-pix_fmt','yuv420p',str(tmp_path/'monitor.mp4')],check=True)
+    shot = dict(id='studio',stage_mode='studio_ui',anchor_cue_id='a',start=0,end=4,
+                studio_style='nle_timeline',data={'monitor':'monitor.mp4','media':['早期样片','升级成片'],
+                'tracks':[[(0,.45)],[(.45,1)],[]],'voice':[.2,.6,.3],'bed':[.1,.2,.2]},
+                overlays=[{'kind':'strikethrough_list','at':.8,'duration':2.,'label':'先排疑',
+                           'items':['核对素材','复查画面','对齐旁白','确认节奏']}],
+                spoken_topic='核验镜头',visual_subject='剪辑工作台和排疑卡',
+                semantic_binding='conceptual_explainer',semantic_tags=['核验'])
+    shots,_ = assemble.prepare_shots({'shots':[shot]},tmp_path,{'a':{'firstCharTime':0}})
+    stage = assemble.build_act(shots,tmp_path,tmp_path,'Studio',subprocess.run)
+    body = ''.join(stage.plates)
+    rect = re.search(r'<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)" fill="#172322f5"',body)
+    assert rect is not None
+    x,y,w,h = map(float,rect.groups())
+    assert x+w<830 and y+h<547
+    assert '<g class="nle-bin">' in body and 'data-layout-allow-overlap' in body
+    assert 'data-layout-ignore>节目监视器' in body
+    scripts = '\n'.join(stage.scripts)
+    assert "tl.set('#s0 .nle-bin',{autoAlpha:0,display:'none'},0.80000);" in scripts
+    assert "tl.set('#s0 .nle-bin',{autoAlpha:1,display:'inline'},2.80000);" in scripts
+    if os.environ.get('YICE_TEST_NLE_LAYOUT')=='1':
+        assemble.install_asset(Path(os.environ['YICE_GSAP_PATH']),tmp_path/'vendor/gsap.min.js')
+        wave(tmp_path/'assets/mix.wav',tone(4.,.1))
+        stage.write_project(tmp_path)
+        result = subprocess.run(['npx','--offline','hyperframes','check','.'],cwd=tmp_path,
+                                text=True,capture_output=True)
+        output = result.stdout+result.stderr
+        print(output)
+        assert result.returncode==0 and re.search(r'(?m)^Layout[ \t]*\n[^\n]*\b0 (?:issues|errors?)\b',output)
 
 
 @pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
