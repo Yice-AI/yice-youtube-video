@@ -346,14 +346,35 @@ def test_concat_cli_uses_authored_pause_room_tone_and_fade(tmp_path):
     two = wave(tmp_path/'segment-b.wav',np.r_[blank,tone(.35)])
     target = tmp_path/'chapter.wav'
     result = subprocess.run([sys.executable,str(KIT/'scripts/voice.py'),'--concat-wavs',str(one),str(two),
-                             '--pause','1=3.0','--crossfade-ms','80','--room-tone-dbfs','-60',
+                             '--pause','1=3.0','--crossfade-ms','80',
                              '--output',str(target)],check=True,capture_output=True,text=True)
     assert json.loads(result.stdout)['crossfade_ms']==80
+    assert json.loads(result.stdout)['room_tone_dbfs']==-68.
     data,rate = sf.read(target)
     assert len(data)/rate==pytest.approx(3.7,abs=.004)
     central = data[rate:3*rate]
-    assert 20*np.log10(np.sqrt(np.mean(central**2)))==pytest.approx(-60.,abs=.15)
+    assert 20*np.log10(np.sqrt(np.mean(central**2)))==pytest.approx(-68.,abs=.15)
     assert breath_integrity_gate(tmp_path,{'voice_tracks':[{'path':target.name}]})['ok']
+
+
+def test_concat_removes_dc_and_fades_across_the_protected_windows(tmp_path):
+    quiet = tone(.25,.0012,400)
+    one = wave(tmp_path/'tail.wav',np.r_[tone(.4),quiet] + .025)
+    two = wave(tmp_path/'lead.wav',np.r_[quiet,tone(.4)] - .025)
+    target = tmp_path/'seam.wav'
+    voice._concat_wavs([one,two],target,pauses={1:.8})
+    samples, rate = sf.read(target)
+    assert len(samples)/rate == pytest.approx(1.6,abs=.002)
+    assert abs(samples[:round(.35*rate)].mean()) < 1e-5
+    assert abs(samples[-round(.35*rate):].mean()) < 1e-5
+
+    def rms(start, end):
+        return np.sqrt(np.mean(samples[round(start*rate):round(end*rate)]**2))
+
+    assert rms(.41,.43) > 2*rms(.51,.53)
+    assert rms(1.17,1.19) > 1.7*rms(1.09,1.11)
+    voice._concat_wavs([two],target)
+    assert sf.info(target).duration == pytest.approx(.625)
 
 
 @pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')

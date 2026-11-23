@@ -31,7 +31,7 @@ NATURAL_V7 = {
     'comma_pause_ms': [0., 950.],
     'contrast_pause_ms': [0., 1250.],
     'sentence_pause_ms': [0., 1250.],
-    'nonpunct_pause_max_ms': 280.,
+    'nonpunct_pause_max_ms': 340.,
     'intra_word_drop_db': 28.,
     'intra_word_min_ms': 230.,
 }

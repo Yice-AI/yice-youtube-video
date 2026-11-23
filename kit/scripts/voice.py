@@ -349,9 +349,8 @@ def preserve_room_floor(samples, rate, dbfs):
     return samples
 
 
-def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-60.):
-    """用室温底噪连接长段，保护入声前至少 140ms 的可用自然前导。"""
-    import shutil
+def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-68.):
+    """用室温底噪连接长段，渐变衔接前导和尾音。"""
     import numpy as np
     import soundfile as sf
 
@@ -368,27 +367,37 @@ def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-60
             original_rate, channels = rate, samples.shape[1]
         if original_rate != rate or channels != samples.shape[1] or not len(samples):
             raise ValueError("句组音频采样参数不一致或为空")
+        samples = samples - np.mean(samples, axis=0, keepdims=True)
         level = np.max(np.abs(samples), axis=1)
         voiced = np.flatnonzero(level > 10 ** (-56 / 20))
         if not len(voiced):
             raise ValueError("句组音频全为静音")
-        if len(paths) == 1:
-            shutil.copyfile(path, target)
-            return
+        source_left = round(.025*rate) if voiced[0]>.05*rate else 0
         fade_frames = round(rate * crossfade_ms / 1000)
-        protected = fade_frames+round(.14*rate)
-        left = max(0, voiced[0] - protected) if index else 0
-        right = min(len(samples), voiced[-1]+1+protected) if index+1<len(paths) else len(samples)
+        pre_roll, post_roll = max(1,round(.110*rate)), max(1,round(.130*rate))
+        left = max(source_left, voiced[0]-fade_frames-pre_roll) if index else source_left
+        right = min(len(samples), voiced[-1]+1+fade_frames+post_roll) if index+1<len(paths) else len(samples)
         piece = samples[left:right].copy()
+        lead = int(voiced[0])-left
         tail_count = right-int(voiced[-1])-1
-        if index:
-            preserve_room_floor(piece[:int(voiced[0])-left],rate,room_tone_dbfs)
+        if index and lead:
+            head = piece[:lead]
+            preserve_room_floor(head,rate,room_tone_dbfs)
+            phase = np.clip(1 - (lead-np.arange(lead))/pre_roll,0.,1.)
+            gain = ((1-np.cos(np.pi*phase))/2)[:,None]
+            floor = room_tone(head,rate,lead,seed=index,dbfs=room_tone_dbfs)
+            head[:] = head*gain + floor*(1-gain)
         if index+1<len(paths) and tail_count:
-            preserve_room_floor(piece[-tail_count:],rate,room_tone_dbfs)
-        if index+1<len(paths) and tail_count<protected:
-            padding = protected-tail_count
+            tail = piece[-tail_count:]
+            preserve_room_floor(tail,rate,room_tone_dbfs)
+            phase = np.clip((np.arange(tail_count)+1)/post_roll,0.,1.)
+            gain = ((1+np.cos(np.pi*phase))/2)[:,None]
+            floor = room_tone(tail,rate,tail_count,seed=index,dbfs=room_tone_dbfs)
+            tail[:] = tail*gain + floor*(1-gain)
+        if index+1<len(paths) and tail_count<fade_frames+post_roll:
+            padding = fade_frames+post_roll-tail_count
             piece = np.concatenate((piece,room_tone(piece,rate,padding,seed=index,dbfs=room_tone_dbfs)))
-            tail_count = protected
+            tail_count += padding
         if rendered is None:
             rendered = piece
             previous_tail = tail_count
@@ -396,8 +405,7 @@ def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-60
         pause = float((pauses or {}).get(index, .12))
         if not math.isfinite(pause) or pause < 0:
             raise ValueError('段间留白须为非负有限秒数')
-        lead = int(voiced[0])-left
-        missing_lead = max(0,protected-lead)
+        missing_lead = max(0,fade_frames+pre_roll-lead)
         if missing_lead:
             piece = np.concatenate((room_tone(piece,rate,missing_lead,seed=index,dbfs=room_tone_dbfs),piece))
         fade = fade_frames
@@ -853,7 +861,7 @@ def main():
     parser.add_argument('--concat-wavs',type=Path,nargs='+')
     parser.add_argument('--pause',action='append',default=[],help='拼接边界序号=留白秒数，例如 1=3.0')
     parser.add_argument('--crossfade-ms',type=float,default=60.)
-    parser.add_argument('--room-tone-dbfs',type=float,default=-60.)
+    parser.add_argument('--room-tone-dbfs',type=float,default=-68.)
     parser.add_argument("--brand", default="yice")
     parser.add_argument("--anchors", type=Path)
     parser.add_argument("--normalizations", type=Path, help="分类的 ASR 例外：number_unit/english_name/homophone")

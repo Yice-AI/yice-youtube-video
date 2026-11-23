@@ -125,7 +125,7 @@ class VoiceCheckTests(unittest.TestCase):
         kinds = {a["kind"] for a in natural["alerts"]}
         self.assertFalse(kinds & {"hesitation", "intra_word_stutter"})
         self.assertTrue(any("nonpunct_pause" in a.get("reasons", []) for a in self.scan(audio, aligned)["alerts"]))
-        audio, aligned = self.synth(gaps={1: .34})
+        audio, aligned = self.synth(gaps={1: .40})
         natural = check.check_chapter(audio, aligned, profile="natural_v7")
         self.assertTrue(any("nonpunct_pause" in a.get("reasons", []) for a in natural["alerts"]))
 

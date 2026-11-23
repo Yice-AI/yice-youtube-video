@@ -83,7 +83,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.0�
 ## 应用与审计
 
 - `natural_v7` 保留呼吸。段间采用室温底噪及余弦过渡，独立后期默认 `--preserve-natural-breath`，只收紧验证过的超长静音，保留登记的戏剧留白。Whisper 的同音同调及英文拼写变体会单独留档，漏读和实质错读进入整句修复。历史项目可指定 `--chunk-mode legacy_chunk` 和 `--profile legacy`。
-- 已有多段原音可执行 `kit/scripts/voice.sh --concat-wavs part-a.wav part-b.wav --pause 1=3.0 --crossfade-ms 80 --room-tone-dbfs -60 --output chapter.wav`。边界编号从 1 起，表示第一段与第二段之间。默认 60 ms 余弦淡化、-60 dBFS 底噪。拼接保留每侧可用的 140 ms 呼吸保护区。
+- 已有多段原音可执行 `kit/scripts/voice.sh --concat-wavs part-a.wav part-b.wav --pause 1=3.0 --crossfade-ms 80 --room-tone-dbfs -68 --output chapter.wav`。边界编号从 1 起，表示第一段与第二段之间。默认使用 −68 dBFS 底噪，并在拼接处以半余弦包络融入 110 ms 前导和 130 ms 尾音。
 - `EpisodeAudioMixer` 从 0 秒铺入底乐，人声 -22 dB、留白 -13 dB 闪避，跨幕余弦换曲，支持 Music Drop。母带目标 -14.5 ± 0.8 LUFS，真峰值 ≤ -1.0 dBTP。
 - v7 审计核对语义对口、首字切点、真实视频底图占比 45%–72%、同源素材最多三次回扣。前 15 秒底乐高于 -42 dBFS，前 45 秒至少三处动作音效。前后半程各至少 35% 动效，连续裸视频至多 14 秒。原始人声和处理记录参加真空检查，成片参加像素、OCR、黑帧与重复审计。
 
