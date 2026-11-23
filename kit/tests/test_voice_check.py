@@ -91,6 +91,13 @@ class VoiceCheckTests(unittest.TestCase):
         audio, aligned = self.synth(text="甲乙，丙丁戊己。", gaps={1: .24})
         self.assertEqual(self.scan(audio, aligned)["alerts"], [])
 
+    def test_plain_comma_allows_continuous_speech(self):
+        audio, aligned = self.synth(text="你觉得，哪一段。")
+        result = self.scan(audio, aligned)
+        self.assertFalse(any(a["kind"] == "punctuation_pause" for a in result["alerts"]))
+        boundary = next(b for b in result["measurement"]["boundaries"] if b["kind"] == "comma")
+        self.assertEqual(boundary["range_ms"], [0., 340.])
+
     def test_missing_contrast_pause_is_flagged(self):
         audio, aligned = self.synth(text="免费没有，得用账号。")
         self.assertTrue(any(f.get("pause_class") == "contrast" for f in self.scan(audio, aligned)["alerts"]))
@@ -101,15 +108,15 @@ class VoiceCheckTests(unittest.TestCase):
         self.assertLess(result["measurement"]["characters"][2]["f0_change_st"], -4)
         self.assertEqual(result["alerts"], [])
 
-    def test_post_adds_missing_contrast_pause(self):
+    def test_post_defers_missing_contrast_pause_without_silence(self):
         audio, aligned = self.synth(text="免费没有，得用账号。")
         output = self.root / "processed.wav"
         updated = post.postprocess(audio, aligned, output)
         result = self.scan(output, updated)
         boundary = next(b for b in result["measurement"]["boundaries"] if b["kind"] == "contrast")
-        self.assertGreaterEqual(boundary["pause_ms"], 300)
-        self.assertLessEqual(boundary["pause_ms"], 450)
-        self.assertEqual(result["alerts"], [])
+        self.assertIn(boundary["char_boundary"], updated["unresolved_pause_boundaries"])
+        self.assertEqual(updated["semantic_pause_edits"], [])
+        self.assertTrue(any(alert["kind"] == "punctuation_pause" for alert in result["alerts"]))
 
     def test_post_preserves_pause_already_in_range(self):
         audio, aligned = self.synth(text="甲乙，丙丁戊己。", gaps={1: .24})
@@ -198,7 +205,8 @@ class VoiceCheckTests(unittest.TestCase):
 
         flow = voice.load_voice_tool('voice-repair')
         original_loader = voice.load_voice_tool
-        argv = ["voice.py", str(script), "--output", str(output), "--skip-post", "--silence", "0", '--max-repair-rounds', '0']
+        argv = ["voice.py", str(script), "--output", str(output), "--skip-post", "--silence", "0",
+                "--backend", "kaggle", "--max-repair-rounds", "0"]
         with patch.object(sys, "argv", argv), patch.object(voice, 'make_generator', return_value=fake_generation), \
                 patch.object(voice, 'make_transcriber', return_value=lambda _: {'text': aligned['text']}), \
                 patch.object(voice, 'load_voice_tool', side_effect=lambda name: flow if name == 'voice-repair' else original_loader(name)), \

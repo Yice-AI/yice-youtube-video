@@ -172,7 +172,7 @@ class VoiceWorkflowTests(unittest.TestCase):
         self.assertTrue(list((self.root/'repair').rglob('*-before.wav')))
         self.assertTrue(list((self.root/'repair').rglob('*-after.wav')))
         self.assertEqual(result['alignment']['text'],text)
-        self.assertTrue(all(splice['fade_ms']==10 for row in result['repair_rounds'] for splice in row['splices']))
+        self.assertTrue(all(splice['fade_ms']==15 for row in result['repair_rounds'] for splice in row['splices']))
 
     def test_no_acceptable_candidate_stops_after_three_rounds(self):
         source=self.root/'source.wav'

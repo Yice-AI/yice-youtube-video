@@ -40,8 +40,8 @@ def regularize(path, alignment, destination, cache, scene_boundaries=(), scene_p
     x, sr = sf.read(path, always_2d=True)
     x = x.mean(axis=1)
     measurements = pd.measure(path, alignment, cache, thresholds)
-    ac = pd.acoustic(path, cache)
     edits = []
+    unresolved = []
     chars = measurements['characters']
     for b in measurements['boundaries']:
         if b['kind'] not in ['comma', 'contrast', 'sentence']:
@@ -55,31 +55,31 @@ def regularize(path, alignment, destination, cache, scene_boundaries=(), scene_p
         target = (low + high) / 2 - padding
         if target < .03:
             raise ValueError('Scene padding exceeds semantic pause budget')
-        verified_alignment_gap = (
-            not b['pause_interval'] and b.get('asr_gap_ms', 0) / 1000 > high and
-            any(a <= left['e'] and z >= right['s']
-                for a, z in measurements.get('absolute_silence_45db', []))
-        )
-        if b['pause_interval']:
-            a, z = b['pause_interval']
-        elif verified_alignment_gap:
-            # Whisper can leave a large word-time gap even when the waveform
-            # contains verified absolute silence. Trim that silence to the
-            # semantic target instead of treating the boundary as zero-length
-            # and inserting a second pause.
-            a, z = left['e'], right['s']
-        else:
-            # Insert at the aligned lexical boundary, not inside the previous
-            # word. Edge fades suppress clicks without discarding phonemes.
-            # Place an inserted pause exactly after the left lexical item. A
-            # rounded midpoint can land a fraction after ``left['e']`` and
-            # make the end-time mapper extend the preceding character.
-            at = round(left['e'] * sr) / sr
-            a = z = at
-        delta = target - (z - a)
-        fade = round(fade_ms / 1000 * sr)
+        gap = b['pause_interval']
+        if not gap:
+            unresolved.append(b['char_boundary'])
+            continue
+        # Only edit the absolute silence within the measured punctuation pause.
+        safe = [(max(l, gap[0]), min(r, gap[1]))
+                for l, r in measurements['absolute_silence_45db']
+                if min(r, gap[1]) > max(l, gap[0])]
+        a, z = max(safe, key=lambda pair: pair[1] - pair[0], default=(0., 0.))
+        delta = target - duration
+        fade = max(1, round(fade_ms / 1000 * sr))
+        needed = 2 * fade + max(0, round(-delta * sr))
+        first, last = round(a * sr), round(z * sr)
+        if last - first < needed:
+            unresolved.append(b['char_boundary'])
+            continue
+        center = (first + last) // 2
         if delta > 0:
-            at = round((a + z) * .5 * sr)
+            segment = x[first + fade:last - fade + 1]
+            crossings = np.flatnonzero((segment[:-1] * segment[1:]) <= 0)
+            if not len(crossings):
+                unresolved.append(b['char_boundary'])
+                continue
+            points = crossings + first + fade
+            at = int(points[np.argmin(abs(points - center))])
             count = round(delta * sr)
             edits.append(dict(start_s=at / sr, end_s=at / sr,
                               new_duration_s=count / sr, insert_samples=count,
@@ -93,7 +93,7 @@ def regularize(path, alignment, destination, cache, scene_boundaries=(), scene_p
                               scene_padding_ms=padding * 1000))
         elif -delta * sr >= fade:
             loss = round(-delta * sr)
-            middle = round((a + z) * .5 * sr)
+            middle = center
             l = middle - (loss - fade) // 2
             r = l + loss - fade
             begin, end = l - fade, r + fade
@@ -137,12 +137,13 @@ def regularize(path, alignment, destination, cache, scene_boundaries=(), scene_p
             pre, post = x[:a].copy(), x[a:].copy()
             n = min(fade, len(pre), len(post))
             if n:
-                pre[-n:] *= np.linspace(1, 0, n)
-                post[:n] *= np.linspace(0, 1, n)
+                ramp = (1 - np.cos(np.linspace(0, np.pi, n))) / 2
+                pre[-n:] *= ramp[::-1]
+                post[:n] *= ramp
             x = np.r_[pre, np.zeros(e['insert_samples']), post]
         else:
             n = round(e['new_duration_s'] * sr)
-            t = np.linspace(0, 1, n)
+            t = (1 - np.cos(np.linspace(0, np.pi, n))) / 2
             blend = x[a:a+n] * (1 - t) + x[b-n:b] * t
             x = np.r_[x[:a], blend, x[b:]]
     updated = copy.deepcopy(alignment)
@@ -156,6 +157,7 @@ def regularize(path, alignment, destination, cache, scene_boundaries=(), scene_p
     destination.parent.mkdir(parents=True, exist_ok=True)
     sf.write(destination, x, sr, subtype='FLOAT')
     updated['semantic_pause_edits'] = edits
+    updated['unresolved_pause_boundaries'] = unresolved
     updated['suppressed_pause_edits'] = suppressed
     return updated, edits
 

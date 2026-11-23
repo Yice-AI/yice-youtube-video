@@ -110,12 +110,25 @@ def voice_continuity(project):
         key = chapter['id']
         check = voice / f'voice-check-{key}.json'
         audio = voice / chapter.get('audio', '')
-        if not check.is_file() or json.loads(check.read_text()).get('ok') is not True:
+        acoustic = json.loads(check.read_text()) if check.is_file() else {}
+        if acoustic.get('ok') is not True:
             failures.append(f'{key} 未通过声学检查')
-        if chapter.get('backend') != manifest.get('backend') or chapter.get('repair_unit') != 'semantic_chunk':
-            failures.append(f'{key} 缺少同一后端整组合成记录')
+        asr_report = voice / 'analysis' / f'asr-audit-{key}.json'
+        asr = json.loads(asr_report.read_text()) if asr_report.is_file() else {}
+        if asr.get('ok') is not True:
+            failures.append(f'{key} 未通过最终音轨转录检查')
+        original = chapter.get('backend')
+        repair = chapter.get('repair_backend', original)
+        if original not in {'modal', 'kaggle'} or repair not in {'modal', 'kaggle'}:
+            failures.append(f'{key} 缺少云端原音或补录后端')
+        if manifest.get('backend') not in {original, repair} or chapter.get('repair_unit') not in {'semantic_chunk', 'whole_sentence'}:
+            failures.append(f'{key} 缺少本次云端批次的整句或整组生成记录')
         if chapter.get('surgical') or 'surgical' in str(audio) or not audio.is_file():
             failures.append(f'{key} 音频缺失或使用了逐句拼接')
-        elif chapter.get('sha256') != hashlib.sha256(audio.read_bytes()).hexdigest():
-            failures.append(f'{key} 音频与正式清单的摘要不一致')
+        else:
+            digest = hashlib.sha256(audio.read_bytes()).hexdigest()
+            if chapter.get('sha256') != digest:
+                failures.append(f'{key} 音频与正式清单的摘要不一致')
+            if acoustic.get('measurement', {}).get('sha256') != digest or asr.get('sha256') != digest:
+                failures.append(f'{key} 声学或转录报告与最终音轨的摘要不一致')
     return dict(backend=manifest.get('backend'), chapters=len(chapters), violations=failures)

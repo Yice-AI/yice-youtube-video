@@ -38,6 +38,36 @@ class EnvironmentTests(unittest.TestCase):
                 load_environment({'HOME': tmp})
             self.assertFalse(marker.exists())
 
+    def test_stock_keys_respect_exported_environment_and_file_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            toolkit = home / 'toolkit'
+            toolkit.mkdir()
+            (toolkit / '.env').write_text(
+                'export PEXELS_API_KEY="toolkit # literal" # comment\n'
+                'KAGGLE_TTS_TOKEN=toolkit-test-value\n'
+            )
+            stock = home / '.config/yice-video/stock.env'
+            stock.parent.mkdir(parents=True)
+            stock.write_text(
+                'PEXELS_API_KEY=stock-file-value\n'
+                'PIXABAY_API_KEY=stock-fallback\n'
+                'KAGGLE_TTS_ENDPOINT_URL=https://ignored.invalid\n'
+                'UNRELATED_KEY=ignored\n'
+            )
+            base = {'HOME': tmp, 'YICE_TOOLKIT': str(toolkit)}
+            env = dict(base)
+            load_environment(env)
+            self.assertEqual(env['PEXELS_API_KEY'], 'toolkit # literal')
+            self.assertEqual(env['PIXABAY_API_KEY'], 'stock-fallback')
+            self.assertEqual(env['KAGGLE_TTS_TOKEN'], 'toolkit-test-value')
+            self.assertNotIn('KAGGLE_TTS_ENDPOINT_URL', env)
+            self.assertNotIn('UNRELATED_KEY', env)
+
+            env = {**base, 'PEXELS_API_KEY': 'exported-value'}
+            load_environment(env)
+            self.assertEqual(env['PEXELS_API_KEY'], 'exported-value')
+
 
 class InstallTests(unittest.TestCase):
     def test_check_mode_leaves_skill_and_path_config_untouched(self):

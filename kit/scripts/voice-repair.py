@@ -27,17 +27,23 @@ def cuts_for(audio, alignment, flagged=None):
     groups = [[row for row in alignment['mapped'] if lo <= row['charStart'] < hi] for lo, hi, _ in sentences]
     if any(not group for group in groups):
         raise ValueError('修复句子缺少完整字时间')
+    waveform, rate = sf.read(audio)
     quiet_points = []
     for left, right in zip(groups, groups[1:]):
         center = (left[-1]['e'] + right[0]['s']) / 2
-        quiet = [(a, b) for a, b in measurement['relative_quiet']
+        quiet = [(a, b) for a, b in measurement.get('absolute_silence_45db', [])
                  if b-a >= .04 and a >= left[-1]['s'] and b <= right[0]['e'] + .05
                  and abs((a+b)/2-center) <= .4]
         if quiet:
             a, b = min(quiet, key=lambda pair: abs(sum(pair)/2-center))
-            quiet_points.append(((a+b)/2, True))
-        else:
-            quiet_points.append((center, False))
+            lo, hi = round((a + .015) * rate), round((b - .015) * rate)
+            window = waveform[lo:hi]
+            zero = np.flatnonzero(window[:-1] * window[1:] <= 0) + lo
+            if len(zero):
+                point = zero[np.argmin(abs(zero - (a + b) * rate / 2))]
+                quiet_points.append((point / rate, True))
+                continue
+        quiet_points.append((center, False))
     if flagged is None:
         if any(not is_q for _, is_q in quiet_points):
             raise ValueError('句间没有已验证的自然低能量边界，拒绝剪入发声部分')
@@ -78,11 +84,12 @@ def continuity(before, after, rate):
                 ok=cosine >= .94 and shift is not None and abs(shift) <= 3.5)
 
 
-def flagged_sentences(text, check, audit):
+def flagged_sentences(text, check, audit, allowed_kinds=None):
     ranges = check_tool.sentence_ranges(text)
-    flagged = {row['sentence'] for row in check['alerts']}
+    flagged = {row['sentence'] for row in check['alerts']
+               if allowed_kinds is None or row['kind'] in allowed_kinds}
     positions = [index for index, char in enumerate(text) if char.isalnum()]
-    for difference in audit['differences']:
+    for difference in (audit['differences'] if not audit['ok'] else []):
         at = positions[min(difference['expected_start'], len(positions)-1)]
         flagged.update(index for index, (a, b, _) in enumerate(ranges) if a <= at < b)
     if any(index < 0 or index >= len(ranges) for index in flagged):
@@ -118,12 +125,12 @@ def splice(samples, rate, alignment, cuts, groups, replacements):
             char_offset = 0
             local = [{**row, 's': max(0, row['s']-cuts[index]),
                       'e': min(len(chunk)/rate, max(0, row['e']-cuts[index]))} for row in group]
-        fade = min(round(.01*rate), len(output), len(chunk)) if index and (replaced or previous_replaced) else 0
+        fade = min(round(.015*rate), len(output), len(chunk)) if index and (replaced or previous_replaced) else 0
         start = (len(output)-fade)/rate
         if fade:
-            weights = np.linspace(0, 1, fade)
+            weights = (1 - np.cos(np.linspace(0, np.pi, fade))) / 2
             output = np.r_[output[:-fade], output[-fade:]*(1-weights)+chunk[:fade]*weights, chunk[fade:]]
-            splices.append(dict(sentence=index, at=start, fade_ms=10))
+            splices.append(dict(sentence=index, at=start, fade_ms=1000*fade/rate))
         else:
             output = np.r_[output, chunk]
         mapped.extend(dict(charStart=char_offset+row['charStart'], charEnd=char_offset+row['charEnd'],
@@ -131,7 +138,8 @@ def splice(samples, rate, alignment, cuts, groups, replacements):
         previous_replaced = replaced
     if any(left['e'] > right['s'] + 1/rate for left, right in zip(mapped, mapped[1:])):
         raise ValueError('淡化接缝侵入字时间，拒绝拼接')
-    return output, dict(text=alignment['text'], mapped=mapped, matched_ratio=1.), splices
+    return output, dict(text=alignment['text'], mapped=mapped, matched_ratio=1.,
+                        planned_pauses=alignment.get('planned_pauses', {})), splices
 
 
 def final_scan(chapter, audio, alignment, folder, transcribe, exceptions, threshold, *, silence=0, offset=0, anchors=(), lufs=-16.):
@@ -152,9 +160,18 @@ def final_scan(chapter, audio, alignment, folder, transcribe, exceptions, thresh
     record, timing, scenes, captions, analysis = v.prepare_chapter(
         chapter, normalized, folder, {}, {}, silence, offset, anchors, aligned=alignment)
     final = folder/record['path']
-    aligned = dict(text=chapter['text'], mapped=analysis['output_mapped'])
+    aligned = dict(text=chapter['text'], mapped=analysis['output_mapped'],
+                   planned_pauses=alignment.get('planned_pauses', {}))
     transcript = transcribe(final)
     audit = quality.audit(chapter['text'], transcript, exceptions, threshold)
+    if transcript.get('segments'):
+        mapped, ratio, clamps = v.align_characters(chapter['text'], transcript, sf.info(final).duration,
+                                                   audit['normalizations'])
+        aligned.update(mapped=mapped, matched_ratio=ratio, monotonic_clamps=clamps)
+        record, timing, scenes, captions, analysis = v.prepare_chapter(
+            chapter, final, folder, {}, audit['normalizations'], 0, offset, anchors, aligned=aligned)
+        audit.update(alignment_ratio=ratio, ok=audit['ok'] and ratio >= threshold)
+    audit['sha256'] = hashlib.sha256(final.read_bytes()).hexdigest()
     checked = check_tool.check_chapter(final, aligned, chapter=chapter['id'], cache=folder/'analysis/final.npz')
     checked.update(prosody_ok=checked['ok'], asr=audit, ok=checked['ok'] and audit['ok'])
     record.update(prosody_alert_count=len(checked['alerts']), asr_matched_ratio=audit['ratio'],
@@ -167,7 +184,7 @@ def final_scan(chapter, audio, alignment, folder, transcribe, exceptions, thresh
 
 
 def repair(chapter, current, output, generate, transcribe, *, exceptions=None, threshold=.97,
-           max_rounds=3, candidates_per_sentence=3, lufs=-16., anchors=(), offset=0, post_options=None):
+           max_rounds=3, candidates_per_sentence=3, lufs=-16., anchors=(), offset=0, post_options=None, allowed_kinds=None):
     if not 0 <= max_rounds <= 3 or candidates_per_sentence < 2:
         raise ValueError('最多修复3轮，每句至少2个seed')
     output = Path(output)
@@ -177,7 +194,7 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
             break
         folder = output/f'round-{round_number}'
         folder.mkdir(parents=True, exist_ok=True)
-        flagged = flagged_sentences(chapter['text'], current['check'], current['asr'])
+        flagged = flagged_sentences(chapter['text'], current['check'], current['asr'], allowed_kinds)
         if not flagged:
             history.append(dict(round=round_number, error='内容/对齐不通过，但无法定位安全整句'))
             break
@@ -222,7 +239,10 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
                     continue
                 aligned = dict(text=job['text'], mapped=mapped, matched_ratio=ratio, monotonic_clamps=clamps)
                 processed = raw.with_suffix('.post.wav')
-                aligned = post.postprocess(raw, aligned, processed, **dict(post_options or {}))
+                if (post_options or {}).get('speed', 1.) == 1.:
+                    aligned, _ = post.regularize(raw, aligned, processed, raw.with_suffix('.pitch.npz'), fade_ms=15)
+                else:
+                    aligned = post.postprocess(raw, aligned, processed, **post_options)
                 for attempt in range(2):
                     semantic = raw.with_suffix(f'.semantic-{attempt}.wav')
                     aligned, changes = post.regularize(processed, aligned, semantic, semantic.with_suffix('.npz'))
@@ -289,6 +309,19 @@ def screen_chapter(chapter, candidate, folder, transcribe, exceptions, threshold
     audio = out/record['path']
     final_transcript = transcribe(audio)
     audit = quality.audit(chapter['text'], final_transcript, exceptions, threshold)
+    audit['sha256'] = hashlib.sha256(audio.read_bytes()).hexdigest()
+    if final_transcript.get('segments'):
+        mapped, ratio, clamps = v.align_characters(chapter['text'], final_transcript, sf.info(audio).duration,
+                                                   audit['normalizations'])
+        aligned = dict(text=chapter['text'], mapped=mapped, matched_ratio=ratio, monotonic_clamps=clamps,
+                       planned_pauses=chapter.get('planned_pauses', {}))
+        final_record, timing, scenes, captions, analysis = v.prepare_chapter(
+            chapter, audio, out, {}, audit['normalizations'], 0, offset, anchors, aligned=aligned)
+        record.update(sha256=final_record['sha256'])
+        checked = check_tool.check_chapter(audio, aligned, chapter=chapter['id'],
+                                           cache=out/'analysis'/f"voice-check-{chapter['id']}.npz")
+        checked['prosody_ok'] = checked['ok']
+        audit['sha256'] = record['sha256']
     audit['alignment_ratio'] = analysis['matched_ratio']
     audit['ok'] = audit['ok'] and audit['alignment_ratio'] >= threshold
     checked.update(asr=audit, ok=checked['prosody_ok'] and audit['ok'])
@@ -373,13 +406,15 @@ def main(argv=None):
     parser.add_argument('--alignment', type=Path, required=True)
     parser.add_argument('--text-file', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--chapter-manifest', type=Path)
+    parser.add_argument('--chapter', default='00')
     parser.add_argument('--brand', default='yice')
     parser.add_argument('--asr-threshold', type=float, default=.97)
     parser.add_argument('--normalizations', type=Path)
     parser.add_argument('--asr-model', default='mlx-community/whisper-large-v3-turbo')
     parser.add_argument('--asr-prompt', default='')
     parser.add_argument('--reuse-candidates', type=Path)
-    parser.add_argument('--backend', choices=['modal', 'kaggle', 'local'], default='modal')
+    parser.add_argument('--backend', choices=['auto', 'modal', 'kaggle', 'local'], default='auto')
     parser.add_argument('--candidates', type=int, default=3)
     parser.add_argument('--max-rounds', type=int, default=3)
     parser.add_argument('--lufs', type=float, default=-16.)
@@ -390,19 +425,26 @@ def main(argv=None):
     alignment = check_tool.load_alignment(args.alignment, args.text_file, args.audio)
     text = alignment['text']
     chapter = dict(id='00', text=text, scenes=[dict(id='0-1', text=text)])
+    if args.chapter_manifest:
+        chapter = next(c for c in json.loads(args.chapter_manifest.read_text())['chapters'] if c['id'] == args.chapter)
+        if chapter['text'] != text:
+            raise ValueError('音轨对齐文本与章节原稿不符')
     exceptions = json.loads(args.normalizations.read_text()) if args.normalizations else {}
     transcribe = v.make_transcriber(args.asr_model, args.asr_prompt, args.output/'asr')
     if not 1 <= args.candidates <= 8:
         parser.error('候选数须为1–8')
+    resolved_backend = v.resolve_backend('draft', args.backend, allow_slow_local=(args.backend == 'local'))
     generate = v.make_generator(args.brand, args.output/'generation', args.reuse_candidates,
-                                args.backend, args.candidates)
+                                resolved_backend, args.candidates)
     checked = check_tool.check_chapter(args.audio, alignment)
     audit = quality.audit(text, transcribe(args.audio), exceptions, args.asr_threshold)
     checked['ok'] = checked['ok'] and audit['ok']
     current = dict(audio=str(args.audio), alignment=alignment, check=checked, asr=audit, seed=0)
     result = repair(chapter, current, args.output, generate, transcribe, exceptions=exceptions,
-                    threshold=args.asr_threshold, max_rounds=args.max_rounds, lufs=args.lufs)
-    print(json.dumps(dict(ok=result['check']['ok'], audio=result['audio'], report=str(args.output/'repair-report.json'))))
+                    threshold=args.asr_threshold, max_rounds=args.max_rounds, lufs=args.lufs,
+                    post_options={'speed': 1., 'fade_ms': 15.},
+                    allowed_kinds={'intra_word_stutter', 'hesitation', 'long_character', 'punctuation_pause', 'duration_or_rate_outlier'} if resolved_backend == 'kaggle' else None)
+    print(json.dumps(dict(ok=result['check']['ok'], chapter=chapter['id'])))
     return 0 if result['check']['ok'] else 1
 
 

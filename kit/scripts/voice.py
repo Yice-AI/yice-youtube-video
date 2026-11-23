@@ -135,7 +135,9 @@ def resolve_backend(stage, backend, allow_slow_local=False):
         if stage == "draft":
             print("Kaggle 测试端点未配置，本次使用 Modal。", file=sys.stderr)
         return "modal"
-    raise ValueError("请配置 Modal 正式端点；草稿也可配置 KAGGLE_TTS_ENDPOINT_URL")
+    if os.environ.get("KAGGLE_TTS_ENDPOINT_URL"):
+        return "kaggle"
+    raise ValueError("请配置 Kaggle 或 Modal 云端配音端点")
 
 
 def _remote_batch(texts, brand, backend, temperature):
@@ -156,7 +158,7 @@ def _remote_batch(texts, brand, backend, temperature):
         "ref_text": ref_text,
         "temperature": temperature,
     }
-    headers = {"Content-Type": "application/json"}
+    headers = {"Content-Type": "application/json", "User-Agent": "yice-youtube-video/6.0"}
     if backend == "kaggle" and os.environ.get("KAGGLE_TTS_TOKEN"):
         headers["Authorization"] = "Bearer " + os.environ["KAGGLE_TTS_TOKEN"]
     def _post_subbatch(sub_texts):
@@ -552,9 +554,13 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
     audit["alignment_ratio"] = ratio
     audit["ok"] = audit["ok"] and ratio >= asr_threshold
     write_json(output / "analysis" / f"asr-audit-{chapter['id']}.json", audit)
-    aligned = dict(text=chapter["text"], mapped=mapped, matched_ratio=ratio, monotonic_clamps=clamps)
+    aligned = dict(text=chapter["text"], mapped=mapped, matched_ratio=ratio, monotonic_clamps=clamps,
+                   planned_pauses=chapter.get("planned_pauses", {}))
     audio = raw
     options = dict(post_options or {})
+    master = options.pop("cloud_master", False)
+    if master:
+        silence = 0
     if not skip_post:
         post_tool = load_voice_tool("voice-post")
         boundaries, cursor = [], 0
@@ -565,14 +571,21 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
         processed = output / "processed"
         processed.mkdir(exist_ok=True)
         audio = processed / f"chapter-{chapter['id']}.wav"
-        aligned = post_tool.postprocess(raw, aligned, audio, scene_boundaries=boundaries,
-                                        scene_padding=silence, **options)
+        if master:
+            # Calibrate once on the original PCM; keep all word-internal issues for a cloud redraw.
+            semantic = processed / f"semantic-{chapter['id']}.wav"
+            aligned, _ = post_tool.regularize(raw, aligned, semantic, semantic.with_suffix(".npz"), fade_ms=15)
+            post_tool.normalize_lufs(semantic, audio, options.get("lufs", -16.))
+        else:
+            aligned = post_tool.postprocess(raw, aligned, audio, scene_boundaries=boundaries,
+                                            scene_padding=silence, **options)
     write_json(output / "analysis" / f"post-alignment-{chapter['id']}.json", aligned)
     record, timing, scenes, captions, analysis = prepare_chapter(
         chapter, audio, output, transcription, audit["normalizations"], silence, offset, anchors, aligned=aligned)
     padding = record["added_boundary_silence"]
-    final_alignment = dict(text=chapter["text"], mapped=analysis["output_mapped"], matched_ratio=ratio)
-    if not skip_post:
+    final_alignment = dict(text=chapter["text"], mapped=analysis["output_mapped"], matched_ratio=ratio,
+                           planned_pauses=chapter.get("planned_pauses", {}))
+    if not skip_post and not master:
         # Close pauses against the ACTUAL padded waveform; never add padding twice.
         current = output / record["path"]
         final_edits = []
@@ -593,7 +606,8 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
             chapter, normalized, output, {}, audit["normalizations"], 0, offset, anchors, aligned=final_alignment)
         record.update(loudness=levels, added_boundary_silence=padding,
                       final_semantic_pause_edits=final_edits, retiming_additional_silence=0)
-        final_alignment = dict(text=chapter["text"], mapped=analysis["output_mapped"], matched_ratio=ratio)
+        final_alignment = dict(text=chapter["text"], mapped=analysis["output_mapped"], matched_ratio=ratio,
+                           planned_pauses=chapter.get("planned_pauses", {}))
     write_json(output / "analysis" / f"final-alignment-{chapter['id']}.json", final_alignment)
     check = check_tool.check_chapter(output / record["path"] , final_alignment, chapter=chapter["id"],
                                     cache=output / "analysis" / f"voice-check-{chapter['id']}.npz")
@@ -681,6 +695,15 @@ def main():
         pauses = dict(value.rsplit("=", 1) for value in args.pause_after)
         if set(pauses) - set(known):
             parser.error("停顿幕号必须出现在所选章中")
+        for chapter in chapters:
+            cursor = 0
+            planned = {}
+            for scene in chapter["scenes"]:
+                if scene["id"] in pauses:
+                    end = max(i + 1 for i, char in enumerate(scene["text"]) if char.isalnum())
+                    planned[str(cursor + end)] = float(pauses[scene["id"]])
+                cursor += len(scene["text"]) + 1
+            chapter["planned_pauses"] = planned
         for job in jobs:
             chapter = next(c for c in chapters if c["id"] == job["chapter"])
             sections, buffer, gaps = [], [], {}
@@ -703,6 +726,7 @@ def main():
             threshold=args.asr_threshold, silence=args.silence, offset=offset, anchors=anchors,
             skip_post=args.skip_post, max_rounds=args.max_repair_rounds,
             cloud_backend=args.backend if args.backend != "local" else None, brand=args.brand, post_options=dict(
+                cloud_master=args.stage == "master" and args.backend in {"modal", "kaggle"} and args.speed == 1.,
                 speed=args.speed, breath_db=args.breath_db, breath_cut_ms=args.breath_cut_ms,
                 breath_target_ms=args.breath_target_ms, fade_ms=args.fade_ms, lufs=args.lufs))
         record = result["record"]

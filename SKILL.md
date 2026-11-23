@@ -61,6 +61,12 @@ description: 一策 YouTube 中文教程与深度科技视频的整套制作体�
 
 排演通过 `voice.sh --stage draft` 使用 Kaggle，正式制作通过 `--stage master --speed 1.0` 使用 Modal。Kaggle Notebook 和端点设置见 [云端配音](kit/cloud/README.md)。每章保留同批次原音、ASR 时间和声学检查结果。
 
+正式母带用 `voice-post.py` 在实测静音区间的零交叉处校准标点停顿。将读秒等设计停顿按原稿字符边界和秒数登记，校准、复测共用同一目标。遇到词内卡顿、迟疑、错读或缺少安全剪点时，通过本次授权的云端后端重录完整句组或整句，在静音边界作 15 ms 余弦淡化。用导出 WAV 重跑 Whisper 字级对齐与声学检查，字幕取最终首字时间。每个有口播的章节须交付与 WAV 摘要一致且 `ok: true` 的声学、ASR 两份报告。
+
 从首字时间编排叙事镜头，在时间轴登记 `anchor_cue_id` 和 `anchor_cue_start`。工程台使用真实监视素材、剪辑轨、文件内容、命令输出或采样波形。可选 `nle_timeline`、`vscode_workbench`、`terminal_pipeline` 和 `audio_daw`。新动效语法为 `t4_blueprint_arch`、`t5_data_ruler` 和 `t6_swiss_card`。
 
 用 `audit-v3.sh --v6 --project 工程 --timeline 镜头表 --rendered 成片` 检查最终 MP4。科技实证覆盖至少 70%，叙事镜头与字幕首字相差最多 0.22 秒，保留前后半程动效和工作台分布、遮挡检测及章节声学记录。
+
+复用已录章节时，在章清单中分别保留原音的 `backend` 与补录的 `repair_backend`。正式补录可显式指定 `--backend kaggle`。
+
+普通逗号允许 0–340 ms 自然连读，转折与句末停顿为 300–450 ms。校准后仍告警且没有安全静音剪点时，使用 Kaggle 整句或整组重录。

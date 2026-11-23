@@ -21,8 +21,8 @@ THRESHOLDS = dict(single_character_N=2.4, active_character_N=2., onset_character
                   falling_end_st=-4., punctuation_tolerance_ms=20.,
                   intra_word_drop_db=14., intra_word_min_ms=95., intra_word_max_ms=260.,
                   sentence_rate_deviation=.38, seam_cosine=0.94, seam_pitch_st=3.2, seam_loudness_db=1.8,
-                  contrast_pause_ms=[300., 450.], comma_pause_ms=[180., 300.],
-                  sentence_pause_ms=[300., 450.])
+                  contrast_pause_ms=[300., 450.], comma_pause_ms=[0., 340.],
+                  sentence_pause_ms=[200., 620.])
 
 
 def write_json(path, value):
@@ -62,7 +62,7 @@ def load_alignment(path, text_file, audio):
         previous = e
     if [(r['charStart'], r['charEnd']) for r in mapped] != expected:
         raise ValueError('Character timing must cover every spoken letter, digit and character once')
-    return dict(text=text, mapped=mapped)
+    return dict(text=text, mapped=mapped, planned_pauses=data.get('planned_pauses', {}) if isinstance(data, dict) else {})
 
 
 def add_threshold_arguments(parser):
@@ -73,9 +73,9 @@ def add_threshold_arguments(parser):
     parser.add_argument('--nonpunct-max-ms', type=float, default=150.)
     parser.add_argument('--fall-semitones', type=float, default=4.)
     parser.add_argument('--pause-tolerance-ms', type=float, default=20.)
-    parser.add_argument('--comma-ms', type=float, nargs=2, default=[180., 300.])
+    parser.add_argument('--comma-ms', type=float, nargs=2, default=[0., 340.])
     parser.add_argument('--contrast-ms', type=float, nargs=2, default=[300., 450.])
-    parser.add_argument('--sentence-ms', type=float, nargs=2, default=[300., 450.])
+    parser.add_argument('--sentence-ms', type=float, nargs=2, default=THRESHOLDS['sentence_pause_ms'])
     parser.add_argument('--intra-word-drop-db', type=float, default=14.)
     parser.add_argument('--intra-word-min-ms', type=float, default=95.)
     parser.add_argument('--intra-word-max-ms', type=float, default=260.)
@@ -94,8 +94,9 @@ def threshold_arguments(args):
         items = value if isinstance(value, list) else [abs(value) if name == 'falling_end_st' else value]
         if not all(np.isfinite(v) and v >= 0 for v in items):
             raise ValueError('Thresholds must be finite and nonnegative')
-        if isinstance(value, list) and not 0 < value[0] <= value[1]:
-            raise ValueError('Pause range must be positive and increasing')
+        if isinstance(value, list) and (value[1] <= 0 or value[0] > value[1] or
+                                        (value[0] == 0 and name != 'comma_pause_ms')):
+            raise ValueError('Only ordinary commas allow a zero minimum pause')
     if min(args.long_ratio, args.active_ratio, args.onset_ratio, args.fall_semitones) <= 0:
         raise ValueError('Duration ratios and fall threshold must be positive')
     return values
@@ -228,6 +229,9 @@ def measure(path, alignment, cache=None, thresholds=None):
     boundaries = []
     for i, (left, right) in enumerate(zip(chars, chars[1:])):
         kind, interval, punct = pause_class(text, left, right, thresholds)
+        planned = alignment.get('planned_pauses', {}).get(str(left['charEnd']))
+        if planned is not None and kind in ('comma', 'contrast', 'sentence'):
+            interval = [1000 * float(planned)] * 2
         # Whisper often assigns the pause to the NEXT word; examine a boundary
         # window extending into its first 80%, without conflating a whole word.
         lo = max(left['s'], left['e'] - .10)

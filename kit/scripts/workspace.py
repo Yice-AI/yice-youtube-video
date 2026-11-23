@@ -34,13 +34,15 @@ def load_environment(environ=None):
     toolkit = path(environ.get("YICE_TOOLKIT") or values.get("YICE_TOOLKIT") or workspace / "claude-code-video-toolkit")
     dotenv = toolkit / ".env"
     endpoints = {f"MODAL_{service}_ENDPOINT_URL" for service in ("QWEN3_TTS", "FLUX2", "MUSIC_GEN", "LTX2")} | {"KAGGLE_TTS_ENDPOINT_URL", "KAGGLE_TTS_TOKEN"}
-    if dotenv.is_file():
-        for line in dotenv.read_text(encoding="utf-8").splitlines():
-            key, sep, raw = line.strip().removeprefix("export ").partition("=")
-            if sep and key.strip() in endpoints:
-                parts = shlex.split(raw, comments=True)
-                if len(parts) == 1:
-                    environ.setdefault(key.strip(), parts[0])
+    stock_keys = {"PEXELS_API_KEY", "PIXABAY_API_KEY"}
+    for env_file, allowed in ((dotenv, endpoints | stock_keys), (home / ".config/yice-video/stock.env", stock_keys)):
+        if env_file.is_file():
+            for line in env_file.read_text(encoding="utf-8").splitlines():
+                key, sep, raw = line.strip().removeprefix("export ").partition("=")
+                if sep and key.strip() in allowed:
+                    parts = shlex.split(raw, comments=True)
+                    if len(parts) == 1:
+                        environ.setdefault(key.strip(), parts[0])
     return workspace, toolkit
 
 
