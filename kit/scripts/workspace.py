@@ -18,18 +18,24 @@ def load_environment(environ=None):
             if len(parts) != 1 or "=" not in parts[0]:
                 raise ValueError("路径配置须每行一个带引号的赋值，不支持执行 shell 命令")
             name, value = parts[0].split("=", 1)
-            if name not in {"YICE_WORKSPACE", "YICE_TOOLKIT"}:
-                raise ValueError("路径配置只支持 YICE_WORKSPACE 和 YICE_TOOLKIT")
+            if name not in {"YICE_WORKSPACE", "YICE_TOOLKIT", "YICE_ASR_MODEL"}:
+                raise ValueError("路径配置只支持 YICE_WORKSPACE、YICE_TOOLKIT 和 YICE_ASR_MODEL")
             values[name] = value
 
-    def path(value):
+    def expand_home(value):
         value = str(value).replace("${HOME}", str(home)).replace("$HOME", str(home))
         if value == "~" or value.startswith("~/"):
             value = str(home) + value[1:]
+        return value
+
+    def path(value):
+        value = expand_home(value)
         if not value or any(c in value for c in "\n\r\0"):
             raise ValueError("目录配置不能为空或含换行")
         return Path(value).resolve()
 
+    if values.get("YICE_ASR_MODEL"):
+        environ.setdefault("YICE_ASR_MODEL", expand_home(values["YICE_ASR_MODEL"]))
     workspace = path(environ.get("YICE_WORKSPACE") or values.get("YICE_WORKSPACE") or home / "Documents/Codex/个人IP")
     toolkit = path(environ.get("YICE_TOOLKIT") or values.get("YICE_TOOLKIT") or workspace / "claude-code-video-toolkit")
     dotenv = toolkit / ".env"

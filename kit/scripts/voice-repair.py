@@ -436,7 +436,7 @@ def main(argv=None):
     parser.add_argument('--profile', choices=('natural_v7', 'legacy'), default='natural_v7')
     parser.add_argument('--asr-threshold', type=float, default=.97)
     parser.add_argument('--normalizations', type=Path)
-    parser.add_argument('--asr-model', default='mlx-community/whisper-large-v3-turbo')
+    parser.add_argument('--asr-model')
     parser.add_argument('--asr-prompt', default='')
     parser.add_argument('--reuse-candidates', type=Path)
     parser.add_argument('--backend', choices=['auto', 'modal', 'kaggle', 'local'], default='auto')
@@ -455,7 +455,7 @@ def main(argv=None):
         if chapter['text'] != text:
             raise ValueError('音轨对齐文本与章节原稿不符')
     exceptions = json.loads(args.normalizations.read_text()) if args.normalizations else {}
-    transcribe = v.make_transcriber(args.asr_model, args.asr_prompt, args.output/'asr')
+    transcribe = v.make_transcriber(v.resolve_asr_model(args.asr_model), args.asr_prompt, args.output/'asr')
     if not 1 <= args.candidates <= 8:
         parser.error('候选数须为1–8')
     resolved_backend = v.resolve_backend('draft', args.backend, allow_slow_local=(args.backend == 'local'))

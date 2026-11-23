@@ -1,4 +1,6 @@
 """Synthetic, offline exercise of the v7 pipeline and its adversarial gates."""
+import base64
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib
 import json
 import os
@@ -6,6 +8,10 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from threading import Thread
+from types import SimpleNamespace
+from urllib.parse import urlsplit
+import urllib.request
 
 import numpy as np
 import pytest
@@ -19,6 +25,7 @@ from kit.editorial.audio_mix import EpisodeAudioMixer
 from kit.editorial.autopilot import Beat, SemanticBeatPlanner
 from kit.editorial.editorial import EditorialStage
 import voice
+from workspace import load_environment
 
 assemble = importlib.import_module('assemble-episode')
 quality = importlib.import_module('voice-quality')
@@ -33,6 +40,129 @@ def tone(seconds, level=.15, frequency=220):
 def wave(path, samples):
     sf.write(path,samples,RATE,subtype='PCM_24')
     return path
+
+
+@pytest.fixture
+def kaggle_http(monkeypatch, tmp_path):
+    audio = wave(tmp_path/'sample.wav', tone(.1)).read_bytes()
+    reference = tmp_path/'sample.wav'
+    monkeypatch.setattr(voice, '_clone_reference', lambda brand: (reference, '参考旁白', 'Chinese'))
+    monkeypatch.setenv('KAGGLE_TTS_ENDPOINT_URL', 'https://tts.invalid/tts')
+    monkeypatch.setenv('KAGGLE_TTS_TOKEN', 'mock-token')
+    monkeypatch.delenv('YICE_TTS_TIMEOUT', raising=False)
+    real_urlopen = urllib.request.urlopen
+    job_id = '0011223344556677'
+    requests = []
+    sleeps = []
+    monkeypatch.setattr(voice, 'time', SimpleNamespace(monotonic=voice.time.monotonic, sleep=sleeps.append))
+
+    class Handler(BaseHTTPRequestHandler):
+        def respond(self, code, payload):
+            body = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+        def do_POST(self):
+            payload = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            requests.append((self.command, self.path, self.headers.get('Authorization'), payload))
+            if self.path == '/tts_async':
+                if self.server.legacy:
+                    self.respond(404, {'detail': 'route missing'})
+                else:
+                    self.respond(200, {'status': 'running', 'job_id': job_id})
+            elif self.path == '/tts':
+                self.respond(200, {'outputs': self.server.outputs})
+            else:
+                self.respond(404, {})
+
+        def do_GET(self):
+            requests.append((self.command, self.path, self.headers.get('Authorization'), None))
+            if self.path != '/tts_job/' + job_id:
+                self.respond(404, {})
+                return
+            self.server.poll_count += 1
+            if self.server.poll_count < 3:
+                self.respond(200, {'status': 'running'})
+            else:
+                self.respond(200, {'status': 'done', 'outputs': self.server.outputs})
+
+    with ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
+        server.legacy = False
+        server.poll_count = 0
+        server.outputs = [{'audio_base64': base64.b64encode(audio).decode()}]
+
+        def open_local(request, *, timeout):
+            local = urllib.request.Request(
+                f'http://127.0.0.1:{server.server_port}' + urlsplit(request.full_url).path,
+                data=request.data, headers=dict(request.header_items()), method=request.method,
+            )
+            return real_urlopen(local, timeout=timeout)
+
+        monkeypatch.setattr(voice.urllib.request, 'urlopen', open_local)
+        worker = Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            yield server, requests, sleeps, job_id, audio
+        finally:
+            server.shutdown()
+            worker.join()
+
+
+def test_kaggle_async_polls_until_whole_chapter_audio(kaggle_http):
+    _, requests, sleeps, job_id, audio = kaggle_http
+    chapter = '先公布结果，再完整展示操作步骤。' * 24
+    assert voice._remote_batch([chapter], 'test', 'kaggle', .7) == [audio]
+    assert [(method, route) for method, route, _, _ in requests] == [
+        ('POST', '/tts_async'), *[('GET', '/tts_job/' + job_id)] * 3,
+    ]
+    assert all(auth == 'Bearer mock-token' for _, _, auth, _ in requests)
+    assert requests[0][3]['text'] == [chapter]
+    assert sleeps == [2.5, 2.5, 2.5]
+
+
+def test_kaggle_async_404_falls_back_to_sync(kaggle_http):
+    server, requests, sleeps, _, audio = kaggle_http
+    server.legacy = True
+    paragraph = '这一整段使用旧服务合成。' * 15
+    assert voice._remote_batch([paragraph], 'test', 'kaggle', .7) == [audio]
+    assert [(method, route) for method, route, _, _ in requests] == [
+        ('POST', '/tts_async'), ('POST', '/tts'),
+    ]
+    assert requests[0][3] == requests[1][3]
+    assert requests[1][3]['text'] == [paragraph]
+    assert sleeps == []
+
+
+def test_whisper_model_precedence_and_workspace_config(monkeypatch, tmp_path):
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: tmp_path))
+    monkeypatch.delenv('YICE_ASR_MODEL', raising=False)
+    assert voice.resolve_asr_model() == 'mlx-community/whisper-large-v3-turbo'
+
+    local = tmp_path/'yice-demo/我的视频/models/Whisper-Large-v3-Turbo'
+    local.parent.mkdir(parents=True)
+    local.touch()
+    assert voice.resolve_asr_model() == 'mlx-community/whisper-large-v3-turbo'
+    local.unlink()
+    local.mkdir()
+    assert voice.resolve_asr_model() == str(local)
+
+    config = tmp_path/'.config/yice-video/env'
+    config.parent.mkdir(parents=True)
+    config.write_text('YICE_ASR_MODEL="$HOME/模型/本地 Whisper"\n')
+    config_env = {'HOME': str(tmp_path)}
+    load_environment(config_env)
+    assert config_env['YICE_ASR_MODEL'] == str(tmp_path/'模型/本地 Whisper')
+    config_env['YICE_ASR_MODEL'] = 'org/environment-model'
+    load_environment(config_env)
+    monkeypatch.setenv('YICE_ASR_MODEL', config_env['YICE_ASR_MODEL'])
+    assert voice.resolve_asr_model() == 'org/environment-model'
+    assert voice.resolve_asr_model('org/cli-model') == 'org/cli-model'
 
 
 def test_long_paragraph_keeps_text_and_breath(tmp_path):

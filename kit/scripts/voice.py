@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
@@ -163,6 +164,55 @@ def resolve_backend(stage, backend, allow_slow_local=False):
     raise ValueError("请配置 Kaggle 或 Modal 云端配音端点")
 
 
+def _kaggle_async_batch(base, body, headers, timeout):
+    """Return None only for an old server that lacks the submission route."""
+    deadline = time.monotonic()+timeout
+
+    def request(url, data=None):
+        remaining = deadline-time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError
+        req = urllib.request.Request(url,data=data,headers=headers,method='POST' if data is not None else 'GET')
+        with urllib.request.urlopen(req,timeout=min(15.,remaining)) as response:
+            return json.load(response)
+
+    try:
+        submitted = request(base+'/tts_async',body)
+    except urllib.error.HTTPError as exc:
+        if exc.code==404:
+            return None
+        raise RuntimeError(f'Kaggle 异步提交失败（HTTP {exc.code}）') from None
+    except (OSError,ValueError):
+        # A response may have been lost after accepting the job. Do not
+        # submit another copy automatically and pay for the same synthesis twice.
+        raise RuntimeError('Kaggle 异步提交未收到有效回执') from None
+    job_id = submitted.get('job_id') if isinstance(submitted,dict) else None
+    if not isinstance(job_id,str) or not re.fullmatch(r'[0-9a-f]{16}',job_id):
+        raise RuntimeError('Kaggle 异步回执缺少有效任务号')
+
+    url = base+'/tts_job/'+job_id
+    while (remaining := deadline-time.monotonic())>0:
+        time.sleep(min(2.5,remaining))
+        try:
+            status = request(url)
+        except urllib.error.HTTPError as exc:
+            if exc.code==429 or 500<=exc.code<600:
+                continue
+            raise RuntimeError(f'Kaggle 异步轮询失败（HTTP {exc.code}）') from None
+        except OSError:
+            continue
+        except ValueError:
+            raise RuntimeError('Kaggle 异步轮询返回无效 JSON') from None
+        state = status.get('status') if isinstance(status,dict) else None
+        if state=='done':
+            return status
+        if state=='error':
+            raise RuntimeError('Kaggle 后台合成失败')
+        if state!='running':
+            raise RuntimeError('Kaggle 异步轮询返回未知状态')
+    raise RuntimeError(f'Kaggle 异步任务超过 {timeout:g} 秒等待上限')
+
+
 def _remote_batch(texts, brand, backend, temperature):
     """通过 HTTPS 直传 Base64 参考音频，严禁把 clone 请求改写为 R2。"""
     env_name = "MODAL_QWEN3_TTS_ENDPOINT_URL" if backend == "modal" else "KAGGLE_TTS_ENDPOINT_URL"
@@ -181,18 +231,28 @@ def _remote_batch(texts, brand, backend, temperature):
         "ref_text": ref_text,
         "temperature": temperature,
     }
-    headers = {"Content-Type": "application/json", "User-Agent": "yice-youtube-video/6.0"}
+    headers = {"Content-Type": "application/json", "User-Agent": "yice-youtube-video/7.0"}
     if backend == "kaggle" and os.environ.get("KAGGLE_TTS_TOKEN"):
         headers["Authorization"] = "Bearer " + os.environ["KAGGLE_TTS_TOKEN"]
+    sync_timeout = float(os.environ.get('YICE_TTS_TIMEOUT','300'))
+    async_timeout = float(os.environ.get('YICE_TTS_TIMEOUT','900'))
+    if not math.isfinite(async_timeout) or async_timeout<=0:
+        raise ValueError('YICE_TTS_TIMEOUT 须为正的有限秒数')
+    kaggle_base = endpoint.rstrip('/').removesuffix('/tts') if backend=='kaggle' else None
+
     def _post_subbatch(sub_texts):
-        import time
         sub_payload = {**payload, "text": sub_texts}
         body_bytes = json.dumps(sub_payload).encode()
+        if kaggle_base is not None:
+            result = _kaggle_async_batch(kaggle_base,body_bytes,headers,async_timeout)
+            if result is not None:
+                return result
+        sync_url = kaggle_base+'/tts' if kaggle_base is not None else endpoint
         last_exc = None
         for attempt in range(4):
-            request = urllib.request.Request(endpoint, data=body_bytes, headers=headers, method="POST")
+            request = urllib.request.Request(sync_url, data=body_bytes, headers=headers, method="POST")
             try:
-                with urllib.request.urlopen(request, timeout=int(os.environ.get("YICE_TTS_TIMEOUT", "300"))) as response:
+                with urllib.request.urlopen(request, timeout=sync_timeout) as response:
                     return json.loads(response.read().decode())
             except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
                 last_exc = exc
@@ -414,6 +474,16 @@ def make_generator(brand, folder, reuse=None, backend="modal", candidates=3):
                                 "--generation-jobs", str(worker_jobs), *(["--allow-slow-local"] if backend == "local" else [])],
                                env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
     return generate
+
+
+def resolve_asr_model(explicit=None):
+    configured = explicit or os.environ.get("YICE_ASR_MODEL")
+    if configured:
+        return os.path.expanduser(configured)
+    local = Path.home() / "yice-demo/我的视频/models/Whisper-Large-v3-Turbo"
+    if local.is_dir():
+        return str(local)
+    return "mlx-community/whisper-large-v3-turbo"
 
 
 def make_transcriber(model, prompt, folder):
@@ -750,7 +820,7 @@ def main():
     parser.add_argument("--anchors", type=Path)
     parser.add_argument("--normalizations", type=Path, help="分类的 ASR 例外：number_unit/english_name/homophone")
     parser.add_argument("--silence", type=float, default=.2)
-    parser.add_argument("--asr-model", default="mlx-community/whisper-large-v3-turbo")
+    parser.add_argument("--asr-model")
     parser.add_argument("--asr-prompt", default="", help="领域词表；不要提供完整台词诱导识别")
     parser.add_argument("--asr-threshold", type=float, default=.97)
     parser.add_argument("--seeds")
@@ -827,7 +897,7 @@ def main():
     (output / "analysis").mkdir()
     write_json(output / "analysis/script-manifest.json", {"chapters": chapters})
     generate = make_generator(args.brand, output / "generation", args.reuse_candidates, args.backend, args.candidates)
-    transcribe = make_transcriber(args.asr_model, args.asr_prompt, output / "analysis/asr")
+    transcribe = make_transcriber(resolve_asr_model(args.asr_model), args.asr_prompt, output / "analysis/asr")
     jobs = [dict(chapter=chapter["id"], text=chapter["text"], seed=seed, chunk_mode=args.chunk_mode,
                  path=str(output / "raw" / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
             for chapter in chapters for seed in seeds]
