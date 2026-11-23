@@ -6,8 +6,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib.util
+import json
+import math
 from pathlib import Path
 import subprocess
+import tempfile
 
 
 @dataclass(frozen=True)
@@ -59,7 +63,180 @@ def render_bed_only(bed: str | Path, output: str | Path,
 
 
 def action_mark(kind: str, at: float) -> dict[str, object]:
-    allowed = {"whoosh", "marker", "slap", "tick", "stamp", "music_drop"}
+    allowed = SFX_KINDS | {'slap', 'music_drop'}
     if kind not in allowed:
         raise ValueError(f"未知动作音效类型：{kind}")
     return {"kind": kind, "at": round(float(at), 5)}
+
+
+SFX_KINDS = {'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser'}
+
+
+class EpisodeAudioMixer:
+    """Produce one physical master and its corresponding music-only track."""
+
+    def __init__(self, sample_rate=48000, target_lufs=-14.5):
+        if sample_rate < 8000 or not -15.3 <= target_lufs <= -13.7:
+            raise ValueError('采样率或母带响度目标不符')
+        self.rate = sample_rate
+        self.target_lufs = target_lufs
+
+    def _read(self, path):
+        import soundfile as sf
+        from scipy.signal import resample_poly
+
+        audio, rate = sf.read(path, always_2d=True, dtype='float32')
+        if not len(audio):
+            raise ValueError('音频文件为空')
+        divisor = math.gcd(rate, self.rate)
+        return resample_poly(audio.mean(axis=1), self.rate//divisor, rate//divisor)
+
+    def _default_music(self, frames):
+        import numpy as np
+
+        t = np.arange(frames) / self.rate
+        chord = (np.sin(2*np.pi*110*t+.7) + .48*np.sin(2*np.pi*164.81*t+1.4)
+                 + .24*np.sin(2*np.pi*220*t+.2))
+        return chord * (.75+.25*np.cos(2*np.pi*t/4))
+
+    def _music(self, paths, frames, cuts, crossfade):
+        import numpy as np
+
+        if not paths:
+            paths = [None]
+        if not 1 <= len(paths) <= 3:
+            raise ValueError('底乐支持一至三首曲目')
+        if cuts is None:
+            cuts = [frames/self.rate*i/len(paths) for i in range(1,len(paths))]
+        if len(cuts) != len(paths)-1 or list(cuts) != sorted(set(cuts)) or any(
+                not 0 < c < frames/self.rate for c in cuts):
+            raise ValueError('每次切换曲目须对应一个递增的全片切点')
+        edges = [0, *[round(x*self.rate) for x in cuts], frames]
+        width = max(1,min(round(crossfade*self.rate/2), min(b-a for a,b in zip(edges,edges[1:]))//2))
+        music = np.zeros(frames, dtype='float32')
+        for i, path in enumerate(paths):
+            source = self._read(path) if path is not None else self._default_music(frames)
+            rms = float(np.sqrt(np.mean(source**2)))
+            if rms < 1e-6:
+                raise ValueError('底乐曲目没有可用信号')
+            a = edges[i] - (width if i else 0)
+            b = edges[i+1] + (width if i+1 < len(paths) else 0)
+            segment = np.resize(source, b-a) * (.25/rms)
+            if i:
+                segment[:2*width] *= .5-.5*np.cos(np.linspace(0,np.pi,2*width))
+            if i+1 < len(paths):
+                segment[-2*width:] *= .5+.5*np.cos(np.linspace(0,np.pi,2*width))
+            music[a:b] += segment
+        return music
+
+    def _duck(self, voice):
+        import numpy as np
+        from scipy.ndimage import maximum_filter1d
+
+        hop = max(1,round(self.rate*.01))
+        padded = np.pad(voice,(0,(-len(voice))%hop)).reshape(-1,hop)
+        rms = np.sqrt(np.mean(padded**2,axis=1))
+        activity = np.clip((rms-.006)/.025,0,1)
+        ahead = maximum_filter1d(activity,size=13,origin=-6,mode='nearest')
+        envelope = np.empty_like(ahead)
+        value = ahead[0]
+        for i, target in enumerate(ahead):
+            decay = math.exp(-.01/(.025 if target > value else .32))
+            value = target+(value-target)*decay
+            envelope[i] = value
+        db = np.interp(np.arange(len(voice))/hop,np.arange(len(envelope)),-13-9*envelope)
+        return (10**(db/20)).astype('float32')
+
+    def _effect(self, kind):
+        import numpy as np
+        from scipy.signal import butter, sosfilt
+
+        seconds = {'tick':.09,'pop':.16,'marker':.30,'stamp':.30,'whoosh':.48,'riser':.80}[kind]
+        t = np.arange(round(seconds*self.rate))/self.rate
+        u = t/seconds
+        if kind in ('tick','pop','stamp'):
+            hz = {'tick':1800,'pop':390,'stamp':86}[kind]
+            phase = 2*np.pi*hz*(t-.23*t*u)
+            tone = (np.sin(phase)+.18*np.sin(2.1*phase))*(1-u)**4
+        else:
+            noise = np.random.default_rng(17).normal(size=len(t))
+            band = (420, min(4200,self.rate*.47)) if kind != 'marker' else (800,min(5600,self.rate*.47))
+            tone = sosfilt(butter(2,band,fs=self.rate,btype='bandpass',output='sos'),noise)
+            tone *= np.sin(np.pi*u)**2 * (u if kind == 'riser' else 1)
+        edge = min(len(t)//2,max(1,round(.005*self.rate)))
+        tone[:edge] *= np.linspace(0,1,edge)
+        tone[-edge:] *= np.linspace(1,0,edge)
+        return tone/(np.max(np.abs(tone)) or 1)
+
+    def mix(self, duration, voice_tracks, output, *, bgm=(), bgm_cuts=None,
+            music_drops=(), sound_marks=(), sfx_library=None, intro_fade_in=0., crossfade=6.):
+        import numpy as np
+        import soundfile as sf
+
+        if not math.isfinite(duration) or duration <= 0 or not 0 <= intro_fade_in <= .35 or not 5 <= crossfade <= 7:
+            raise ValueError('混音时长或淡化参数不符')
+        output = Path(output)
+        output.mkdir(parents=True,exist_ok=True)
+        frames = round(duration*self.rate)
+        voice = np.zeros(frames,dtype='float32')
+        for row in voice_tracks:
+            audio = self._read(row['path'])
+            at = round(float(row.get('at',0))*self.rate)
+            if at < 0 or at+len(audio) > frames+1:
+                raise ValueError('人声音轨超出全片边界')
+            n = min(len(audio),frames-at)
+            voice[at:at+n] += audio[:n]
+        bed = self._music(bgm,frames,bgm_cuts,crossfade)*self._duck(voice)
+        intro = round(intro_fade_in*self.rate)
+        if intro:
+            bed[:intro] *= .5-.5*np.cos(np.linspace(0,np.pi,intro))
+        for drop in normalise_music_drops(music_drops):
+            if drop.end > duration:
+                raise ValueError('Music Drop 超出全片时长')
+            start,end = round(drop.start*self.rate),round(drop.end*self.rate)
+            out = min(start,round(.18*self.rate)); back = min(frames-end,round(.22*self.rate))
+            floor = 10**(-46/20)
+            bed[start-out:start] *= floor+(1-floor)*(.5+.5*np.cos(np.linspace(0,np.pi,out)))
+            bed[start:end] *= floor
+            bed[end:end+back] *= floor+(1-floor)*(.5-.5*np.cos(np.linspace(0,np.pi,back)))
+        mixed = voice+bed
+        applied = []
+        library = sfx_library or {}
+        for event in sound_marks:
+            kind, at = event['kind'],float(event['at'])
+            if kind == 'music_drop':
+                continue
+            if kind == 'slap':
+                kind = 'stamp'
+            gain = float(event.get('gain',.18))
+            if kind not in SFX_KINDS or not 0 <= at < duration or not 0 < gain <= 1:
+                raise ValueError('音效类型、时间或增益无效')
+            effect = self._read(library[kind]) if kind in library else self._effect(kind)
+            i = round(at*self.rate); n = min(len(effect),frames-i)
+            mixed[i:i+n] += gain*effect[:n]
+            applied.append({**event,'kind':kind,'at':at,'gain':gain})
+        sf.write(output/'bed-only.wav',bed,self.rate,subtype='PCM_24')
+        spec = importlib.util.spec_from_file_location('voice_master_levels',Path(__file__).parents[1]/'scripts/voice-post.py')
+        post = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(post)
+        with tempfile.TemporaryDirectory(dir=output) as tmp:
+            raw = Path(tmp)/'premaster.wav'
+            sf.write(raw,mixed,self.rate,subtype='FLOAT')
+            levels = post.normalize_lufs(raw,output/'mix.wav',self.target_lufs)
+        if abs(levels['measured_lufs']-self.target_lufs) > .8 or levels['true_peak_dbtp'] > -1.:
+            raise ValueError('母带响度或真峰值未达标')
+        report = {**levels,'sound_marks':applied,'mix':'mix.wav','bed':'bed-only.wav'}
+        (output/'audio-mix-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+        return report
+
+
+def mix_episode_audio(config, duration, output, *, root=Path('.'), sound_marks=(), bgm_cuts=None):
+    root = Path(root)
+    clips = [{**item, 'path':root/item['path']} for item in config.get('voice_tracks', [])]
+    library = {key:root/path for key,path in config.get('sfx_library', {}).items()}
+    drops = [(item['start'],item['end']) if isinstance(item,dict) else tuple(item)
+             for item in config.get('music_drops', [])]
+    return EpisodeAudioMixer().mix(duration,clips,output,bgm=[root/path for path in config.get('bgm',[])],
+           bgm_cuts=config.get('bgm_cuts',bgm_cuts),music_drops=drops,
+           sound_marks=[*config.get('sound_marks',[]), *sound_marks],sfx_library=library,
+           intro_fade_in=float(config.get('intro_fade_in',0.)),crossfade=float(config.get('crossfade',6.)))

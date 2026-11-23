@@ -97,13 +97,15 @@ def main():
                "voice-check.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "voice-post.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "voice-repair.py": ("YICE_VOICE_PYTHON", "asr-venv"),
+               "assemble-episode.py": ("YICE_VOICE_PYTHON", "asr-venv"),
+               "mix-episode-audio.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "props.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
                "cutout.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
                "people_add.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
                "audit-v3.py": ("YICE_REVIEW_PYTHON", "tts-venv"),
                "review.py": ("YICE_REVIEW_PYTHON", "tts-venv")}
     if len(sys.argv) < 2 or sys.argv[1] not in runners:
-        raise SystemExit("内部入口：workspace.py voice.py|voice-check.py|voice-post.py|voice-repair.py|props.py|cutout.py|review.py [参数]")
+        raise SystemExit('内部入口：workspace.py ' + '|'.join(runners) + ' [参数]')
     workspace, toolkit = load_environment()
     variable, venv = runners[sys.argv[1]]
     python = os.environ.get(variable) or str(toolkit / "local" / venv / "bin/python")

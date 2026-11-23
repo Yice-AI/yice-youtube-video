@@ -215,6 +215,47 @@ def trim_nonpunct_pauses(path, alignment, destination, cache, *, thresholds=None
     updated['nonpunct_pause_edits'] = edits
     return updated, edits
 
+
+def preserve_breaths(path, alignment, destination, cache=None):
+    """Preserve natural in-breaths. Edit only verified, abnormally long dead air."""
+    x, rate = sf.read(path, always_2d=True)
+    x = x.mean(axis=1)
+    measured = pd.measure(path, alignment, cache)
+    silent = pd.runs(np.asarray(measured['db']) < -55.)
+    planned = {int(key) for key in alignment.get('planned_pauses', {})}
+    fade = round(.06 * rate)
+    ramp = (1 - np.cos(np.linspace(0, np.pi, fade))) / 2
+    edits = []
+    for boundary in measured['boundaries']:
+        if boundary['char_boundary'] in planned or boundary['pause_ms'] <= 1150:
+            continue
+        a, b = boundary['pause_interval']
+        intersections = [(max(a, l), min(b, r)) for l, r in silent if min(b, r) > max(a, l)]
+        quiet_a, quiet_b = max(intersections, key=lambda span: span[1]-span[0], default=(0., 0.))
+        loss = round(((b-a)-.45)*rate)
+        width = loss + fade
+        if round((quiet_b-quiet_a)*rate) < width + 2:
+            continue
+        # Keep the natural edge on either side of the quiet gap, especially
+        # the inhalation immediately before the next utterance.
+        first = round((quiet_a+quiet_b)*rate/2) - width//2
+        last = first + width
+        edits.append(dict(start_s=first/rate, end_s=last/rate, new_duration_s=fade/rate,
+                          kind='quiet_trim', char_boundary=boundary['char_boundary'],
+                          before_ms=boundary['pause_ms'], intended_final_ms=450.))
+    edits.sort(key=lambda row: row['start_s'])
+    for edit in reversed(edits):
+        a, b = round(edit['start_s']*rate), round(edit['end_s']*rate)
+        crossfade = x[a:a+fade]*(1-ramp) + x[b-fade:b]*ramp
+        x = np.concatenate((x[:a], crossfade, x[b:]))
+    updated = copy.deepcopy(alignment)
+    for row in updated['mapped']:
+        row['s'] = map_time(row['s'], edits, 'start')
+        row['e'] = map_time(row['e'], edits, 'end')
+    sf.write(destination, x, rate, subtype='FLOAT')
+    updated['semantic_pause_edits'] = edits
+    return updated, edits
+
 def breath_candidates(samples, rate, alignment, acoustic):
     """Conservative broadband, low-energy proxies at verified inter-character boundaries."""
     reference = float(np.percentile(acoustic['db'], 70))
@@ -335,7 +376,8 @@ def normalize_lufs(source, destination, target=-16.):
 
 def postprocess(audio, alignment, output, *, speed=1.08, breath_db=-12.,
                 breath_cut_ms=250., breath_target_ms=150., fade_ms=10.,
-                thresholds=None, scene_boundaries=(), scene_padding=0., lufs=-16.):
+                thresholds=None, scene_boundaries=(), scene_padding=0., lufs=-16.,
+                preserve_natural_breath=False):
     if not np.isfinite([speed, breath_db, breath_cut_ms, breath_target_ms, fade_ms, scene_padding]).all():
         raise ValueError('Postprocessing parameters must be finite')
     if (not .5 <= speed <= 2 or breath_db > 0 or fade_ms <= 0 or scene_padding < 0 or
@@ -360,25 +402,30 @@ def postprocess(audio, alignment, output, *, speed=1.08, breath_db=-12.,
         for row in updated['mapped']:
             row['s'] = min(row['s'] / speed, len(samples) / rate)
             row['e'] = min(row['e'] / speed, len(samples) / rate)
-        acoustic = pd.acoustic(stretched, temp / 'speed.npz')
-        samples, updated, breaths, trims = attenuate_breaths(
-            samples, rate, updated, acoustic, gain_db=breath_db, cut_ms=breath_cut_ms,
-            target_ms=breath_target_ms, fade_ms=fade_ms)
-        prepared = temp / 'breaths.wav'
-        sf.write(prepared, samples, rate, subtype='FLOAT')
         destination = temp / 'semantic.wav'
-        updated, pauses = regularize(prepared, updated, destination, temp / 'breaths.npz',
-                                    scene_boundaries, scene_padding, fade_ms, thresholds)
-        nonpunct = temp / 'nonpunct.wav'
-        updated, nonpunct_edits = trim_nonpunct_pauses(
-            destination, updated, nonpunct, temp / 'nonpunct.npz', thresholds=thresholds,
-            fade_ms=fade_ms)
-        levels = normalize_lufs(nonpunct, temp / 'normalized.wav', lufs)
+        if preserve_natural_breath:
+            updated, pauses = preserve_breaths(stretched, updated, destination, temp / 'speed.npz')
+            breaths, trims, nonpunct_edits = [], [], []
+        else:
+            acoustic = pd.acoustic(stretched, temp / 'speed.npz')
+            samples, updated, breaths, trims = attenuate_breaths(
+                samples, rate, updated, acoustic, gain_db=breath_db, cut_ms=breath_cut_ms,
+                target_ms=breath_target_ms, fade_ms=fade_ms)
+            prepared = temp / 'breaths.wav'
+            sf.write(prepared, samples, rate, subtype='FLOAT')
+            updated, pauses = regularize(prepared, updated, destination, temp / 'breaths.npz',
+                                        scene_boundaries, scene_padding, fade_ms, thresholds)
+            nonpunct = temp / 'nonpunct.wav'
+            updated, nonpunct_edits = trim_nonpunct_pauses(
+                destination, updated, nonpunct, temp / 'nonpunct.npz', thresholds=thresholds,
+                fade_ms=fade_ms)
+            destination = nonpunct
+        levels = normalize_lufs(destination, temp / 'normalized.wav', lufs)
         samples, rate = sf.read(temp / 'normalized.wav')
         temporary = output.with_name(output.stem + '.tmp.wav')
         sf.write(temporary, samples, rate, subtype='PCM_24')
         temporary.replace(output)
-    updated['postprocessing'] = dict(speed=speed, breath_gain_db=breath_db,
+    updated['postprocessing'] = dict(speed=speed, preserve_natural_breath=preserve_natural_breath, breath_gain_db=breath_db,
                                     breath_events=breaths, breath_trims=trims,
                                     semantic_pause_edits=pauses, fade_ms=fade_ms,
                                     suppressed_pause_edits=updated.get('suppressed_pause_edits', []),
@@ -386,7 +433,8 @@ def postprocess(audio, alignment, output, *, speed=1.08, breath_db=-12.,
                                     scene_padding_s=scene_padding,
                                     scene_boundaries=list(scene_boundaries),
                                     duration_s=len(samples) / rate, loudness=levels)
-    updated['post_check'] = pd.check_chapter(output, updated, thresholds=thresholds)
+    updated['post_check'] = pd.check_chapter(output, updated, thresholds=thresholds,
+                                           profile='natural_v7' if preserve_natural_breath else 'legacy')
     return updated
 
 
@@ -397,7 +445,8 @@ def main(argv=None):
     parser.add_argument('--text-file', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--output-alignment', type=Path, required=True)
-    parser.add_argument('--speed', type=float, default=1.08)
+    parser.add_argument('--speed', type=float, default=1.)
+    parser.add_argument('--preserve-natural-breath', action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument('--breath-db', type=float, default=-12.)
     parser.add_argument('--breath-cut-ms', type=float, default=250.)
     parser.add_argument('--breath-target-ms', type=float, default=150.)
@@ -413,6 +462,7 @@ def main(argv=None):
                              breath_db=args.breath_db, breath_cut_ms=args.breath_cut_ms,
                              breath_target_ms=args.breath_target_ms, fade_ms=args.fade_ms,
                              scene_padding=args.scene_padding,
+                             preserve_natural_breath=args.preserve_natural_breath,
                              lufs=args.lufs,
                              scene_boundaries=json.loads(args.scene_boundaries.read_text()) if args.scene_boundaries else [],
                              thresholds=pd.threshold_arguments(args))

@@ -25,6 +25,24 @@ THRESHOLDS = dict(single_character_N=2.4, active_character_N=2., onset_character
                   sentence_pause_ms=[200., 620.])
 
 
+NATURAL_V7 = {
+    **THRESHOLDS,
+    'profile': 'natural_v7',
+    'comma_pause_ms': [0., 650.],
+    'contrast_pause_ms': [80., 950.],
+    'sentence_pause_ms': [80., 950.],
+    'nonpunct_pause_max_ms': 1000.,
+    'intra_word_drop_db': 22.,
+    'intra_word_min_ms': 110.,
+}
+
+
+def thresholds_for(profile='legacy', overrides=None):
+    if profile not in ('legacy', 'natural_v7'):
+        raise ValueError('未知配音质检模式')
+    return {**(NATURAL_V7 if profile == 'natural_v7' else THRESHOLDS), **(overrides or {})}
+
+
 def write_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,31 +83,39 @@ def load_alignment(path, text_file, audio):
     return dict(text=text, mapped=mapped, planned_pauses=data.get('planned_pauses', {}) if isinstance(data, dict) else {})
 
 
+THRESHOLD_OPTIONS = {
+    'long-ratio': 'single_character_N',
+    'active-ratio': 'active_character_N',
+    'onset-ratio': 'onset_character_N',
+    'hesitation-ms': 'nonpunct_low_energy_min_ms',
+    'nonpunct-max-ms': 'nonpunct_pause_max_ms',
+    'fall-semitones': 'falling_end_st',
+    'pause-tolerance-ms': 'punctuation_tolerance_ms',
+    'comma-ms': 'comma_pause_ms',
+    'contrast-ms': 'contrast_pause_ms',
+    'sentence-ms': 'sentence_pause_ms',
+    'intra-word-drop-db': 'intra_word_drop_db',
+    'intra-word-min-ms': 'intra_word_min_ms',
+    'intra-word-max-ms': 'intra_word_max_ms',
+    'rate-outlier-ratio': 'sentence_rate_deviation',
+}
+
+
 def add_threshold_arguments(parser):
-    parser.add_argument('--long-ratio', type=float, default=2.4)
-    parser.add_argument('--active-ratio', type=float, default=2.)
-    parser.add_argument('--onset-ratio', type=float, default=1.7)
-    parser.add_argument('--hesitation-ms', type=float, default=60.)
-    parser.add_argument('--nonpunct-max-ms', type=float, default=150.)
-    parser.add_argument('--fall-semitones', type=float, default=4.)
-    parser.add_argument('--pause-tolerance-ms', type=float, default=20.)
-    parser.add_argument('--comma-ms', type=float, nargs=2, default=[0., 340.])
-    parser.add_argument('--contrast-ms', type=float, nargs=2, default=[300., 450.])
-    parser.add_argument('--sentence-ms', type=float, nargs=2, default=THRESHOLDS['sentence_pause_ms'])
-    parser.add_argument('--intra-word-drop-db', type=float, default=14.)
-    parser.add_argument('--intra-word-min-ms', type=float, default=95.)
-    parser.add_argument('--intra-word-max-ms', type=float, default=260.)
-    parser.add_argument('--rate-outlier-ratio', type=float, default=.38, help='每句字速相对章中位数的最大偏离比例')
+    parser.add_argument('--profile', choices=('natural_v7', 'legacy'), default='natural_v7')
+    for flag, field in THRESHOLD_OPTIONS.items():
+        options = {'nargs': 2} if isinstance(THRESHOLDS[field], list) else {}
+        parser.add_argument('--'+flag, type=float, **options)
 
 
 def threshold_arguments(args):
-    values = dict(single_character_N=args.long_ratio, active_character_N=args.active_ratio,
-                  onset_character_N=args.onset_ratio, nonpunct_low_energy_min_ms=args.hesitation_ms,
-                  nonpunct_pause_max_ms=args.nonpunct_max_ms, falling_end_st=-args.fall_semitones,
-                  punctuation_tolerance_ms=args.pause_tolerance_ms, comma_pause_ms=args.comma_ms,
-                  contrast_pause_ms=args.contrast_ms, sentence_pause_ms=args.sentence_ms,
-                  intra_word_drop_db=args.intra_word_drop_db, intra_word_min_ms=args.intra_word_min_ms,
-                  intra_word_max_ms=args.intra_word_max_ms, sentence_rate_deviation=args.rate_outlier_ratio)
+    profile = getattr(args, 'profile', 'legacy')
+    values = thresholds_for(profile)
+    for flag, field in THRESHOLD_OPTIONS.items():
+        override = getattr(args, flag.replace('-', '_'), None)
+        if override is not None:
+            values[field] = -override if flag == 'fall-semitones' else override
+    values.pop('profile', None)
     for name, value in values.items():
         items = value if isinstance(value, list) else [abs(value) if name == 'falling_end_st' else value]
         if not all(np.isfinite(v) and v >= 0 for v in items):
@@ -97,7 +123,7 @@ def threshold_arguments(args):
         if isinstance(value, list) and (value[1] <= 0 or value[0] > value[1] or
                                         (value[0] == 0 and name != 'comma_pause_ms')):
             raise ValueError('Only ordinary commas allow a zero minimum pause')
-    if min(args.long_ratio, args.active_ratio, args.onset_ratio, args.fall_semitones) <= 0:
+    if min(values['single_character_N'], values['active_character_N'], values['onset_character_N'], -values['falling_end_st']) <= 0:
         raise ValueError('Duration ratios and fall threshold must be positive')
     return values
 
@@ -285,6 +311,7 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
     """
     thresholds = {**THRESHOLDS, **(thresholds or {})}
     d = measurement
+    natural = thresholds.get('profile') == 'natural_v7'
     envelope = np.asarray(d.get('db', []), dtype=float)
     median = chapter_median_ms or d['median_char_ms']
     chars = d['characters']
@@ -293,7 +320,7 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
         prev = d['boundaries'][i - 1] if i else None
         after = d['boundaries'][i] if i < len(d['boundaries']) else None
         internal = prev and after and prev['kind'] == after['kind'] == 'none'
-        if (internal and re.fullmatch(r'[\u4e00-\u9fff]', r['w'])
+        if (not natural and internal and re.fullmatch(r'[\u4e00-\u9fff]', r['w'])
                 and r['duration_ms'] / median >= thresholds['single_character_N']
                 and r['active_ms'] / median >= thresholds['active_character_N']):
             flags.append(dict(kind='long_character', index=i, sentence=r['sentence'],
@@ -314,7 +341,7 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
         spoken_s = sum(max(0., row['e'] - row['s']) for row in rows)
         if len(rows) >= 4 and spoken_s > 0.15:
             speeds[i] = pronunciation_units(''.join(row['w'] for row in rows)) / spoken_s
-    if speeds:
+    if speeds and not natural:
         typical = float(np.median(list(speeds.values())))
         for sentence, speed in speeds.items():
             deviation = speed / typical - 1
@@ -336,9 +363,9 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
             duration = b['pause_ms']
             fall = left['f0_change_st']
             reasons = []
-            if duration >= thresholds['nonpunct_low_energy_min_ms'] and ratio >= thresholds['onset_character_N']:
+            if not natural and duration >= thresholds['nonpunct_low_energy_min_ms'] and ratio >= thresholds['onset_character_N']:
                 reasons.append('low_energy_plus_long_onset')
-            if fall is not None and fall <= thresholds['falling_end_st'] and duration >= thresholds['nonpunct_low_energy_min_ms'] and left['duration_ms'] / median >= thresholds['onset_character_N']:
+            if not natural and fall is not None and fall <= thresholds['falling_end_st'] and duration >= thresholds['nonpunct_low_energy_min_ms'] and left['duration_ms'] / median >= thresholds['onset_character_N']:
                 reasons.append('mid_sentence_falling_end')
             if duration > thresholds['nonpunct_pause_max_ms']:
                 reasons.append('nonpunct_pause')
@@ -388,7 +415,15 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
                                   context=b['context']))
         elif b['kind'] in ['comma', 'contrast', 'sentence']:
             low, high = b['range_ms']
-            if not low - thresholds['punctuation_tolerance_ms'] <= b['pause_ms'] <= high + thresholds['punctuation_tolerance_ms']:
+            measured_pause = b['pause_ms']
+            if natural and b['range_ms'] == NATURAL_V7[b['kind']+'_pause_ms']:
+                low, high = (0. if b['kind'] == 'comma' else 40.), 1000.
+                if measured_pause < low:
+                    measured_pause = max(measured_pause,min(high,b['asr_gap_ms']))
+            else:
+                low -= thresholds['punctuation_tolerance_ms']
+                high += thresholds['punctuation_tolerance_ms']
+            if not low <= measured_pause <= high:
                 flags.append(dict(kind='punctuation_pause', index=i, sentence=left['sentence'],
                                   char_start=left['charStart'], char_end=right['charEnd'],
                                   context=b['context'], pause_class=b['kind'],
@@ -403,8 +438,8 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
             flags.append(dict(kind='chunk_seam_jump', seam=seam))
     return flags
 
-def check_chapter(audio, alignment, *, chapter=None, cache=None, thresholds=None):
-    thresholds = {**THRESHOLDS, **(thresholds or {})}
+def check_chapter(audio, alignment, *, chapter=None, cache=None, thresholds=None, profile='legacy'):
+    thresholds = thresholds_for(profile, thresholds)
     measurement = measure(audio, alignment, cache, thresholds)
     alerts = detect(measurement, thresholds=thresholds)
     return dict(chapter=chapter or Path(audio).stem, ok=not alerts, alerts=alerts,
@@ -424,7 +459,7 @@ def main(argv=None):
     try:
         alignment = load_alignment(args.alignment, args.text_file, args.audio)
         report = check_chapter(args.audio, alignment, chapter=args.chapter,
-                               cache=args.cache, thresholds=threshold_arguments(args))
+                               cache=args.cache, thresholds=threshold_arguments(args), profile=args.profile)
     except (ValueError, OSError, KeyError, TypeError) as exc:
         write_json(args.output, dict(ok=False, error=str(exc), alerts=[]))
         print(str(exc), file=sys.stderr)

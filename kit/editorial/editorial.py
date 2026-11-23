@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import html
 import json
-from math import cos, pi, sin
+from math import cos, isfinite, pi, sin
 from pathlib import Path
 
 IVORY = "#f6f0df"
@@ -169,6 +169,124 @@ class EditorialStage:
             "files": files,
             "beats": [round(float(value), 5) for value in (beats or [])],
         })
+        return sid
+
+    def add_cold_open_ab(self, start, end, left, right, *, hook, labels=('A', 'B'),
+                         countdown=3, media_start=0.):
+        if not isinstance(countdown, int) or countdown < 1 or end-start < countdown or len(labels) != 2:
+            raise ValueError('双窗开场需要两个标签与完整的整数秒倒数区间')
+        y, width, height = 265, 848, 477
+        body = group('rise', word(960,183,hook,min(78,1530//max(1,len(hook))),anchor='middle'))
+        for x, file, label in zip((80,992),(left,right),labels):
+            self.add_video(start,end,file,x,y,width,height,fit='cover',media_start=media_start)
+            body += printframe(x,y,width,height,label)
+        self.add_plate(start,end,hook,body,kind='real_video',files=[left,right])
+        intro = end-countdown
+        for i in range(countdown):
+            at = intro+i
+            svg = countdown_dial(960,827,min(i,2),countdown-i)
+            self.plates.append(f'<div class="clip plate" data-start="{at:.5f}" data-duration="1" '
+                               f'data-track-index="11"><svg viewBox="0 0 1920 1080">{svg}</svg></div>')
+            self.sound_marks.append(('tick',at))
+        row = self.shots[-1]
+        row.update(stage_mode='cold_open_ab',layout='ab_compare',has_motion_overlay=True,
+                   montage_countdown=True,media_start=media_start,
+                   beats=sorted({0.,*[intro-start+i for i in range(countdown)]}))
+        return row['id']
+
+    def add_title_sequence(self, start, end, title, *, subtitle='', highlight='', brand='一策', paper=False):
+        if not 1.8 <= round(end-start,5) <= 3.2:
+            raise ValueError('片头扉页时长须为 1.8–3.2 秒')
+        lines = title.splitlines() if isinstance(title,str) else list(title)
+        if not 1 <= len(lines) <= 2 or not all(lines):
+            raise ValueError('片头须有一至两行主题')
+        color = INK if paper else IVORY
+        accent = CRIMSON if paper else CORAL
+        body = grid() + mono(100,208,brand,31,color)
+        body += group('rise',''.join(word(96,423+133*i,text,min(120,1660//max(1,len(text))),
+                                          accent if text==highlight else color) for i,text in enumerate(lines)))
+        if subtitle:
+            body += txt(100,683,subtitle,39,color)
+        body += group('title-ruler',rule(100,755,1660,accent))
+        plate = self.add_plate(start,end,' / '.join(lines),body,bg=PAPER if paper else INK,kind='chapter_break')
+        self.scripts.append(f"tl.fromTo('#{plate} .title-ruler',{{scaleX:0}},"
+                            f"{{scaleX:1,transformOrigin:'left center',duration:.8,immediateRender:false}},{start+.12:.5f});")
+        self.sound_marks.extend((('whoosh',start),('stamp',start+.82)))
+        row = self.shots[-1]
+        row.update(stage_mode='title_sequence',layout='fullbleed',has_motion_overlay=True,beats=[0.,.12,.82])
+        return row['id']
+
+    def add_callout_rig(self, start, end, src, *, overlays, media_start=0., motion='glide'):
+        if not 1 <= len(overlays) <= 2:
+            raise ValueError('叠层镜头需要一至两个明确的贴图动作')
+        sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion)
+        shot = self.shots[-1]
+        shot.update(stage_mode='callout_rig',has_motion_overlay=True,media_start=media_start)
+        for overlay in overlays:
+            at = float(overlay['at'])
+            hold = float(overlay.get('duration',end-start-at))
+            if not 0 <= at < end-start or hold <= 0 or start+at+hold > end+1e-6:
+                raise ValueError('贴图须在镜头时间窗内')
+            begin = start+at
+            style = overlay['kind']
+            label = str(overlay.get('label',''))
+            if style == 'spotlight_box':
+                x,y,w,h = map(float,overlay.get('box',[632,208,620,405]))
+                if min(x,y,w,h) < 64 or x+w > 1856 or y+h > 890:
+                    raise ValueError('高亮框超出可用视窗')
+                shape = f'M{x} {y}h{w}v{h}h{-w}z'
+                body = f'<path fill="#101b1bd9" fill-rule="evenodd" d="M0 0H1920V1080H0Z {shape}"/>'
+                body += rect(x,y,w,h,'none',f'rx="14" stroke="{CORAL}" stroke-width="5" '
+                                            'style="filter:drop-shadow(0 0 12px #ff745a)"')
+                body += group('rise',rect(x,y-49,min(700,85+len(label)*28),44,INK,'rx="8"')+txt(x+16,y-18,label,28))
+                audio = 'pop'
+            elif style == 'stat_badge':
+                value = float(overlay['value'])
+                unit = str(overlay.get('unit',''))
+                if not isfinite(value):
+                    raise ValueError('数字角标需要有穷实测值')
+                body = group('rise',rect(1194,105,585,245,'#203333e8','rx="23" stroke="#7aaba0"')
+                             +txt(1235,157,label,32)+txt(1235,267,f'{value:g}{unit}',82,CORAL,attrs='class="stat-readout"')
+                             +rule(1235,304,460))
+                audio = 'pop'
+            elif style == 'strikethrough_list':
+                items = [str(item) for item in overlay.get('items',[])]
+                if not 1 <= len(items) <= 4 or not all(items):
+                    raise ValueError('划线排疑需要一至四项文字')
+                body = rect(100,170,820,110+90*len(items),'#172322ea','rx="20"')+txt(136,238,label,39)
+                for i,item in enumerate(items):
+                    y = 324+90*i
+                    body += txt(143,y,item,min(48,730//len(item)))
+                    body += ln(138,y-16,min(883,143+len(item)*50),y-16,CORAL,7,f'class="strike-{i}"')
+                audio = 'marker'
+            elif style == 'verdict_stamp':
+                if not label or len(label)>10:
+                    raise ValueError('裁决印章须为短标签')
+                body = stamp(1000,535,label)
+                audio = 'stamp'
+            else:
+                raise ValueError(f'未知动态贴图类型：{style}')
+            plate = self.add_plate(begin,begin+hold,style,body)
+            self.shots.pop()  # The overlay belongs to the underlying video shot.
+            if style == 'stat_badge':
+                decimals = min(3,len(str(overlay['value']).partition('.')[2]))
+                suffix = json.dumps(unit,ensure_ascii=False).replace('<','\\u003c')
+                self.scripts.append(f"{{const n={{v:0}};const label=document.querySelector('#{plate} .stat-readout');"
+                                    f"tl.to(n,{{v:{value},duration:{min(.65,hold):.4f},"
+                                    f"onUpdate:()=>label.textContent=n.v.toFixed({decimals})+{suffix}}},{begin:.5f});}}")
+            if style == 'strikethrough_list':
+                for i,_ in enumerate(items):
+                    delay = i*min(.31,hold/(len(items)+1))
+                    self.scripts.append(f"tl.fromTo('#{plate} .strike-{i}',{{scaleX:0}},"
+                                        f"{{scaleX:1,transformOrigin:'left',immediateRender:false,duration:{min(.27,hold-delay):.4f}}},{begin+delay:.5f});")
+                    if i:
+                        self.sound_marks.append((audio,begin+delay))
+                        shot['beats'].append(at+delay)
+            if style == 'verdict_stamp':
+                self.add_stamp_slam(plate,begin)
+            self.sound_marks.append((audio,begin))
+            shot['beats'].append(at)
+        shot['beats'] = sorted(set(shot['beats']))
         return sid
 
     def add_fullbleed_rig(

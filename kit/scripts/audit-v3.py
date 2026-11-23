@@ -150,10 +150,10 @@ def _rms_window(wav: Path, start: float = 0.0, duration: float | None = None) ->
     return math.sqrt(sum(squares) / len(squares)) if squares else 0.0
 
 
-def music_drop_acoustic_gate(rendered: Path, timeline: dict, errors: list[str]) -> dict:
+def music_drop_acoustic_gate(rendered: Path, timeline: dict, errors: list[str], *, minimum=4) -> dict:
     drops = timeline.get("music_drops", [])
     bed = rendered.parent / "bed-only.wav"
-    if len(drops) < 4:
+    if len(drops) < minimum:
         errors.append("v4 声学门禁要求至少 4 个 Music Drop")
         return {"bed_only": str(bed), "drop_count": len(drops)}
     if not bed.is_file():
@@ -476,6 +476,7 @@ def voice_speed_checks(project):
 
 def rendered(args, out, errors):
     v6 = getattr(args, "v6", False)
+    v7 = getattr(args, 'v7', False)
     errors.extend(voice_speed_checks(args.project))
     probe = json.loads(run(["ffprobe", "-v", "error", "-show_format", "-show_streams",
                             "-of", "json", str(args.rendered)]).stdout)
@@ -492,11 +493,16 @@ def rendered(args, out, errors):
     if args.timeline:
         timeline = json.loads(args.timeline.read_text())
         legacy_timeline = timeline
-        if v6:
+        if v6 and not v7:
             from audit_v6 import timeline_gates, masks, voice_continuity
             legacy_timeline = dict(timeline, shots=[dict(shot, kind="real_video") if shot["kind"]=="studio_ui" else shot for shot in timeline["shots"]])
-        result.update(timeline_metrics(legacy_timeline, duration, args.project, errors, v4=args.v4 or args.v5 or v6, v5=args.v5 or v6))
-        if v6:
+        if v7:
+            from audit_v7 import video_gates
+            result.update(video_gates(timeline,args.project,args.rendered,duration,errors))
+        else:
+            result.update(timeline_metrics(legacy_timeline, duration, args.project, errors,
+                                           v4=args.v4 or args.v5 or v6, v5=args.v5 or v6))
+        if v6 and not v7:
             result.update(timeline_gates(timeline,args.project,duration,errors))
             found=masks(args.rendered,timeline)
             result["redaction_mask_gate"]={"hits":found,"banned_sources":result.pop("banned_sources")}
@@ -509,7 +515,8 @@ def rendered(args, out, errors):
         errors.append("成片时长不符")
     summary = run(["ffmpeg", "-nostats", "-i", str(args.rendered), "-vn", "-af", "ebur128=peak=true",
                    "-f", "null", "-"]).stderr.rsplit("Summary:", 1)[-1]
-    for key, pattern, low, high in [("integrated_lufs", r"I:\s+([\w.+-]+) LUFS", -15, -13),
+    low_lufs, high_lufs = (-15.3,-13.7) if v7 else (-15.,-13.)
+    for key, pattern, low, high in [("integrated_lufs", r"I:\s+([\w.+-]+) LUFS", low_lufs, high_lufs),
                                    ("true_peak_dbtp", r"Peak:\s+([\w.+-]+) dBFS", -150, -1)]:
         match = re.search(pattern, summary)
         value = float(match[1]) if match else None
@@ -517,14 +524,15 @@ def rendered(args, out, errors):
         if value is None or not low <= value <= high:
             errors.append(f"{key} 超出范围或无法测量")
     result["ocr"] = scan_frames(args, duration, out, errors)
-    if args.v4 or args.v5 or v6:
+    if args.v4 or args.v5 or v6 or v7:
         if timeline is None:
             errors.append("v4 需要真实 shot-timeline.json 才能做跨镜像素审计")
         else:
             result["pixel_gate"] = pixel_dead_frame_gate(args.rendered, duration, errors, timeline)
             result["black_frame_gate"] = black_frame_gate(args.rendered, timeline, duration, errors)
             result["dhash_gate"] = dhash_gate(args.rendered, timeline, errors)
-            result["music_drop_acoustic"] = music_drop_acoustic_gate(args.rendered, timeline, errors)
+            result["music_drop_acoustic"] = music_drop_acoustic_gate(args.rendered, timeline, errors,
+                                                                    minimum=0 if v7 else 4)
         result["subzone_gate"] = subzone_gate(args.project, errors)
     return result
 
@@ -544,8 +552,10 @@ def main():
     parser.add_argument("--v4", action="store_true", help="启用 Skill v4.0 头部创作硬门禁")
     parser.add_argument("--v5", action="store_true", help="启用 Skill v5.0 自治成片硬门禁")
     parser.add_argument("--v6", action="store_true", help="启用句首、科技实证、遮挡与云端配音门禁")
+    parser.add_argument('--v7',action='store_true',help='启用语义、开场音轨、叠层动效与自然呼吸门禁')
     args = parser.parse_args()
     if args.v6 and (not args.rendered or not args.timeline): parser.error("--v6 需要 --rendered 与 --timeline")
+    if args.v7 and (not args.rendered or not args.timeline): parser.error('--v7 需要 --rendered 与 --timeline')
     errors = []
     out = args.out or args.project
     out.mkdir(parents=True, exist_ok=True)
@@ -564,6 +574,8 @@ def main():
         (out / "audit-v5-report.json").write_text(report + "\n")
     if args.v6:
         (out / "audit-v6-report.json").write_text(report + "\n")
+    if args.v7:
+        (out/'audit-v7-report.json').write_text(report+'\n')
     print(report)
     return int(bool(errors))
 

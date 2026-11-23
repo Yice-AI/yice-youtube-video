@@ -122,20 +122,24 @@ class SemanticBeatPlanner:
         return result
 
     def balance_visual_rhythm(self, beats):
-        """只为未指定素材的句组推荐表达方式，保留句序与句首。"""
-        beats = list(beats)
-        if not beats:
-            return []
-        midpoint = (beats[0].start + beats[-1].end) / 2
-        schedule = {}
-        for half in ([b for b in beats if b.start < midpoint],
-                     [b for b in beats if b.start >= midpoint]):
-            for index, beat in enumerate(half):
-                if beat.asset:
-                    schedule[beat.id] = beat.kind
-                else:
-                    schedule[beat.id] = ("web_cam", "studio_ui", "stock_broll", "explainer_graphic")[index % 4]
-        return [dict(id=b.id, start=b.start, end=b.end, suggested_kind=schedule[b.id]) for b in beats]
+        """保留指定素材，按台词内容提出缺省表达方式。"""
+        schedule = []
+        for beat in beats:
+            text = beat.text.casefold()
+            if beat.asset:
+                kind = beat.kind
+            elif any(word in text for word in ('规则','清单','比例','门槛','原则','数字','总结','优先级')):
+                kind = 'explainer_graphic'
+            elif any(word in text for word in ('落盘','命令','终端','混音','时间线','日志')):
+                kind = 'studio_ui'
+            elif any(word in text for word in ('手','实拍','镜头','书页','仪表')):
+                kind = 'stock_broll'
+            elif any(word in text for word in ('打开','点击','官网','页面','安装','工具','录屏')):
+                kind = 'web_cam'
+            else:
+                kind = 'explainer_graphic'
+            schedule.append(dict(id=beat.id,start=beat.start,end=beat.end,suggested_kind=kind))
+        return schedule
 
     def asset_plan(self, beats: Iterable[Beat], ledger: UniqueAssetLedger | None = None) -> dict[str, Any]:
         ledger = ledger or UniqueAssetLedger()

@@ -179,7 +179,7 @@ class VoiceCheckTests(unittest.TestCase):
         alignment.write_text(json.dumps(aligned))
         text_file.write_text(aligned["text"])
         command = [sys.executable, str(SCRIPTS / "voice-check.py"), "--audio", str(audio),
-                   "--timing", str(alignment), "--text-file", str(text_file), "--output", str(output)]
+                   "--timing", str(alignment), "--text-file", str(text_file), "--output", str(output), "--profile", "legacy"]
         result = subprocess.run(command, capture_output=True, text=True)
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertTrue(json.loads(output.read_text())["alerts"])
@@ -206,7 +206,7 @@ class VoiceCheckTests(unittest.TestCase):
         flow = voice.load_voice_tool('voice-repair')
         original_loader = voice.load_voice_tool
         argv = ["voice.py", str(script), "--output", str(output), "--skip-post", "--silence", "0",
-                "--backend", "kaggle", "--max-repair-rounds", "0"]
+                "--backend", "kaggle", "--profile", "legacy", "--max-repair-rounds", "0"]
         with patch.object(sys, "argv", argv), patch.object(voice, 'make_generator', return_value=fake_generation), \
                 patch.object(voice, 'make_transcriber', return_value=lambda _: {'text': aligned['text']}), \
                 patch.object(voice, 'load_voice_tool', side_effect=lambda name: flow if name == 'voice-repair' else original_loader(name)), \

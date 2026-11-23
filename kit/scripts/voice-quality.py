@@ -11,6 +11,36 @@ ENGLISH = {'Codex': ['CodeX', 'CODEX', 'Code X', 'codecs'],
            'Fireship': ['Fairship', 'Fire ship'],
            'Hugging Face': ['Hogging Face', 'HuggingFace']}
 
+# Conservative offline fallback. Sets contain one Mandarin reading including
+# its tone. Numeral changes and characters with competing readings are not inferred.
+READINGS = {
+    char: reading for reading, group in {
+        'zhēn': '针帧真珍', 'lù': '录路鹿', 'xiào': '效笑', 'cài': '菜蔡',
+        'cǎi': '彩采踩', 'tā': '它他她', 'sù': '素速诉塑', 'zhàng': '账帐',
+        'ruǎn': '软阮', 'liàn': '练炼链', 'hé': '合盒河', 'dìng': '定订锭',
+        'jiǎn': '剪简减检捡', 'jiàn': '见建键件健', 'jì': '记计纪技际',
+        'dú': '读独毒', 'yì': '译易意义异议', 'xiàng': '像象向项',
+        'zài': '在再', 'xiān': '先仙', 'shì': '是式视试事市示', 'zhì': '制置智志质',
+        'diàn': '电店垫', 'bù': '不布部步', 'yīn': '音因阴', 'gōng': '工公功',
+        'zuò': '做作坐座', 'míng': '名明鸣', 'wén': '文闻纹', 'yuán': '原元源员',
+        'suǒ': '所索锁', 'yóu': '由油游邮', 'lǐ': '里理礼李', 'shù': '述术树竖',
+        'huì': '会汇绘惠', 'shū': '书输舒', 'chuán': '传船', 'shè': '摄设射社',
+        'jī': '机基积激', 'tí': '提题', 'cháng': '常长尝', 'zhuāng': '装庄妆',
+    }.items() for char in group
+}
+
+
+@lru_cache(maxsize=2048)
+def pronunciation(char):
+    if not re.fullmatch(r'[\u4e00-\u9fff]', char) or numeric(char) is not None:
+        return None
+    try:
+        from pypinyin import Style, pinyin
+    except ImportError:
+        return READINGS.get(char)
+    readings = pinyin(char, style=Style.TONE, heteronym=True)[0]
+    return readings[0] if len(readings) == 1 and readings[0] != char else READINGS.get(char)
+
 
 def seeds(value):
     try:
@@ -85,7 +115,7 @@ def differences(expected, heard):
             if kind != 'equal']
 
 
-def audit(text, transcription, exceptions=None, threshold=.97):
+def audit(text, transcription, exceptions=None, threshold=.97, *, auto_homophone=False):
     if not math.isfinite(threshold) or not 0 < threshold <= 1:
         raise ValueError('ASR 匹配率阈值须在 (0,1]')
     raw = transcription.get('text')
@@ -181,13 +211,38 @@ def audit(text, transcription, exceptions=None, threshold=.97):
         if intended_numbers and heard_numbers and intended_numbers != heard_numbers:
             continue
         replace(intended, recognized, kind, '调用者逐项提供的明确放行记录')
-    delta = differences(text, heard)
-    ratio = difflib.SequenceMatcher(None, characters(text), characters(heard), autojunk=False).ratio()
+    normalized = characters(heard)
+    if auto_homophone:
+        words = set(re.findall(r'[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*', text))
+        for word in sorted(words):
+            letters = word.replace('-', '')
+            if len(letters) < 2:
+                continue
+            pattern = r'(?<![A-Za-z0-9])' + r'[\s-]*'.join(map(re.escape, letters)) + r'(?![A-Za-z0-9])'
+            match = re.search(pattern, raw, flags=re.IGNORECASE)
+            if match and match[0] != word:
+                events.append(dict(kind='auto_homophone', intended=word, heard=match[0], reason='英文大小写、分词或连字符变体'))
+        edited = list(normalized)
+        for row in differences(text, heard):
+            wanted, actual = row['expected'], row['heard']
+            if row['kind'] != 'replace' or len(wanted) != len(actual):
+                continue
+            if not all(a == b or (pronunciation(a) and pronunciation(a) == pronunciation(b))
+                       for a, b in zip(wanted, actual)):
+                continue
+            begin = row['heard_start']
+            edited[begin:begin+len(actual)] = wanted
+            events.append(dict(kind='auto_homophone', intended=wanted, heard=actual,
+                               heard_start=begin, reason='与原稿逐字同音同调'))
+        normalized = ''.join(edited)
+    delta = differences(text, normalized)
+    ratio = difflib.SequenceMatcher(None, characters(text), normalized, autojunk=False).ratio()
     return dict(ok=bool(characters(text)) and ratio >= threshold and not delta, ratio=ratio,
                 threshold=threshold, differences=delta, raw_differences=differences(text, raw),
                 events=events, number_unit=[e for e in events if e['kind'] == 'number_unit'],
                 english_name=[e for e in events if e['kind'] == 'english_name'],
                 homophone=[e for e in events if e['kind'] == 'homophone'],
+                auto_homophone=[e for e in events if e['kind'] == 'auto_homophone'],
                 homophone_suspect=[e for e in delta if e['kind'] != 'equal'],
                 normalizations=dict(sorted(mappings.items(), key=lambda pair: -len(pair[1]))), raw_text=raw)
 

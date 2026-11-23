@@ -4,6 +4,7 @@ import argparse
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -109,6 +110,28 @@ def semantic_chunks(text, minimum=3, maximum=5, min_chars=60, max_chars=120):
     return chunks or [text]
 
 
+CHUNK_MODES = ('whole_chapter', 'long_paragraph', 'legacy_chunk')
+
+
+def chapter_chunks(text, mode='long_paragraph'):
+    text = text.strip()
+    if not text or mode not in CHUNK_MODES:
+        raise ValueError('须提供非空旁白及有效的分段模式')
+    if mode == 'legacy_chunk':
+        return semantic_chunks(text)
+    if mode == 'whole_chapter' or len(text) <= 380:
+        return [text]
+    boundaries = {match.end() for match in re.finditer(r'\n+|[。！？!?][”’\"）)]*', text)}
+    candidates = []
+    for at in boundaries:
+        left, right = text[:at].strip(), text[at:].strip()
+        if left and right and max(len(left), len(right)) <= 380:
+            candidates.append((min(len(left), len(right)) < 260, abs(len(left)-len(right)), at, left, right))
+    if not candidates:
+        raise ValueError('章节无法按自然句界分为两个 380 字以内的段落，请先拆章或明确选择整章模式')
+    return list(min(candidates)[-2:])
+
+
 def _clone_reference(brand):
     config = TOOLKIT / "brands" / brand / "voice.json"
     if not config.is_file():
@@ -196,41 +219,122 @@ def _remote_batch(texts, brand, backend, temperature):
     return audio
 
 
-def _concat_wavs(paths, target, crossfade_ms=15, pauses=None):
-    """句组间保留 220ms 呼吸，只在语义组的两端做余弦淡化。"""
+def room_tone(source, rate, frames, seed=0, dbfs=-60.):
+    """Repeat a quiet source window, or provide a deterministic low floor."""
+    import numpy as np
+    if not frames:
+        return source[:0]
+    tail = source[-min(len(source), round(.5*rate)):]
+    window = max(1, min(len(tail), round(.06*rate)))
+    windows = [tail[i:i+window] for i in range(0, len(tail)-window+1, window)]
+    tone = min(windows, key=lambda segment: float(np.mean(segment**2))).copy()
+    tone -= tone.mean(axis=0)
+    rms = float(np.sqrt(np.mean(tone**2)))
+    if rms < 10 ** (-72 / 20):
+        tone = np.random.default_rng(seed).standard_normal(tone.shape)
+    tone = np.resize(tone, (frames, *source.shape[1:]))
+    return tone * (10 ** (dbfs/20) / max(1e-10,float(np.sqrt(np.mean(tone**2)))))
+
+
+def preserve_room_floor(samples, rate, dbfs):
+    """Replace only prolonged digital silence in a seam's protection window."""
+    import numpy as np
+    if not len(samples):
+        return samples
+    quiet = np.max(np.abs(samples),axis=1) < 10 ** (-80/20)
+    edges = np.flatnonzero(np.diff(np.r_[False,quiet,False]))
+    for a,b in edges.reshape(-1,2):
+        if b-a > round(.04*rate):
+            samples[a:b] = room_tone(samples,rate,b-a,seed=int(a),dbfs=dbfs)
+    return samples
+
+
+def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-60.):
+    """用室温底噪连接长段，保护入声前至少 140ms 的可用自然前导。"""
+    import shutil
     import numpy as np
     import soundfile as sf
 
     if not paths:
         raise ValueError("没有可拼接的句组音频")
-    parts = []
-    rate = channels = None
+    if not math.isfinite(crossfade_ms) or crossfade_ms < 60 or not -80 < room_tone_dbfs <= -58:
+        raise ValueError('拼接使用至少 60ms 淡化，室温底噪高于 -80 且至多 -58 dBFS')
+    rendered = None
+    original_rate = channels = None
+    previous_tail = 0
     for index, path in enumerate(paths):
-        samples, actual_rate = sf.read(path, dtype="float32", always_2d=True)
-        if rate is None:
-            rate, channels = actual_rate, samples.shape[1]
-        if rate != actual_rate or channels != samples.shape[1] or not len(samples):
+        samples, rate = sf.read(path, dtype="float32", always_2d=True)
+        if original_rate is None:
+            original_rate, channels = rate, samples.shape[1]
+        if original_rate != rate or channels != samples.shape[1] or not len(samples):
             raise ValueError("句组音频采样参数不一致或为空")
         level = np.max(np.abs(samples), axis=1)
-        voiced = np.flatnonzero(level > max(.0005, level.max() * .01))
+        voiced = np.flatnonzero(level > 10 ** (-56 / 20))
         if not len(voiced):
             raise ValueError("句组音频全为静音")
-        margin = round(rate * crossfade_ms / 1000)
-        left = max(0, voiced[0] - margin) if index else 0
-        right = min(len(samples), voiced[-1] + margin + 1) if index < len(paths)-1 else len(samples)
-        samples = samples[left:right].copy()
-        fade = min(margin, len(samples)//2)
-        if fade:
-            ramp = (1-np.cos(np.linspace(0, np.pi, fade)))[:,None] / 2
-            if index:
-                samples[:fade] *= ramp
-            if index < len(paths)-1:
-                samples[-fade:] *= ramp[::-1]
+        if len(paths) == 1:
+            shutil.copyfile(path, target)
+            return
+        fade_frames = round(rate * crossfade_ms / 1000)
+        protected = fade_frames+round(.14*rate)
+        left = max(0, voiced[0] - protected) if index else 0
+        right = min(len(samples), voiced[-1]+1+protected) if index+1<len(paths) else len(samples)
+        piece = samples[left:right].copy()
+        tail_count = right-int(voiced[-1])-1
         if index:
-            pause = (pauses or {}).get(index, .22)
-            parts.append(np.zeros((round(rate * pause), channels), dtype="float32"))
-        parts.append(samples)
-    sf.write(target, np.concatenate(parts), rate, subtype="PCM_16")
+            preserve_room_floor(piece[:int(voiced[0])-left],rate,room_tone_dbfs)
+        if index+1<len(paths) and tail_count:
+            preserve_room_floor(piece[-tail_count:],rate,room_tone_dbfs)
+        if index+1<len(paths) and tail_count<protected:
+            padding = protected-tail_count
+            piece = np.concatenate((piece,room_tone(piece,rate,padding,seed=index,dbfs=room_tone_dbfs)))
+            tail_count = protected
+        if rendered is None:
+            rendered = piece
+            previous_tail = tail_count
+            continue
+        pause = float((pauses or {}).get(index, .12))
+        if not math.isfinite(pause) or pause < 0:
+            raise ValueError('段间留白须为非负有限秒数')
+        lead = int(voiced[0])-left
+        missing_lead = max(0,protected-lead)
+        if missing_lead:
+            piece = np.concatenate((room_tone(piece,rate,missing_lead,seed=index,dbfs=room_tone_dbfs),piece))
+        fade = fade_frames
+        tail_fade = min(fade_frames, len(rendered))
+        remaining = round(pause*rate)
+        if index in (pauses or {}):
+            remaining = max(0, remaining-previous_tail-lead-missing_lead)
+        frames = remaining + tail_fade + fade
+        bridge = room_tone(rendered,rate,frames,seed=index,dbfs=room_tone_dbfs)
+        previous_tail = tail_count
+        down = (1-np.cos(np.linspace(0, np.pi, tail_fade)))[:, None] / 2
+        bridge[:tail_fade] = rendered[-tail_fade:]*(1-down) + bridge[:tail_fade]*down
+        if fade:
+            up = (1-np.cos(np.linspace(0, np.pi, fade)))[:, None] / 2
+            bridge[-fade:] = bridge[-fade:]*(1-up) + piece[:fade]*up
+        rendered = np.concatenate((rendered[:-tail_fade], bridge, piece[fade:]))
+    sf.write(target, rendered, original_rate, subtype='PCM_24')
+
+
+def concat_wav_command(paths, output, pauses, crossfade_ms, room_tone_dbfs):
+    if len(paths) < 2:
+        raise ValueError('拼接至少需要两段已有 WAV')
+    if output.resolve() in {path.resolve() for path in paths}:
+        raise ValueError('输出路径须与原音不同')
+    gaps = {}
+    for item in pauses:
+        boundary,seconds = item.split('=',1)
+        at,gap = int(boundary),float(seconds)
+        if not 1 <= at < len(paths) or at in gaps or not math.isfinite(gap) or gap < 0:
+            raise ValueError('留白边界从 1 起，须唯一且位于相邻拼接段之间')
+        gaps[at] = gap
+    output.parent.mkdir(parents=True,exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=output.parent) as tmp:
+        staging = Path(tmp)/'concat.wav'
+        _concat_wavs(paths,staging,crossfade_ms=crossfade_ms,pauses=gaps,room_tone_dbfs=room_tone_dbfs)
+        staging.replace(output)
+    return dict(ok=True,segments=len(paths),pauses=gaps,crossfade_ms=crossfade_ms,room_tone_dbfs=room_tone_dbfs)
 
 
 def generate_modal_job(job, brand, backend="modal"):
@@ -238,7 +342,8 @@ def generate_modal_job(job, brand, backend="modal"):
     if target.is_file() and target.stat().st_size > 44 and (target.with_suffix(".chunks") / "chunks.json").is_file():
         return
     target.parent.mkdir(parents=True, exist_ok=True)
-    chunks = job.get("chunks") or semantic_chunks(job["text"])
+    mode = job.get('chunk_mode', 'long_paragraph')
+    chunks = job.get("chunks") or chapter_chunks(job["text"], mode)
     temperatures = [0.65, 0.72, 0.78]
     temperature = temperatures[int(job.get("seed", 0)) % len(temperatures)]
     folder = target.with_suffix(".chunks")
@@ -250,13 +355,13 @@ def generate_modal_job(job, brand, backend="modal"):
         raw.append(path)
     pauses = {int(k): v for k, v in job.get("pauses", {}).items()}
     _concat_wavs(raw, target, pauses=pauses)
-    write_json(folder / "chunks.json", dict(texts=chunks, pauses=pauses, temperature=temperature, backend=backend))
+    write_json(folder / "chunks.json", dict(texts=chunks, pauses=pauses, temperature=temperature, backend=backend, chunk_mode=mode))
     if not target.is_file() or target.stat().st_size <= 44:
         raise RuntimeError(f"{backend} 未生成有效 WAV：{target}")
 
 
-def generate_raw(chapters, output, brand, seeds=(42, 43), backend="local", candidates=3):
-    jobs = [dict(text=chapter["text"], seed=seed,
+def generate_raw(chapters, output, brand, seeds=(42, 43), backend="local", candidates=3, chunk_mode='long_paragraph'):
+    jobs = [dict(text=chapter["text"], seed=seed, chunk_mode=chunk_mode,
                  path=str(output / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
             for chapter in chapters for seed in seeds]
     generate_jobs(jobs, brand, backend=backend, candidates=candidates)
@@ -405,7 +510,7 @@ def chars(text):
     return [(i, ch) for i, ch in enumerate(text) if ch.isalnum()]
 
 
-def align_characters(text, transcription, duration, normalizations):
+def align_characters(text, transcription, duration, normalizations, *, auto_homophones=()):
     # T61 把 Whisper 词时间等分到字，再调用既有 align；不另写匹配/插值算法。
     sys.path.insert(0, str(TOOLKIT / "tools"))
     from captions import align
@@ -429,6 +534,10 @@ def align_characters(text, transcription, duration, normalizations):
             heard[at:at + len(old)] = [{"w": ch, "s": lo + (hi - lo) * i / len(new),
                                       "e": lo + (hi - lo) * (i + 1) / len(new)} for i, ch in enumerate(new)]
             start = at + len(new)
+    for row in auto_homophones:
+        start = row['heard_start']
+        for item, wanted in zip(heard[start:start+len(row['heard'])], row['intended']):
+            item['w'] = wanted
     positions = chars(text)
     # captions.norm 原生只保留 ASCII。Unicode 编码适配使中文参与同一套匹配算法。
     token = lambda ch: format(ord(ch.lower()), "x")
@@ -442,6 +551,12 @@ def align_characters(text, transcription, duration, normalizations):
         mapped.append({"charStart": index, "charEnd": index + 1, "s": start, "e": end})
         previous = end
     return mapped, ratio, clamps
+
+
+def align_with_audit(text, transcription, duration, audit):
+    positional = [item for item in audit.get('auto_homophone', []) if 'heard_start' in item]
+    kwargs = {'auto_homophones': positional} if positional else {}
+    return align_characters(text, transcription, duration, audit['normalizations'], **kwargs)
 
 
 def ranges(text, pattern):
@@ -543,14 +658,15 @@ def load_voice_tool(name):
 
 
 def finish_chapter(chapter, raw, output, transcription, normalizations, silence, offset, anchors,
-                   *, skip_post=False, post_options=None, asr_threshold=.97):
+                   *, skip_post=False, post_options=None, asr_threshold=.97, profile='legacy'):
     """Generate final timing and reject content/prosody failures before export."""
     check_tool = load_voice_tool("voice-check")
     quality = load_voice_tool("voice-quality")
-    audit = quality.audit(chapter["text"], transcription, normalizations, asr_threshold)
+    natural = profile == 'natural_v7'
+    audit = quality.audit(chapter["text"], transcription, normalizations, asr_threshold, auto_homophone=natural)
     with wave.open(str(raw), "rb") as source:
         original_duration = source.getnframes() / source.getframerate()
-    mapped, ratio, clamps = align_characters(chapter["text"], transcription, original_duration, audit["normalizations"])
+    mapped, ratio, clamps = align_with_audit(chapter["text"], transcription, original_duration, audit)
     audit["alignment_ratio"] = ratio
     audit["ok"] = audit["ok"] and ratio >= asr_threshold
     write_json(output / "analysis" / f"asr-audit-{chapter['id']}.json", audit)
@@ -559,7 +675,7 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
     audio = raw
     options = dict(post_options or {})
     master = options.pop("cloud_master", False)
-    if master:
+    if master or natural:
         silence = 0
     if not skip_post:
         post_tool = load_voice_tool("voice-post")
@@ -571,7 +687,10 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
         processed = output / "processed"
         processed.mkdir(exist_ok=True)
         audio = processed / f"chapter-{chapter['id']}.wav"
-        if master:
+        if natural:
+            aligned = post_tool.postprocess(raw, aligned, audio, preserve_natural_breath=True,
+                                            thresholds=check_tool.thresholds_for(profile), **options)
+        elif master:
             # Calibrate once on the original PCM; keep all word-internal issues for a cloud redraw.
             semantic = processed / f"semantic-{chapter['id']}.wav"
             aligned, _ = post_tool.regularize(raw, aligned, semantic, semantic.with_suffix(".npz"), fade_ms=15)
@@ -585,7 +704,7 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
     padding = record["added_boundary_silence"]
     final_alignment = dict(text=chapter["text"], mapped=analysis["output_mapped"], matched_ratio=ratio,
                            planned_pauses=chapter.get("planned_pauses", {}))
-    if not skip_post and not master:
+    if not skip_post and not master and not natural:
         # Close pauses against the ACTUAL padded waveform; never add padding twice.
         current = output / record["path"]
         final_edits = []
@@ -610,7 +729,7 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
                            planned_pauses=chapter.get("planned_pauses", {}))
     write_json(output / "analysis" / f"final-alignment-{chapter['id']}.json", final_alignment)
     check = check_tool.check_chapter(output / record["path"] , final_alignment, chapter=chapter["id"],
-                                    cache=output / "analysis" / f"voice-check-{chapter['id']}.npz")
+                                    cache=output / "analysis" / f"voice-check-{chapter['id']}.npz", profile=profile)
     check.update(prosody_ok=check["ok"], asr=audit, ok=check["ok"] and audit["ok"])
     write_json(output / "analysis" / f"voice-check-{chapter['id']}.json", check)
     record.update(generated_duration=original_duration, postprocessing=not skip_post,
@@ -621,8 +740,12 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
 def main():
     import shutil
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("script", type=Path)
+    parser.add_argument('script',type=Path,nargs='?')
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument('--concat-wavs',type=Path,nargs='+')
+    parser.add_argument('--pause',action='append',default=[],help='拼接边界序号=留白秒数，例如 1=3.0')
+    parser.add_argument('--crossfade-ms',type=float,default=60.)
+    parser.add_argument('--room-tone-dbfs',type=float,default=-60.)
     parser.add_argument("--brand", default="yice")
     parser.add_argument("--anchors", type=Path)
     parser.add_argument("--normalizations", type=Path, help="分类的 ASR 例外：number_unit/english_name/homophone")
@@ -630,9 +753,11 @@ def main():
     parser.add_argument("--asr-model", default="mlx-community/whisper-large-v3-turbo")
     parser.add_argument("--asr-prompt", default="", help="领域词表；不要提供完整台词诱导识别")
     parser.add_argument("--asr-threshold", type=float, default=.97)
-    parser.add_argument("--seeds", default="42,43")
+    parser.add_argument("--seeds")
     parser.add_argument("--stage", choices=["draft", "master"], default="master")
     parser.add_argument("--backend", choices=["auto", "modal", "kaggle", "local"], default="auto")
+    parser.add_argument('--chunk-mode', choices=CHUNK_MODES, default='long_paragraph')
+    parser.add_argument('--profile', choices=('natural_v7', 'legacy'), default='natural_v7')
     parser.add_argument("--allow-slow-local", action="store_true")
     parser.add_argument("--candidates", type=int, default=3,
                         help="每个语义句组的温度候选数，默认3")
@@ -643,24 +768,38 @@ def main():
     parser.add_argument("--generation-jobs", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--generate-only", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--skip-post", action="store_true", help="保留原音；ASR/韵律仍必须通过")
-    parser.add_argument("--speed", type=float, default=1.08)
+    parser.add_argument("--speed", type=float, default=1.)
     parser.add_argument("--breath-db", type=float, default=-12.)
     parser.add_argument("--breath-cut-ms", type=float, default=250.)
     parser.add_argument("--breath-target-ms", type=float, default=150.)
     parser.add_argument("--fade-ms", type=float, default=10.)
     parser.add_argument("--lufs", type=float, default=-16.)
     args = parser.parse_args()
+    if args.concat_wavs:
+        if args.script:
+            parser.error('拼接现有 WAV 与从旁白稿生成是两种入口')
+        try:
+            report = concat_wav_command(args.concat_wavs,args.output,args.pause,args.crossfade_ms,args.room_tone_dbfs)
+        except (ValueError,OSError,RuntimeError) as exc:
+            parser.error(str(exc))
+        print(json.dumps(report,ensure_ascii=False))
+        return
+    if args.script is None and not args.generation_jobs:
+        parser.error('请提供旁白稿，或使用 --concat-wavs 拼接现有原音')
     quality = load_voice_tool("voice-quality")
     try:
         args.backend = resolve_backend(args.stage, args.backend, args.allow_slow_local)
-        seeds = quality.seeds(args.seeds)
+        seeds = quality.seeds(args.seeds if args.seeds is not None else ('42,43' if args.profile=='legacy' else '42'))
     except ValueError as exc:
         parser.error(str(exc))
     if (not 0 <= args.silence <= 2 or not 0 < args.asr_threshold <= 1 or
             not 0 <= args.max_repair_rounds <= 3 or not 1 <= args.candidates <= 8):
         parser.error("换幕静音须为0–2秒，ASR阈值须为(0,1]，修复轮数须为0–3，候选数须为1–8")
     if args.generation_jobs:
-        generate_jobs(json.loads(args.generation_jobs.read_text()), args.brand, backend=args.backend, candidates=args.candidates)
+        jobs = json.loads(args.generation_jobs.read_text())
+        for job in jobs:
+            job.setdefault('chunk_mode', args.chunk_mode)
+        generate_jobs(jobs, args.brand, backend=args.backend, candidates=args.candidates)
         return
     chapters, output = parse_script(args.script), args.output.resolve()
     if args.chapters:
@@ -669,7 +808,8 @@ def main():
             parser.error("存在未知章号")
         chapters = [chapter for chapter in chapters if chapter["id"] in requested]
     if args.generate_only:
-        generate_raw(chapters, output / "raw", args.brand, seeds, backend=args.backend, candidates=args.candidates)
+        generate_raw(chapters, output / "raw", args.brand, seeds, backend=args.backend,
+                     candidates=args.candidates, chunk_mode=args.chunk_mode)
         return
     if output.exists() and any(output.iterdir()):
         parser.error(f"输出目录不是空目录，拒绝覆盖：{output}")
@@ -688,7 +828,7 @@ def main():
     write_json(output / "analysis/script-manifest.json", {"chapters": chapters})
     generate = make_generator(args.brand, output / "generation", args.reuse_candidates, args.backend, args.candidates)
     transcribe = make_transcriber(args.asr_model, args.asr_prompt, output / "analysis/asr")
-    jobs = [dict(chapter=chapter["id"], text=chapter["text"], seed=seed,
+    jobs = [dict(chapter=chapter["id"], text=chapter["text"], seed=seed, chunk_mode=args.chunk_mode,
                  path=str(output / "raw" / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
             for chapter in chapters for seed in seeds]
     if args.pause_after:
@@ -710,11 +850,11 @@ def main():
             for scene in chapter["scenes"]:
                 buffer.append(scene["text"])
                 if scene["id"] in pauses:
-                    sections.extend(semantic_chunks(" ".join(buffer)))
+                    sections.extend(chapter_chunks(" ".join(buffer), args.chunk_mode))
                     buffer = []
                     gaps[len(sections)] = float(pauses[scene["id"]])
             if buffer:
-                sections.extend(semantic_chunks(" ".join(buffer)))
+                sections.extend(chapter_chunks(" ".join(buffer), args.chunk_mode))
             job.update(chunks=sections, pauses=gaps)
     generate(jobs)
     flow = load_voice_tool("voice-repair")
@@ -725,6 +865,7 @@ def main():
             output / "candidates" / chapter["id"], generate, transcribe, exceptions=normalization,
             threshold=args.asr_threshold, silence=args.silence, offset=offset, anchors=anchors,
             skip_post=args.skip_post, max_rounds=args.max_repair_rounds,
+            profile=args.profile,
             cloud_backend=args.backend if args.backend != "local" else None, brand=args.brand, post_options=dict(
                 cloud_master=args.stage == "master" and args.backend in {"modal", "kaggle"} and args.speed == 1.,
                 speed=args.speed, breath_db=args.breath_db, breath_cut_ms=args.breath_cut_ms,
@@ -759,7 +900,8 @@ def main():
                 "boundary_silence_duration": round(sum(record["added_boundary_silence"] for record in records), 5),
                 "source_script_sha256": hashlib.sha256(args.script.read_bytes()).hexdigest(),
                 "postprocessing": not args.skip_post, "prosody_check": "passed", "asr_check": "passed",
-                "seeds": seeds, "asr_threshold": args.asr_threshold, "max_repair_rounds": args.max_repair_rounds,
+                "seeds": seeds, "chunk_mode": args.chunk_mode, "profile": args.profile,
+                "asr_threshold": args.asr_threshold, "max_repair_rounds": args.max_repair_rounds,
                 "alignment_note": "最终波形经LUFS归一化、整章ASR和韵律复扫；整句修复后重算字时间、字幕和锚点。"}
     write_json(output / "voice-manifest.json", manifest)
     print(json.dumps({"output": str(output), "duration": offset, "chapters": len(records),
