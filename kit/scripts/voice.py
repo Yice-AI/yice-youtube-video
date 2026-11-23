@@ -330,10 +330,27 @@ def room_tone(source, rate, frames, seed=0, dbfs=-60.):
     tone = min(windows, key=lambda segment: float(np.mean(segment**2))).copy()
     tone -= tone.mean(axis=0)
     rms = float(np.sqrt(np.mean(tone**2)))
-    if rms < 10 ** (-72 / 20):
-        tone = np.random.default_rng(seed).standard_normal(tone.shape)
-    tone = np.resize(tone, (frames, *source.shape[1:]))
-    return tone * (10 ** (dbfs/20) / max(1e-10,float(np.sqrt(np.mean(tone**2)))))
+    target = 10 ** (dbfs/20)
+    shape = (frames, *source.shape[1:])
+    if rms >= 10 ** (-72/20) and np.max(np.abs(tone)) <= 4*rms:
+        tiled = np.resize(tone, shape)
+        tiled_rms = float(np.sqrt(np.mean(tiled**2)))
+        if tiled_rms > 0:
+            gain = target/tiled_rms
+            quiet = np.max(np.abs(tiled),axis=1) < 10 ** (-80/20)/min(1.,gain)
+            tiled *= gain
+            edges = np.flatnonzero(np.diff(np.r_[False,quiet,False]))
+            block = max(1,min(frames,round(.010*rate)))
+            energy = np.r_[0.,np.cumsum(np.mean(tiled**2,axis=1),dtype=np.float64)]
+            level = (energy[block:]-energy[:-block])/block
+            if (not np.any(edges[1::2]-edges[::2]>.005*rate)
+                    and np.all((level>=target**2*10**(-.3)) & (level<=target**2*10**.3))):
+                return tiled
+    noise = np.random.default_rng(seed).standard_normal(shape)
+    # Bound the fallback's amplitude so short windows stay within 3 dB
+    # after RMS normalization and cannot reintroduce sustained dead zones.
+    noise = np.copysign(np.clip(np.abs(noise),.85,1.15),noise)
+    return noise * (target/float(np.sqrt(np.mean(noise**2))))
 
 
 def preserve_room_floor(samples, rate, dbfs):
@@ -344,7 +361,7 @@ def preserve_room_floor(samples, rate, dbfs):
     quiet = np.max(np.abs(samples),axis=1) < 10 ** (-80/20)
     edges = np.flatnonzero(np.diff(np.r_[False,quiet,False]))
     for a,b in edges.reshape(-1,2):
-        if b-a > round(.04*rate):
+        if b-a > round(.025*rate):
             samples[a:b] = room_tone(samples[a:b],rate,b-a,seed=int(a),dbfs=dbfs)
     return samples
 
@@ -421,6 +438,7 @@ def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-68
             up = (1-np.cos(np.linspace(0, np.pi, fade)))[:, None] / 2
             bridge[-fade:] = bridge[-fade:]*(1-up) + piece[:fade]*up
         rendered = np.concatenate((rendered[:-tail_fade], bridge, piece[fade:]))
+    preserve_room_floor(rendered,original_rate,room_tone_dbfs)
     sf.write(target, rendered, original_rate, subtype='PCM_24')
 
 

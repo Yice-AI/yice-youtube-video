@@ -397,6 +397,24 @@ def test_decode_pocket_room_floor_and_stat_badge_plate(tmp_path):
     assert 'stroke="#7aaba0"' in ''.join(stage.plates) and 'data-layout-allow-overlap' in ''.join(stage.plates)
 
 
+def test_concat_rejects_periodically_silent_room_tone(tmp_path):
+    poisoned = np.r_[tone(.015,10**(-60/20),400),tone(.045,10**(-95/20),400)]
+    bridge = voice.room_tone(poisoned[:,None],RATE,3*RATE,dbfs=-68.)
+    energy = np.r_[0.,np.cumsum(bridge[:,0]**2)]
+    block = round(.01*RATE)
+    rms_dbfs = 10*np.log10((energy[block:]-energy[:-block])/block)
+    assert np.all(np.abs(rms_dbfs+68.)<=3.)
+
+    voiced = np.resize([.12,-.12],round(.35*RATE))
+    one = wave(tmp_path/'source-with-pocket.wav',np.r_[voiced,poisoned])
+    two = wave(tmp_path/'source-clean.wav',voiced)
+    target = tmp_path/'joined.wav'
+    voice._concat_wavs([one,two],target,pauses={1:3.})
+    assert sf.info(target).frames==round(3.7*RATE)
+    gate = breath_integrity_gate(tmp_path,{'voice_tracks':[{'path':target.name}]})
+    assert gate['ok'] and gate['violations']==[]
+
+
 @pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
 def test_assemble_episode_end_to_end(tmp_path):
     def footage(path,color,duration):
