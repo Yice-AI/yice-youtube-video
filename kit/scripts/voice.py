@@ -29,8 +29,17 @@ def write_json(path, data):
     tmp.replace(path)
 
 
+_CHINESE_TTS_CHAR = r'[\u3400-\u9fff\uf900-\ufaff\U00020000-\U000323af，。！？、；：…—《》〈〉（）【】「」『』“”‘’]'
+_CHINESE_TTS_SPACES = re.compile(rf'(?<={_CHINESE_TTS_CHAR}) +| +(?={_CHINESE_TTS_CHAR})')
+
+
+def normalize_tts_text(text):
+    return _CHINESE_TTS_SPACES.sub("", text)
+
+
 def spoken(text):
-    return re.sub(r"\s+", " ", re.sub(r"〔[^〕]*〕", "", text).replace("**", "").replace("`", "")).strip()
+    plain = re.sub(r"〔[^〕]*〕", "", text).replace("**", "").replace("`", "")
+    return normalize_tts_text(re.sub(r"\s+", " ", plain).strip())
 
 
 def parse_script(path):
@@ -58,8 +67,16 @@ def parse_script(path):
     if not chapters:
         raise ValueError("未找到 script-v2 格式的章标题和旁白表格")
     for chapter in chapters:
-        chapter["text"] = " ".join(s["text"] for s in chapter["scenes"])
+        chapter["text"] = normalize_tts_text(" ".join(s["text"] for s in chapter["scenes"]))
     return chapters
+
+
+def scene_text_spans(chapter):
+    end = 0
+    for scene in chapter["scenes"]:
+        start = chapter["text"].index(scene["text"], end)
+        end = start + len(scene["text"])
+        yield scene, start, end
 
 
 def generate_jobs(jobs, brand, backend="modal", candidates=3):
@@ -78,7 +95,7 @@ def generate_jobs(jobs, brand, backend="modal", candidates=3):
             raise ValueError(f"拒绝覆盖已有原音：{target}")
         backend.mx.random.seed(job["seed"])
         random.seed(job["seed"])
-        backend.generate(text=job["text"], model=backend.model,
+        backend.generate(text=normalize_tts_text(job["text"]), model=backend.model,
                          ref_audio=backend.clone["audio"], ref_text=backend.clone["text"],
                          lang_code=backend.clone["language"], stt_model=None,
                          output_path=str(target.parent), file_prefix=target.stem,
@@ -194,7 +211,8 @@ def _kaggle_async_batch(base, body, headers, timeout):
         if remaining <= 0:
             raise TimeoutError
         req = urllib.request.Request(url,data=data,headers=headers,method='POST' if data is not None else 'GET')
-        with urllib.request.urlopen(req,timeout=min(15.,remaining)) as response:
+        request_timeout = 60. if data is not None else 15.
+        with urllib.request.urlopen(req,timeout=min(request_timeout,remaining)) as response:
             return json.load(response)
 
     try:
@@ -283,6 +301,7 @@ def _remote_batch(texts, brand, backend, temperature):
         raise RuntimeError(f"{backend} 配音端点请求失败（{status}）") from None
 
     audio = []
+    texts = [normalize_tts_text(text) for text in texts]
     for start_idx in range(0, len(texts), 4):
         sub_texts = texts[start_idx:start_idx + 4]
         result = _post_subbatch(sub_texts)
@@ -666,14 +685,12 @@ def prepare_chapter(chapter, raw_path, output, transcription, normalizations, si
     else:
         mapped = aligned["mapped"]
         ratio, clamps = aligned.get("matched_ratio", 1.), aligned.get("monotonic_clamps", 0)
-    scenes, cursor = [], 0
-    for scene in chapter["scenes"]:
-        end = cursor + len(scene["text"])
+    scenes = []
+    for scene, cursor, end in scene_text_spans(chapter):
         positions = [m for m in mapped if cursor <= m["charStart"] < end]
         if not positions:
             raise ValueError(f"幕 {scene['id']} 没有口播文字")
         scenes.append({**scene, "chars": positions, "char_start": cursor})
-        cursor = end + 1
     cuts = [0] + [round((a["chars"][-1]["e"] + b["chars"][0]["s"]) / 2 * rate)
                   for a, b in zip(scenes, scenes[1:])] + [params.nframes]
     gap = round(silence * rate)
@@ -772,11 +789,9 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
         silence = 0
     if not skip_post:
         post_tool = load_voice_tool("voice-post")
-        boundaries, cursor = [], 0
-        for scene in chapter["scenes"][:-1]:
-            end = cursor + len(scene["text"])
+        boundaries = []
+        for _, cursor, end in list(scene_text_spans(chapter))[:-1]:
             boundaries.append(max(row["charEnd"] for row in mapped if cursor <= row["charStart"] < end))
-            cursor = end + 1
         processed = output / "processed"
         processed.mkdir(exist_ok=True)
         audio = processed / f"chapter-{chapter['id']}.wav"
@@ -929,13 +944,11 @@ def main():
         if set(pauses) - set(known):
             parser.error("停顿幕号必须出现在所选章中")
         for chapter in chapters:
-            cursor = 0
             planned = {}
-            for scene in chapter["scenes"]:
+            for scene, cursor, _ in scene_text_spans(chapter):
                 if scene["id"] in pauses:
                     end = max(i + 1 for i, char in enumerate(scene["text"]) if char.isalnum())
                     planned[str(cursor + end)] = float(pauses[scene["id"]])
-                cursor += len(scene["text"]) + 1
             chapter["planned_pauses"] = planned
         for job in jobs:
             chapter = next(c for c in chapters if c["id"] == job["chapter"])
@@ -943,11 +956,11 @@ def main():
             for scene in chapter["scenes"]:
                 buffer.append(scene["text"])
                 if scene["id"] in pauses:
-                    sections.extend(chapter_chunks(" ".join(buffer), args.chunk_mode))
+                    sections.extend(chapter_chunks(normalize_tts_text(" ".join(buffer)), args.chunk_mode))
                     buffer = []
                     gaps[len(sections)] = float(pauses[scene["id"]])
             if buffer:
-                sections.extend(chapter_chunks(" ".join(buffer), args.chunk_mode))
+                sections.extend(chapter_chunks(normalize_tts_text(" ".join(buffer)), args.chunk_mode))
             job.update(chunks=sections, pauses=gaps)
     generate(jobs)
     flow = load_voice_tool("voice-repair")

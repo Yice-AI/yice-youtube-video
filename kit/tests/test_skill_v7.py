@@ -95,9 +95,11 @@ def kaggle_http(monkeypatch, tmp_path):
     with ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
         server.legacy = False
         server.poll_count = 0
+        server.timeouts = []
         server.outputs = [{'audio_base64': base64.b64encode(audio).decode()}]
 
         def open_local(request, *, timeout):
+            server.timeouts.append(timeout)
             local = urllib.request.Request(
                 f'http://127.0.0.1:{server.server_port}' + urlsplit(request.full_url).path,
                 data=request.data, headers=dict(request.header_items()), method=request.method,
@@ -137,6 +139,36 @@ def test_kaggle_async_404_falls_back_to_sync(kaggle_http):
     assert requests[0][3] == requests[1][3]
     assert requests[1][3]['text'] == [paragraph]
     assert sleeps == []
+
+
+def test_kaggle_submit_uses_longer_timeout_than_poll(kaggle_http, monkeypatch):
+    server, _, _, _, audio = kaggle_http
+    monkeypatch.setattr(voice.time, 'monotonic', lambda: 0.)
+    assert voice._remote_batch(['整章。'], 'test', 'kaggle', .7) == [audio]
+    assert server.timeouts == [60., 15., 15., 15.]
+
+    monkeypatch.setenv('YICE_TTS_TIMEOUT', '12')
+    server.timeouts.clear()
+    server.poll_count = 0
+    assert voice._remote_batch(['整章。'], 'test', 'kaggle', .7) == [audio]
+    assert server.timeouts == [12., 12., 12., 12.]
+
+
+def test_chinese_tts_text_removes_ascii_spaces_without_shifting_scenes(tmp_path, kaggle_http):
+    _, requests, _, _, audio = kaggle_http
+    script = tmp_path/'script.md'
+    script.write_text(
+        '## 00 开场\n| 0-1 | 开 始游戏 。 |\n| 0-2 | 左边 看 Johnny Harris 。 |\n'
+        '| 0-3 | Johnny |\n| 0-4 | Harris |\n',
+    )
+    chapter, = voice.parse_script(script)
+    assert chapter['text'] == '开始游戏。左边看Johnny Harris。Johnny Harris'
+    spans = [(scene['id'], start, end) for scene, start, end in voice.scene_text_spans(chapter)]
+    assert spans == [('0-1', 0, 5), ('0-2', 5, 22), ('0-3', 22, 28), ('0-4', 29, 35)]
+
+    raw = '开始游戏。  左边 看 Johnny Harris ！'
+    assert voice._remote_batch([raw], 'test', 'kaggle', .7) == [audio]
+    assert requests[0][3]['text'] == ['开始游戏。左边看Johnny Harris！']
 
 
 def test_whisper_model_precedence_and_workspace_config(monkeypatch, tmp_path):
