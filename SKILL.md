@@ -10,7 +10,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.0�
 ## 制片入口
 
 1. 整理实测底账、旁白与逐镜画面。每镜注明实际画面主体、语义绑定和首字锚点。公开网页用 `kit/scripts/record-web-cam.sh` 采集深色实录，实操优先连续多点跟焦，概念及数据用解说动效或语义对应叠层。
-2. 执行 `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`，也可显式选择已授权端点。默认 `--chunk-mode long_paragraph` 和 `--profile natural_v7`，380 字以内整章一次生成，较长章节在自然句界切成至多两段。`--pause-after 0-3=3.0` 登记一处设计留白。Kaggle 默认异步提交并每 2.5 秒轮询，等待上限 900 秒（可用 `YICE_TTS_TIMEOUT` 调整），异步提交返回 HTTP 404 时自动回退同步接口。
+2. 执行 `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`，也可显式选择已授权端点。默认 `--chunk-mode long_paragraph` 和 `--profile natural_v7`，在中文句末分段，每段优先 65–115 字、最多 5 句。`--pause-after 0-3=3.0` 登记一处设计留白。Kaggle 默认异步提交并每 2.5 秒轮询，等待上限 900 秒（可用 `YICE_TTS_TIMEOUT` 调整），异步提交返回 HTTP 404 时自动回退同步接口。
 3. 写成 `episode-manifest.json` 后执行 `bash kit/scripts/assemble-episode.sh episode-manifest.json --output out`。装配会校验媒体时长、切点和语义，渲染所需动效，合成母带并运行 HyperFrames check 和 render。输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 与 `acts/`。`--build-only` 可用于检查分幕工程和母带。
 4. 执行 `bash kit/scripts/audit-v3.sh --v7 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，结合成片目检交付。
 

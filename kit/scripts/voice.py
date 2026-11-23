@@ -120,17 +120,38 @@ def chapter_chunks(text, mode='long_paragraph'):
         raise ValueError('须提供非空旁白及有效的分段模式')
     if mode == 'legacy_chunk':
         return semantic_chunks(text)
-    if mode == 'whole_chapter' or len(text) <= 380:
+    if mode == 'whole_chapter':
         return [text]
-    boundaries = {match.end() for match in re.finditer(r'\n+|[。！？!?][”’\"）)]*', text)}
-    candidates = []
-    for at in boundaries:
-        left, right = text[:at].strip(), text[at:].strip()
-        if left and right and max(len(left), len(right)) <= 380:
-            candidates.append((min(len(left), len(right)) < 260, abs(len(left)-len(right)), at, left, right))
-    if not candidates:
-        raise ValueError('章节无法按自然句界分为两个 380 字以内的段落，请先拆章或明确选择整章模式')
-    return list(min(candidates)[-2:])
+
+    min_chars, max_chars, maximum = 65, 115, 5
+    boundaries = [0, *(match.end() for match in re.finditer(r'[。！？]+[”’"）)]*', text))]
+    if boundaries[-1] != len(text):
+        boundaries.append(len(text))
+    if any(end - start > max_chars for start, end in zip(boundaries, boundaries[1:])):
+        raise ValueError('单句超过 115 字，请在自然停顿处补句末标点')
+
+    # Prefer the fewest short groups, then the fewest cuts.
+    last = len(boundaries) - 1
+    scores = [(0, 0)] * (last + 1)
+    next_group = [last] * last
+    for start in range(last - 1, -1, -1):
+        best = None
+        for end in range(min(start + maximum, last), start, -1):
+            length = boundaries[end] - boundaries[start]
+            if length > max_chars:
+                continue
+            short_groups, groups = scores[end]
+            score = (short_groups + (length < min_chars), groups + 1)
+            if best is None or score < best:
+                best, next_group[start] = score, end
+        scores[start] = best
+
+    chunks, start = [], 0
+    while start < last:
+        end = next_group[start]
+        chunks.append(text[boundaries[start]:boundaries[end]])
+        start = end
+    return chunks
 
 
 def _clone_reference(brand):

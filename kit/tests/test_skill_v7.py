@@ -191,13 +191,22 @@ def test_whisper_model_with_broken_symlinks_falls_back(monkeypatch, tmp_path):
 
 
 def test_long_paragraph_keeps_text_and_breath(tmp_path):
-    text = '先公布结果，再展示步骤。'*17
+    sentence = '甲'*19 + '。'
+    text = sentence*5
     assert voice.chapter_chunks(text)==[text]
-    longer = '接下来介绍使用场景。'*54
+    assert voice.chapter_chunks(sentence*10)==[text, text]
+    assert voice.chapter_chunks(sentence*12)==[sentence*4]*3
+    assert voice.chapter_chunks('好。'*6)==['好。'*5, '好。']
+    quoted = '“' + '甲'*21 + '！”'
+    assert voice.chapter_chunks(quoted*8)==[quoted*4]*2
+    longer = sentence*54
     chunks = voice.chapter_chunks(longer)
-    assert len(chunks)==2 and ''.join(chunks)==longer and max(map(len,chunks))<=380
+    assert ''.join(chunks)==longer and all(65<=len(chunk)<=115 for chunk in chunks)
     assert voice.chapter_chunks(longer,'whole_chapter')==[longer]
     assert len(voice.chapter_chunks(longer,'legacy_chunk'))>2
+    assert voice.chapter_chunks('甲'*114 + '。')==['甲'*114 + '。']
+    with pytest.raises(ValueError, match='单句超过 115 字'):
+        voice.chapter_chunks('甲'*58 + '\n' + '乙'*57)
     breath = tone(.16,.0038,520)
     a = wave(tmp_path/'one.wav',np.r_[tone(.4),tone(.15,.00035)])
     b = wave(tmp_path/'two.wav',np.r_[tone(.08,.00035),breath,tone(.4)])
