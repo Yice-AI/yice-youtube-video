@@ -150,6 +150,8 @@ def test_whisper_model_precedence_and_workspace_config(monkeypatch, tmp_path):
     assert voice.resolve_asr_model() == 'mlx-community/whisper-large-v3-turbo'
     local.unlink()
     local.mkdir()
+    (local/'config.json').write_text('{}')
+    (local/'weights.safetensors').touch()
     assert voice.resolve_asr_model() == str(local)
 
     config = tmp_path/'.config/yice-video/env'
@@ -163,6 +165,29 @@ def test_whisper_model_precedence_and_workspace_config(monkeypatch, tmp_path):
     monkeypatch.setenv('YICE_ASR_MODEL', config_env['YICE_ASR_MODEL'])
     assert voice.resolve_asr_model() == 'org/environment-model'
     assert voice.resolve_asr_model('org/cli-model') == 'org/cli-model'
+
+
+def test_whisper_model_with_broken_symlinks_falls_back(monkeypatch, tmp_path):
+    monkeypatch.setattr(Path, 'home', classmethod(lambda cls: tmp_path))
+    monkeypatch.delenv('YICE_ASR_MODEL', raising=False)
+    local = tmp_path/'yice-demo/我的视频/models/Whisper-Large-v3-Turbo'
+    local.mkdir(parents=True)
+    config = tmp_path/'config.json'
+    weights = tmp_path/'weights.safetensors'
+    (local/'config.json').symlink_to(config)
+    (local/'weights.safetensors').symlink_to(weights)
+    fallback = 'mlx-community/whisper-large-v3-turbo'
+    assert voice.resolve_asr_model() == fallback
+    weights.touch()
+    assert voice.resolve_asr_model() == fallback
+    weights.unlink()
+    config.write_text('{}')
+    assert voice.resolve_asr_model() == fallback
+    for name in ('weights.safetensors', 'model.safetensors', 'weights.npz'):
+        target = weights if name == weights.name else local/name
+        target.touch()
+        assert voice.resolve_asr_model() == str(local)
+        target.unlink()
 
 
 def test_long_paragraph_keeps_text_and_breath(tmp_path):

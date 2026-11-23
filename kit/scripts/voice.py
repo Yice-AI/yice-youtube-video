@@ -481,7 +481,9 @@ def resolve_asr_model(explicit=None):
     if configured:
         return os.path.expanduser(configured)
     local = Path.home() / "yice-demo/我的视频/models/Whisper-Large-v3-Turbo"
-    if local.is_dir():
+    config = local / "config.json"
+    weight_names = ("weights.safetensors", "model.safetensors", "weights.npz")
+    if config.is_file() and os.access(config, os.R_OK) and any((local / name).is_file() for name in weight_names):
         return str(local)
     return "mlx-community/whisper-large-v3-turbo"
 
