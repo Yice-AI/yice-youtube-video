@@ -14,13 +14,13 @@ from urllib.parse import unquote
 
 KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(KIT.parent))
-from audit_v7 import semantic_binding_gate
+from audit_v7 import probe_video, semantic_binding_gate
 from kit.editorial.audio_mix import mix_episode_audio
 from kit.editorial.editorial import EditorialStage
 from kit.studio_ui import add_workbench
 
 FPS = 30
-MODES = {'cold_open_ab','title_sequence','callout_rig','fullbleed_rig','studio_ui','explainer_clip'}
+MODES = {'cold_open_ab','title_sequence','callout_rig','fullbleed_rig','studio_ui','explainer_clip','triptych_cards'}
 
 
 def read(path):
@@ -47,14 +47,28 @@ def locate(root, value):
     return path
 
 
-def probe_video(path):
-    proc = subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries',
-                           'format=duration:stream=width,height','-of','json',str(path)],
-                          check=True,capture_output=True,text=True)
-    data = json.loads(proc.stdout)
-    if not data['streams']:
-        raise ValueError(f'素材没有视频流：{path.name}')
-    return float(data['format']['duration'])
+def prepare_cards(shot, root, span, durations):
+    heading = shot.get('heading')
+    cards = shot.get('cards')
+    if not isinstance(heading,str) or not heading.strip() or not isinstance(cards,list) or not 2<=len(cards)<=4:
+        raise ValueError('多栏舞台需要标题和两至四张卡片')
+    for card in cards:
+        if not isinstance(card,dict) or not isinstance(card.get('label'),str) or not card['label'].strip():
+            raise ValueError('卡片需要文字标签')
+        if not isinstance(card.get('sublabel',''),str) or card.get('loop') or not isinstance(card.get('source'),str):
+            raise ValueError('卡片副标题或素材无效，媒体不得循环')
+        path = locate(root,card['source'])
+        reveal_at, media_start = float(card.get('reveal_at',float('nan'))),float(card.get('media_start',0.))
+        if not 0<=reveal_at<span or not isfinite(media_start) or media_start<0:
+            raise ValueError('卡片点亮时间或源入点无效')
+        if path.suffix.lower()=='.mp4':
+            if path not in durations:
+                durations[path] = probe_video(path)
+            if durations[path]+1e-5 < media_start+span-reveal_at+.2:
+                raise ValueError(f'卡片源视频不足以覆盖切片及 0.2 秒余量：{path.name}')
+        elif path.suffix.lower() not in {'.png','.jpg','.jpeg'}:
+            raise ValueError('卡片素材须为 PNG、JPEG 或 MP4')
+        yield dict(card,source=str(path),reveal_at=reveal_at,media_start=media_start)
 
 
 def prepare_document(raw, root):
@@ -121,6 +135,10 @@ def prepare_shots(raw, root, cues):
             one = src.get('source',src.get('asset'))
             files = [one] if one else []
         media = [locate(root,value) for value in files]
+        if mode=='triptych_cards':
+            cards = list(prepare_cards(src,root,end-start,durations))
+            src = dict(src,cards=cards)
+            media = [Path(card['source']) for card in cards]
         media_start = float(src.get('media_start',0.))
         if not isfinite(media_start) or media_start<0:
             raise ValueError(f'镜头 {key} 的源入点不合法')
@@ -135,7 +153,8 @@ def prepare_shots(raw, root, cues):
                     raise ValueError(f'镜头 {key} 源视频不足以覆盖切片及 0.2 秒余量')
         result.append(dict(src,id=key,act=act,start=start,end=end,media=media,media_start=media_start,
                            anchor_text=cue.get('text',''),anchor_cue_start=cue['firstCharTime'],
-                           has_motion_overlay=mode=='callout_rig' and bool(src.get('overlays')) or mode in {'cold_open_ab','title_sequence'}))
+                           has_motion_overlay=(mode in {'callout_rig','studio_ui'} and bool(src.get('overlays'))
+                                               or mode in {'cold_open_ab','title_sequence','triptych_cards'})))
     if not result:
         raise ValueError('清单至少需要一个镜头')
     if 'duration' in raw and abs(float(raw['duration'])-previous)>1/FPS:
@@ -244,6 +263,11 @@ def build_act(shots, root, folder, title, run):
                     raise ValueError(f'工程台监视器视频过短：{key}')
                 data['monitor'] = install_asset(monitor,folder/'assets'/f'{key}-monitor{monitor.suffix}').relative_to(folder).as_posix()
             add_workbench(stage,a,b,shot['studio_style'],shot.get('title',text),data)
+            if shot.get('overlays'):
+                stage.add_overlays(a,b,shot['overlays'])
+        elif mode == 'triptych_cards':
+            cards = [dict(card,source=asset) for card,asset in zip(shot['cards'],assets)]
+            stage.add_triptych_cards(a,b,heading=shot['heading'],cards=cards)
         else:
             clip,spec = explainer(shot,root,folder,run)
             stage.add_video(a,b,clip,0,0,1920,1080,fit='cover')
@@ -290,8 +314,11 @@ def assemble(manifest, output, *, build_only=False, run=subprocess.run):
         stages.append((folder,stage,offset))
         marks.extend(dict(kind=kind,at=round(offset+at,5)) for kind,at in stage.sound_marks)
         for row in stage.shots:
-            global_shots.append(dict(row,start=round(offset+row['start'],5),end=round(offset+row['end'],5),
-                                     files=[(folder/p).relative_to(output).as_posix() for p in row['files']]))
+            files = [(folder/p).relative_to(output).as_posix() for p in row['files']]
+            global_row = dict(row,start=round(offset+row['start'],5),end=round(offset+row['end'],5),files=files)
+            if row['stage_mode']=='triptych_cards':
+                global_row['cards'] = [dict(card,source=file) for card,file in zip(row['cards'],files)]
+            global_shots.append(global_row)
     cuts = None
     music = audio.get('bgm',[])
     if 1<len(music)<=len(stages):

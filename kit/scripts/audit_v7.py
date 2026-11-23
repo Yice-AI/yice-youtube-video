@@ -2,8 +2,10 @@
 from collections import Counter
 import hashlib
 import json
+from math import isfinite
 from pathlib import Path
 import re
+import subprocess
 import unicodedata
 
 
@@ -27,9 +29,20 @@ TOOLS = {
 }
 ABSTRACT = ('规则', '清单', '优先级', '总结', '原则', '三句话', '步骤', 'rules', 'checklist', 'summary', 'priority')
 BINDINGS = {'exact_tool_capture', 'conceptual_explainer', 'physical_prop', 'callback_cut'}
-MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab'}
+MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards'}
 REAL = {'callout_rig', 'cold_open_ab', 'fullbleed_rig', 'web_cam', 'real_video', 'stock_broll'}
 SFX = {'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser', 'slap'}
+
+
+def probe_video(path):
+    proc = subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries',
+                           'format=duration:stream=duration','-of','json',str(path)],
+                          check=True,capture_output=True,text=True)
+    data = json.loads(proc.stdout)
+    if not data['streams']:
+        raise ValueError(f'素材没有视频流：{path.name}')
+    video_duration = data['streams'][0].get('duration')
+    return float(data['format']['duration'] if video_duration in (None,'N/A') else video_duration)
 
 
 def normalized(value):
@@ -126,7 +139,7 @@ def first_half_motion_density_gate(shots, duration):
         half = int(start >= duration/2)
         counts[half] += 1
         mode = stage_mode(shot)
-        has_overlay = mode=='callout_rig' and shot.get('has_motion_overlay') and shot.get('overlays')
+        has_overlay = mode in {'callout_rig','studio_ui'} and shot.get('has_motion_overlay') and shot.get('overlays')
         moving[half] += int(mode in MOTION or bool(has_overlay))
         if mode in REAL and mode != 'cold_open_ab' and not has_overlay:
             bare = (bare if start-previous<=.001 else 0.)+end-start
@@ -191,6 +204,7 @@ def timeline_gates(timeline, project, duration):
     previous = real_seconds = deviation = 0.
     invalid, unaligned, missing = [],[],[]
     seen_ids, digest_cache = set(),{}
+    card_durations, invalid_cards = {}, []
     source_reuse = Counter()
     for shot in sorted(shots,key=lambda row:float(row['start'])):
         key = shot['id']
@@ -204,7 +218,33 @@ def timeline_gates(timeline, project, duration):
             deviation = max(deviation,abs(a-cue))
         if cue is None or abs(a-cue)>.220001:
             unaligned.append(key)
-        if stage_mode(shot) in REAL:
+        mode = stage_mode(shot)
+        if mode=='triptych_cards':
+            cards = shot.get('cards',[])
+            if (not isinstance(cards,list) or not 2<=len(cards)<=4
+                    or any(not isinstance(card,dict) or not isinstance(card.get('source'),str) for card in cards)
+                    or [card['source'] for card in cards]!=shot.get('files')):
+                invalid_cards.append(key)
+            else:
+                for card in cards:
+                    path = project/card['source']
+                    try:
+                        reveal_at = float(card['reveal_at'])
+                        media_start = float(card.get('media_start',0.))
+                        if (card.get('loop') or not path.is_file() or not 0<=reveal_at<b-a
+                                or not isfinite(media_start) or media_start<0):
+                            raise ValueError('卡片源或入点无效')
+                        if path.suffix.lower()=='.mp4':
+                            if path not in card_durations:
+                                card_durations[path] = probe_video(path)
+                            if card_durations[path]+1e-5<media_start+b-a-reveal_at+.2:
+                                raise ValueError('卡片视频缺少余量')
+                        elif path.suffix.lower() not in {'.png','.jpg','.jpeg'}:
+                            raise ValueError('卡片素材格式无效')
+                    except (TypeError,ValueError,KeyError,OSError,subprocess.CalledProcessError):
+                        invalid_cards.append(key)
+                        break
+        if mode in REAL:
             real_seconds += b-a
             files = [project/f for f in shot.get('files',[]) if Path(f).suffix.lower() in {'.mp4','.m4v','.mov','.webm'}]
             if not files:
@@ -222,8 +262,9 @@ def timeline_gates(timeline, project, duration):
     ratio = real_seconds/duration if duration else 0.
     ratio_ok = .45<=ratio<=.72
     repeats = {digest:count for digest,count in source_reuse.items() if count>3}
-    return {'ok':not (invalid or unaligned or repeats or missing) and ratio_ok,
+    return {'ok':not (invalid or unaligned or repeats or missing or invalid_cards) and ratio_ok,
             'real_ratio':ratio,'ratio_ok':ratio_ok,'invalid_shots':invalid,'missing_real_media':missing,
+            'invalid_triptych_media':invalid_cards,
             'max_anchor_deviation':deviation,'unaligned':unaligned,'overused_sources':repeats}
 
 

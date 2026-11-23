@@ -217,12 +217,18 @@ class EditorialStage:
         return row['id']
 
     def add_callout_rig(self, start, end, src, *, overlays, media_start=0., motion='glide'):
+        sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion)
+        self.shots[-1].update(stage_mode='callout_rig',media_start=media_start)
+        self.add_overlays(start,end,overlays)
+        return sid
+
+    def add_overlays(self, start, end, overlays):
         if not 1 <= len(overlays) <= 2:
             raise ValueError('叠层镜头需要一至两个明确的贴图动作')
-        sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion)
         shot = self.shots[-1]
-        shot.update(stage_mode='callout_rig',has_motion_overlay=True,media_start=media_start)
-        for overlay in overlays:
+        shot['has_motion_overlay'] = True
+        beats = shot.setdefault('beats', [])
+        for index, overlay in enumerate(overlays):
             at = float(overlay['at'])
             hold = float(overlay.get('duration',end-start-at))
             if not 0 <= at < end-start or hold <= 0 or start+at+hold > end+1e-6:
@@ -266,8 +272,8 @@ class EditorialStage:
                 audio = 'stamp'
             else:
                 raise ValueError(f'未知动态贴图类型：{style}')
-            plate = self.add_plate(begin,begin+hold,style,body)
-            self.shots.pop()  # The overlay belongs to the underlying video shot.
+            plate = self.add_plate(begin,begin+hold,style,body,track=11+index)
+            self.shots.pop()  # The overlay belongs to the underlying shot.
             if style == 'stat_badge':
                 decimals = min(3,len(str(overlay['value']).partition('.')[2]))
                 suffix = json.dumps(unit,ensure_ascii=False).replace('<','\\u003c')
@@ -281,13 +287,57 @@ class EditorialStage:
                                         f"{{scaleX:1,transformOrigin:'left',immediateRender:false,duration:{min(.27,hold-delay):.4f}}},{begin+delay:.5f});")
                     if i:
                         self.sound_marks.append((audio,begin+delay))
-                        shot['beats'].append(at+delay)
+                        beats.append(at+delay)
             if style == 'verdict_stamp':
                 self.add_stamp_slam(plate,begin)
             self.sound_marks.append((audio,begin))
-            shot['beats'].append(at)
-        shot['beats'] = sorted(set(shot['beats']))
-        return sid
+            beats.append(at)
+        shot['beats'] = sorted(set(beats))
+
+    def add_triptych_cards(self, start, end, *, heading, cards):
+        if not 2 <= len(cards) <= 4:
+            raise ValueError('多栏舞台需要两至四张卡片')
+        span = end - start
+        width = (1728 - 32 * (len(cards) - 1)) // len(cards)
+        height = min(420, round(width * 9 / 16))
+        top = 470 - height // 2
+        size = min(74, 1670 // max(1,len(heading)))
+        body = group('rise', word(960,155,heading,size,anchor='middle'))
+        files, beats, reveals = [], [], []
+        for index, card in enumerate(cards):
+            at = float(card['reveal_at'])
+            source = card['source']
+            if not 0 <= at < span or card.get('loop'):
+                raise ValueError('卡片须在镜头内点亮且媒体不得循环')
+            x = 96 + index * (width + 32)
+            begin = start + at
+            suffix = Path(source).suffix.lower()
+            if suffix == '.mp4':
+                viewport = self.add_video(begin,end,source,x,top,width,height,media_start=card.get('media_start',0.),fit='contain')
+            elif suffix in {'.png','.jpg','.jpeg'}:
+                viewport = self.add_image(begin,end,source,x,top,width,height,zoom_to=1.,tone='natural',fit='contain')
+            else:
+                raise ValueError('卡片素材须为 PNG、JPEG 或 MP4')
+            label = card['label']
+            sublabel = card.get('sublabel','')
+            label_size = min(38,width//max(1,len(label)))
+            sublabel_size = min(27,width//max(1,len(sublabel)))
+            body += f'<g class="card-{index}" opacity=".35">'
+            body += frame(x,top,width,height,CORAL) + txt(x,top+height+58,label,label_size)
+            body += txt(x,top+height+95,sublabel,sublabel_size,MUTED) + '</g>'
+            files.append(source)
+            beats.append(at)
+            reveals.append((index,viewport,begin))
+            self.sound_marks.append(('pop',begin))
+        plate = self.add_plate(start,end,heading,body,bg=INK,kind='triptych_cards',files=files)
+        self.shots[-1].update(stage_mode='triptych_cards',has_motion_overlay=True,beats=sorted(set(beats)),cards=cards)
+        for index, viewport, begin in reveals:
+            duration = min(.32,end-begin)
+            self.scripts.append(f"tl.fromTo('#{plate} .card-{index}',{{opacity:.35,y:10}},"
+                                f"{{opacity:1,y:0,duration:{duration:.5f},immediateRender:false}},{begin:.5f});")
+            self.scripts.append(f"tl.fromTo('#{viewport} .vp-inner',{{opacity:0,scale:.96}},"
+                                f"{{opacity:1,scale:1,duration:{duration:.5f},immediateRender:false}},{begin:.5f});")
+        return self.shots[-1]['id']
 
     def add_fullbleed_rig(
         self,
@@ -545,6 +595,7 @@ class EditorialStage:
         animate: bool = True,
         kind: str = "real_video",
         files: list[str] | None = None,
+        track: int = 10,
     ) -> str:
         sid = f"s{len(self.plates)}"
         if bg:
@@ -557,7 +608,7 @@ class EditorialStage:
         full_body = body + (mast(*head) if head and kind == "chapter_break" else "")
         self.plates.append(
             f'<div class="clip plate" id="{sid}" data-start="{start:.5f}" data-layout-allow-occlusion '
-            f'data-duration="{end - start:.5f}" data-track-index="10">'
+            f'data-duration="{end - start:.5f}" data-track-index="{track}">'
             f'<svg viewBox="0 0 1920 1080" width="1920" height="1080">{full_body}</svg></div>'
         )
         if animate:

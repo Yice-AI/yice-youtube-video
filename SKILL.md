@@ -75,7 +75,9 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.0�
 - `shots` 按时间展开，完整覆盖全片。同一 `act` 的镜头连续出现。切点与首字相差至多 0.22 秒。每镜须带 `spoken_topic`、`visual_subject`、`semantic_tags` 及 `semantic_binding`。绑定类别为 `exact_tool_capture`、`conceptual_explainer`、`physical_prop`、`callback_cut`。可用 `spoken_entity` 命名额外工具。
 - `cold_open_ab` 需要两个 `sources`，可传 `hook`、`labels`、`countdown`。`title_sequence` 需要一至两行 `title`，可传 `subtitle`、`brand`、`highlight`、`paper`，时长 1.8–3.2 秒。
 - `callout_rig` 与 `fullbleed_rig` 使用一个 `source`，可设 `media_start` 与 `motion`。源片需覆盖入点、镜长和 0.2 秒尾部余量。`callout_rig` 传一至两个 `overlays`。`spotlight_box` 传 `box` 坐标，`stat_badge` 传 `value`、`unit`，`strikethrough_list` 传 `items`，`verdict_stamp` 传短标签。所有贴图均提供 `kind`、`at`、`label`，可设 `duration`。
-- `studio_ui` 使用 `studio_style`、实际工作台 `data` 和取证文件 `sources`。支持剪辑台、代码编辑器、终端和音频工程台。`explainer_clip` 使用内嵌 `spec` 或本地 spec 路径，支持 Vox 文档、白板推导、图表、蓝图、数据尺与瑞士网格等语法。
+- `studio_ui` 使用 `studio_style`、实际工作台 `data` 和取证文件 `sources`。剪辑台、代码编辑器、终端和音频工程台均可添加与 `callout_rig` 相同的 `overlays`。
+- `triptych_cards` 使用 `heading` 与两至四张 `cards`。每张卡片支持 `{label, sublabel?, source, media_start?, reveal_at}`，按镜内 `reveal_at` 点亮并登记 `pop`。素材支持 PNG、JPEG 和无循环 MP4。视频须从 `media_start` 覆盖点亮到镜尾的时长及 0.2 秒余量。
+- `explainer_clip` 使用内嵌 `spec` 或本地 spec 路径，支持 Vox 文档、白板推导、图表、蓝图、数据尺与瑞士网格等语法。
 - `audio.bgm` 支持一至三首，可设 `bgm_cuts` 指定切换点。`audio.sound_marks` 支持 `{kind,at,gain}`，类型有 `tick`、`whoosh`、`pop`、`marker`、`stamp`、`riser`。片头、倒数和贴图会自行登记事件。需要单独混音时执行 `python3 kit/scripts/workspace.py mix-episode-audio.py audio.json --output out`，音频清单顶层带 `duration`。
 
 ## 应用与审计

@@ -413,3 +413,52 @@ def test_assemble_episode_end_to_end(tmp_path):
     assert opener_bgm_and_sfx_gate(output/'bed-only.wav',timeline['sound_marks'],8.5)['ok']
     assert first_half_motion_density_gate(timeline['shots'],8.5)['ok']
     assert '00:00:04,000' in (output/'sample.srt').read_text()
+
+
+def test_studio_ui_reuses_callout_overlays(tmp_path):
+    overlays = [
+        {'kind':'strikethrough_list','at':.3,'label':'排疑','items':['第一项','第二项']},
+        {'kind':'verdict_stamp','at':1.,'label':'通过'},
+    ]
+    shot = dict(id='studio',stage_mode='studio_ui',anchor_cue_id='a',start=0,end=3,
+                studio_style='terminal_pipeline',data={'command':'pytest','lines':['passed']},
+                overlays=overlays,spoken_topic='核验结果',visual_subject='终端结果',
+                semantic_binding='conceptual_explainer',semantic_tags=['核验'])
+    shots,_ = assemble.prepare_shots({'shots':[shot]},tmp_path,{'a':{'firstCharTime':0}})
+    stage = assemble.build_act(shots,tmp_path,tmp_path,'Studio',subprocess.run)
+    row, = stage.shots
+    assert row['stage_mode']=='studio_ui' and row['has_motion_overlay']
+    assert row['overlays']==overlays
+    assert ('marker',.3) in stage.sound_marks and ('stamp',1.) in stage.sound_marks
+    assert 'strike-0' in ''.join(stage.plates) and '通过' in ''.join(stage.plates)
+    assert first_half_motion_density_gate([row],3)['motion_shots_by_half']==[1,0]
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
+def test_triptych_cards_reveal_and_check_video_tail(tmp_path):
+    from PIL import Image
+
+    Image.new('RGB',(64,64),'white').save(tmp_path/'still.png')
+    subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','color=red:s=64x64:r=30:d=2',
+                    '-an','-c:v','libx264',str(tmp_path/'clip.mp4')],check=True)
+    shot = dict(id='cards',stage_mode='triptych_cards',anchor_cue_id='b',start=0,end=2,
+                heading='对照片段',spoken_topic='对照',visual_subject='截图与录屏',
+                semantic_binding='conceptual_explainer',semantic_tags=['对照'],
+                cards=[{'label':'截图','source':'still.png','reveal_at':0},
+                       {'label':'录屏','sublabel':'关键操作','source':'clip.mp4','reveal_at':.8,'media_start':.3}])
+    cues = {'b':{'id':'b','firstCharTime':0}}
+    shots,_ = assemble.prepare_shots({'shots':[shot]},tmp_path,cues)
+    stage = assemble.build_act(shots,tmp_path,tmp_path,'Cards',subprocess.run)
+    row, = stage.shots
+    assert row['beats']==[0.,.8] and stage.sound_marks==[('pop',0.),('pop',.8)]
+    html = ''.join(stage.media_layers)
+    assert '<img' in html and 'data-start="0.80000" data-duration="1.20000" data-media-start="0.300"' in html
+    assert ' loop' not in html and '关键操作' in ''.join(stage.plates)
+    assert first_half_motion_density_gate([row],2)['motion_shots_by_half']==[1,0]
+    timeline = {'shots':[row],'cues':list(cues.values())}
+    assert not timeline_gates(timeline,tmp_path,2)['invalid_triptych_media']
+    row['cards'][1]['media_start'] = .8
+    assert timeline_gates(timeline,tmp_path,2)['invalid_triptych_media']==['cards']
+    shot['cards'][1]['media_start'] = .8
+    with pytest.raises(ValueError,match='余量'):
+        assemble.prepare_shots({'shots':[shot]},tmp_path,cues)
