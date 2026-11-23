@@ -1,9 +1,9 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频的整套制作体系（v5.0）：旁白稿 → Modal GPU 克隆配音与五维卡顿检测 → 逐镜语义《镜头表》 → 满屏连续多点跟焦实录（Playwright 1.5x 深色虚拟摄影师、软件真操作微距）× 花叔 8 大解说动画语法引擎（kit/explainer：y2_vox 调查桌胶带剪报与 12fps 荧光笔、t3_finance_chart 经济学人动态柱线图、t2_keynote_ui 展开、y3_whiteboard 推导链、y5_kinetic_type 动态重音）→ 通透无黑盒字幕与 Music Drop 母带混音 → audit-v3.py --v4 真像素防死镜/防黑帧/dHash防重硬门禁。8–10 分钟、不露脸、AI 工具实战。Use when 用户要做/剪/规划/返修一期一策 YouTube 视频、采集第三方或录屏素材、审片、开新一期，或提到“下一期视频”“剪出来”“YouTube 教程”“导演层”。
+description: 一策 YouTube 中文教程与深度科技视频的整套制作体系（v6.0）：旁白稿 → Modal GPU 克隆配音与五维卡顿检测 → 逐镜语义《镜头表》 → 满屏连续多点跟焦实录（Playwright 1.5x 深色虚拟摄影师、软件真操作微距）× 花叔 8 大解说动画语法引擎（kit/explainer：y2_vox 调查桌胶带剪报与 12fps 荧光笔、t3_finance_chart 经济学人动态柱线图、t2_keynote_ui 展开、y3_whiteboard 推导链、y5_kinetic_type 动态重音）→ 通透无黑盒字幕与 Music Drop 母带混音 → audit-v3.py --v4 真像素防死镜/防黑帧/dHash防重硬门禁。8–10 分钟、不露脸、AI 工具实战。Use when 用户要做/剪/规划/返修一期一策 YouTube 视频、采集第三方或录屏素材、审片、开新一期，或提到“下一期视频”“剪出来”“YouTube 教程”“导演层”。
 ---
 
-# 一策 YouTube 视频制作（v5.0 · 满屏实操跟焦 × 解说动画引擎 × 真像素硬门禁）
+# 一策 YouTube 视频制作（v6.0 · 满屏实操跟焦 × 解说动画引擎 × 真像素硬门禁）
 
 ## 核心架构铁律（对标子木 #6 / 松小鼠 #1 / Vox #7 与花叔开源体系确立）
 
@@ -55,3 +55,12 @@ description: 一策 YouTube 中文教程与深度科技视频的整套制作体�
 给定主题或文稿后，使用 `kit/scripts/autopilot-episode.sh` 生成语义句群和唯一素材账本，再由 `SemanticBeatPlanner`、`ExactDurationExplainerBuilder` 与 `WebCamBatchRecorder` 组织 3.0–8.5 秒从容镜头。所有视频镜头不得使用 `loop`，解说动效按镜头槽位精确生成并在末尾 Hold。
 
 交付前运行 `audit-v3.py --v5`。该门禁检查素材源时长、循环属性、唯一素材复用和平均镜长，并使用 `kit/scripts/inspect-motion.py` 输出 1.0 秒步进胶片条供连贯性复核。浅色米纸镜头由 `EditorialStage.light_zones` 自动启用深墨色高对比字幕。
+
+
+## v6 配音、工程台与同步审计
+
+排演通过 `voice.sh --stage draft` 使用 Kaggle，正式制作通过 `--stage master --speed 1.0` 使用 Modal。Kaggle Notebook 和端点设置见 [云端配音](kit/cloud/README.md)。每章保留同批次原音、ASR 时间和声学检查结果。
+
+从首字时间编排叙事镜头，在时间轴登记 `anchor_cue_id` 和 `anchor_cue_start`。工程台使用真实监视素材、剪辑轨、文件内容、命令输出或采样波形。可选 `nle_timeline`、`vscode_workbench`、`terminal_pipeline` 和 `audio_daw`。新动效语法为 `t4_blueprint_arch`、`t5_data_ruler` 和 `t6_swiss_card`。
+
+用 `audit-v3.sh --v6 --project 工程 --timeline 镜头表 --rendered 成片` 检查最终 MP4。科技实证覆盖至少 70%，叙事镜头与字幕首字相差最多 0.22 秒，保留前后半程动效和工作台分布、遮挡检测及章节声学记录。

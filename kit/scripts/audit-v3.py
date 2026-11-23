@@ -475,6 +475,7 @@ def voice_speed_checks(project):
 
 
 def rendered(args, out, errors):
+    v6 = getattr(args, "v6", False)
     errors.extend(voice_speed_checks(args.project))
     probe = json.loads(run(["ffprobe", "-v", "error", "-show_format", "-show_streams",
                             "-of", "json", str(args.rendered)]).stdout)
@@ -490,7 +491,18 @@ def rendered(args, out, errors):
     timeline = None
     if args.timeline:
         timeline = json.loads(args.timeline.read_text())
-        result.update(timeline_metrics(timeline, duration, args.project, errors, v4=args.v4 or args.v5, v5=args.v5))
+        legacy_timeline = timeline
+        if v6:
+            from audit_v6 import timeline_gates, masks, voice_continuity
+            legacy_timeline = dict(timeline, shots=[dict(shot, kind="real_video") if shot["kind"]=="studio_ui" else shot for shot in timeline["shots"]])
+        result.update(timeline_metrics(legacy_timeline, duration, args.project, errors, v4=args.v4 or args.v5 or v6, v5=args.v5 or v6))
+        if v6:
+            result.update(timeline_gates(timeline,args.project,duration,errors))
+            found=masks(args.rendered,timeline)
+            result["redaction_mask_gate"]={"hits":found,"banned_sources":result.pop("banned_sources")}
+            if found: errors.append("疑似打码遮挡色块")
+            result["voice_continuity_gate"]=voice_continuity(args.project)
+            if result["voice_continuity_gate"]["violations"]: errors.append("章节配音连续性未通过")
         if expected is None:
             expected = timeline.get("end")
     if expected is not None and not abs(expected-duration) <= 0.2:
@@ -505,7 +517,7 @@ def rendered(args, out, errors):
         if value is None or not low <= value <= high:
             errors.append(f"{key} 超出范围或无法测量")
     result["ocr"] = scan_frames(args, duration, out, errors)
-    if args.v4 or args.v5:
+    if args.v4 or args.v5 or v6:
         if timeline is None:
             errors.append("v4 需要真实 shot-timeline.json 才能做跨镜像素审计")
         else:
@@ -531,7 +543,9 @@ def main():
     parser.add_argument("--forbid", default="")
     parser.add_argument("--v4", action="store_true", help="启用 Skill v4.0 头部创作硬门禁")
     parser.add_argument("--v5", action="store_true", help="启用 Skill v5.0 自治成片硬门禁")
+    parser.add_argument("--v6", action="store_true", help="启用句首、科技实证、遮挡与云端配音门禁")
     args = parser.parse_args()
+    if args.v6 and (not args.rendered or not args.timeline): parser.error("--v6 需要 --rendered 与 --timeline")
     errors = []
     out = args.out or args.project
     out.mkdir(parents=True, exist_ok=True)
@@ -548,6 +562,8 @@ def main():
         (out / "audit-v4-report.json").write_text(report + "\n")
     if args.v5:
         (out / "audit-v5-report.json").write_text(report + "\n")
+    if args.v6:
+        (out / "audit-v6-report.json").write_text(report + "\n")
     print(report)
     return int(bool(errors))
 

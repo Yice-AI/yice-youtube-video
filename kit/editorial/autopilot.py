@@ -121,6 +121,22 @@ class SemanticBeatPlanner:
             result[idx - 1] = Beat(f"{prefix}-{idx:02d}", beat.start, beat.end, beat.text, beat.asset, beat.kind)
         return result
 
+    def balance_visual_rhythm(self, beats):
+        """只为未指定素材的句组推荐表达方式，保留句序与句首。"""
+        beats = list(beats)
+        if not beats:
+            return []
+        midpoint = (beats[0].start + beats[-1].end) / 2
+        schedule = {}
+        for half in ([b for b in beats if b.start < midpoint],
+                     [b for b in beats if b.start >= midpoint]):
+            for index, beat in enumerate(half):
+                if beat.asset:
+                    schedule[beat.id] = beat.kind
+                else:
+                    schedule[beat.id] = ("web_cam", "studio_ui", "stock_broll", "explainer_graphic")[index % 4]
+        return [dict(id=b.id, start=b.start, end=b.end, suggested_kind=schedule[b.id]) for b in beats]
+
     def asset_plan(self, beats: Iterable[Beat], ledger: UniqueAssetLedger | None = None) -> dict[str, Any]:
         ledger = ledger or UniqueAssetLedger()
         rows = []

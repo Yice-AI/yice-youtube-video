@@ -13,9 +13,11 @@ import json, sys
 from pathlib import Path
 from kit.editorial.autopilot import SemanticBeatPlanner, UniqueAssetLedger
 voice= json.loads(Path(sys.argv[1]).read_text())
-cues=voice.get('cues', voice if isinstance(voice,list) else [])
+cues=voice if isinstance(voice,list) else voice['cues']
 planner=SemanticBeatPlanner()
-plan=planner.asset_plan(planner.plan(cues, asset_names=[]), UniqueAssetLedger())
+beats=planner.plan(cues, asset_names=[])
+plan=planner.asset_plan(beats, UniqueAssetLedger())
+plan['visual_rhythm']=planner.balance_visual_rhythm(beats)
 Path(sys.argv[2]).write_text(json.dumps(plan, ensure_ascii=False, indent=2)+'\n')
 print(json.dumps({'beats':len(plan['beats']), 'output':sys.argv[2]}, ensure_ascii=False))
 PY

@@ -124,6 +124,20 @@ def _clone_reference(brand):
     return ref, clone.get("refText", ""), qwen.get("language", "Chinese")
 
 
+def resolve_backend(stage, backend, allow_slow_local=False):
+    if backend == "local" and not allow_slow_local:
+        raise ValueError("本机配音需要显式指定 --backend local --allow-slow-local")
+    if backend != "auto":
+        return backend
+    if stage == "draft" and os.environ.get("KAGGLE_TTS_ENDPOINT_URL"):
+        return "kaggle"
+    if os.environ.get("MODAL_QWEN3_TTS_ENDPOINT_URL"):
+        if stage == "draft":
+            print("Kaggle 测试端点未配置，本次使用 Modal。", file=sys.stderr)
+        return "modal"
+    raise ValueError("请配置 Modal 正式端点；草稿也可配置 KAGGLE_TTS_ENDPOINT_URL")
+
+
 def _remote_batch(texts, brand, backend, temperature):
     """通过 HTTPS 直传 Base64 参考音频，严禁把 clone 请求改写为 R2。"""
     env_name = "MODAL_QWEN3_TTS_ENDPOINT_URL" if backend == "modal" else "KAGGLE_TTS_ENDPOINT_URL"
@@ -142,82 +156,99 @@ def _remote_batch(texts, brand, backend, temperature):
         "ref_text": ref_text,
         "temperature": temperature,
     }
-    request = urllib.request.Request(endpoint, data=json.dumps(payload).encode(),
-                                     headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib.request.urlopen(request, timeout=int(os.environ.get("YICE_TTS_TIMEOUT", "900"))) as response:
-            result = json.loads(response.read().decode())
-    except (urllib.error.URLError, TimeoutError) as exc:
-        status = getattr(exc, "code", type(exc).__name__)
+    headers = {"Content-Type": "application/json"}
+    if backend == "kaggle" and os.environ.get("KAGGLE_TTS_TOKEN"):
+        headers["Authorization"] = "Bearer " + os.environ["KAGGLE_TTS_TOKEN"]
+    def _post_subbatch(sub_texts):
+        import time
+        sub_payload = {**payload, "text": sub_texts}
+        body_bytes = json.dumps(sub_payload).encode()
+        last_exc = None
+        for attempt in range(4):
+            request = urllib.request.Request(endpoint, data=body_bytes, headers=headers, method="POST")
+            try:
+                with urllib.request.urlopen(request, timeout=int(os.environ.get("YICE_TTS_TIMEOUT", "300"))) as response:
+                    return json.loads(response.read().decode())
+            except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
+                last_exc = exc
+                if attempt < 3:
+                    time.sleep(2 * (attempt + 1))
+        status = getattr(last_exc, "code", type(last_exc).__name__)
         raise RuntimeError(f"{backend} 配音端点请求失败（{status}）") from None
-    outputs = result.get("outputs") if isinstance(result, dict) else None
-    if not isinstance(outputs, list):
-        item = result if isinstance(result, dict) and result.get("audio_base64") else None
-        outputs = [item] if item else []
-    if len(outputs) != len(texts):
-        raise RuntimeError(f"{backend} 配音返回 {len(outputs)} 段，预期 {len(texts)} 段")
+
     audio = []
-    for index, item in enumerate(outputs):
-        encoded = item.get("audio_base64") if isinstance(item, dict) else None
-        if not encoded:
-            raise RuntimeError(f"{backend} 配音输出 {index} 缺少 audio_base64")
-        audio.append(base64.b64decode(encoded))
+    for start_idx in range(0, len(texts), 4):
+        sub_texts = texts[start_idx:start_idx + 4]
+        result = _post_subbatch(sub_texts)
+        outputs = result.get("outputs") if isinstance(result, dict) else None
+        if not isinstance(outputs, list):
+            item = result if isinstance(result, dict) and result.get("audio_base64") else None
+            outputs = [item] if item else []
+        if len(outputs) != len(sub_texts):
+            raise RuntimeError(f"{backend} 配音返回 {len(outputs)} 段，预期 {len(sub_texts)} 段")
+        for index, item in enumerate(outputs):
+            encoded = item.get("audio_base64") if isinstance(item, dict) else None
+            if not encoded:
+                raise RuntimeError(f"{backend} 配音输出 {start_idx + index} 缺少 audio_base64")
+            audio.append(base64.b64decode(encoded))
     return audio
 
 
-def _concat_wavs(paths, target, crossfade_ms=10):
-    """拼接同采样率 WAV，句组边界做 10ms 交叉淡化。"""
+def _concat_wavs(paths, target, crossfade_ms=15, pauses=None):
+    """句组间保留 220ms 呼吸，只在语义组的两端做余弦淡化。"""
+    import numpy as np
+    import soundfile as sf
+
     if not paths:
         raise ValueError("没有可拼接的句组音频")
-    segments = []
-    params = None
-    for path in paths:
-        with wave.open(str(path), "rb") as source:
-            current = source.getparams()
-            if params is None:
-                params = current
-            if (current.nchannels, current.sampwidth, current.framerate) != (params.nchannels, params.sampwidth, params.framerate):
-                raise ValueError("句组音频采样参数不一致")
-            segments.append(source.readframes(source.getnframes()))
-    width = params.sampwidth
-    if width != 2:
-        with wave.open(str(target), "wb") as output:
-            output.setparams(params)
-            output.writeframes(b"".join(segments))
-        return
-    import array
-    merged = array.array("h")
-    overlap = max(0, round(params.framerate * crossfade_ms / 1000))
-    for raw in segments:
-        current = array.array("h")
-        current.frombytes(raw)
-        if not merged:
-            merged.extend(current)
-            continue
-        n = min(overlap, len(merged), len(current))
-        for i in range(n):
-            a = (n - i) / n
-            b = i / n
-            merged[len(merged) - n + i] = max(-32768, min(32767, round(merged[len(merged) - n + i] * a + current[i] * b)))
-        merged.extend(current[n:])
-    with wave.open(str(target), "wb") as output:
-        output.setparams(params)
-        output.writeframes(merged.tobytes())
+    parts = []
+    rate = channels = None
+    for index, path in enumerate(paths):
+        samples, actual_rate = sf.read(path, dtype="float32", always_2d=True)
+        if rate is None:
+            rate, channels = actual_rate, samples.shape[1]
+        if rate != actual_rate or channels != samples.shape[1] or not len(samples):
+            raise ValueError("句组音频采样参数不一致或为空")
+        level = np.max(np.abs(samples), axis=1)
+        voiced = np.flatnonzero(level > max(.0005, level.max() * .01))
+        if not len(voiced):
+            raise ValueError("句组音频全为静音")
+        margin = round(rate * crossfade_ms / 1000)
+        left = max(0, voiced[0] - margin) if index else 0
+        right = min(len(samples), voiced[-1] + margin + 1) if index < len(paths)-1 else len(samples)
+        samples = samples[left:right].copy()
+        fade = min(margin, len(samples)//2)
+        if fade:
+            ramp = (1-np.cos(np.linspace(0, np.pi, fade)))[:,None] / 2
+            if index:
+                samples[:fade] *= ramp
+            if index < len(paths)-1:
+                samples[-fade:] *= ramp[::-1]
+        if index:
+            pause = (pauses or {}).get(index, .22)
+            parts.append(np.zeros((round(rate * pause), channels), dtype="float32"))
+        parts.append(samples)
+    sf.write(target, np.concatenate(parts), rate, subtype="PCM_16")
 
 
 def generate_modal_job(job, brand, backend="modal"):
     target = Path(job["path"])
+    if target.is_file() and target.stat().st_size > 44 and (target.with_suffix(".chunks") / "chunks.json").is_file():
+        return
     target.parent.mkdir(parents=True, exist_ok=True)
-    chunks = semantic_chunks(job["text"])
+    chunks = job.get("chunks") or semantic_chunks(job["text"])
     temperatures = [0.65, 0.72, 0.78]
     temperature = temperatures[int(job.get("seed", 0)) % len(temperatures)]
-    with tempfile.TemporaryDirectory(prefix="yice-tts-") as temporary:
-        raw = []
-        for index, data in enumerate(_remote_batch(chunks, brand, backend, temperature)):
-            path = Path(temporary) / f"chunk-{index:03}.wav"
-            path.write_bytes(data)
-            raw.append(path)
-        _concat_wavs(raw, target)
+    folder = target.with_suffix(".chunks")
+    folder.mkdir(exist_ok=True)
+    raw = []
+    for index, data in enumerate(_remote_batch(chunks, brand, backend, temperature)):
+        path = folder / f"chunk-{index:03}.wav"
+        path.write_bytes(data)
+        raw.append(path)
+    pauses = {int(k): v for k, v in job.get("pauses", {}).items()}
+    _concat_wavs(raw, target, pauses=pauses)
+    write_json(folder / "chunks.json", dict(texts=chunks, pauses=pauses, temperature=temperature, backend=backend))
     if not target.is_file() or target.stat().st_size <= 44:
         raise RuntimeError(f"{backend} 未生成有效 WAV：{target}")
 
@@ -255,6 +286,9 @@ def make_generator(brand, folder, reuse=None, backend="modal", candidates=3):
                 if hashlib.sha256(source.read_bytes()).hexdigest() != previous["sha256"]:
                     raise ValueError("候选缓存哈希不匹配")
                 shutil.copy2(source, target)
+                chunk_dir = source.with_suffix(".chunks")
+                if chunk_dir.is_dir():
+                    shutil.copytree(chunk_dir, target.with_suffix(".chunks"))
                 reused.append(dict(text=job["text"], seed=job["seed"], sha256=previous["sha256"], source=str(source), path=str(target)))
             else:
                 pending.append(job)
@@ -264,12 +298,13 @@ def make_generator(brand, folder, reuse=None, backend="modal", candidates=3):
         if pending:
             worker_jobs = folder / f"worker-{serial:03}.json"
             write_json(worker_jobs, pending)
-            python = os.environ.get("YICE_TTS_PYTHON", str(TOOLKIT / "local/tts-venv/bin/python"))
+            python = (os.environ.get("YICE_TTS_PYTHON", str(TOOLKIT / "local/tts-venv/bin/python"))
+                      if backend == "local" else sys.executable)
             env = {**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "HF_HUB_DISABLE_TELEMETRY": "1"}
             with (folder / f"generation-{serial:03}.log").open("w") as log:
                 subprocess.run([python, str(Path(__file__).resolve()), str(request), "--output", str(folder),
                                 "--brand", brand, "--backend", backend, "--candidates", str(candidates),
-                                "--generation-jobs", str(worker_jobs)],
+                                "--generation-jobs", str(worker_jobs), *(["--allow-slow-local"] if backend == "local" else [])],
                                env=env, stdout=log, stderr=subprocess.STDOUT, check=True)
     return generate
 
@@ -582,11 +617,13 @@ def main():
     parser.add_argument("--asr-prompt", default="", help="领域词表；不要提供完整台词诱导识别")
     parser.add_argument("--asr-threshold", type=float, default=.97)
     parser.add_argument("--seeds", default="42,43")
-    parser.add_argument("--backend", choices=["modal", "kaggle", "local"], default="modal",
-                        help="配音后端，默认 Modal；local 仅作离线兜底")
+    parser.add_argument("--stage", choices=["draft", "master"], default="master")
+    parser.add_argument("--backend", choices=["auto", "modal", "kaggle", "local"], default="auto")
+    parser.add_argument("--allow-slow-local", action="store_true")
     parser.add_argument("--candidates", type=int, default=3,
                         help="每个语义句组的温度候选数，默认3")
     parser.add_argument("--chapters", help="只处理指定章号，如 00,01")
+    parser.add_argument("--pause-after", action="append", help="在完整句组后留停顿，如 0-3=3.0")
     parser.add_argument("--reuse-candidates", type=Path, help="显式哈希候选缓存；复跑时保留原始生成证据")
     parser.add_argument("--max-repair-rounds", type=int, default=3)
     parser.add_argument("--generation-jobs", type=Path, help=argparse.SUPPRESS)
@@ -601,6 +638,7 @@ def main():
     args = parser.parse_args()
     quality = load_voice_tool("voice-quality")
     try:
+        args.backend = resolve_backend(args.stage, args.backend, args.allow_slow_local)
         seeds = quality.seeds(args.seeds)
     except ValueError as exc:
         parser.error(str(exc))
@@ -639,6 +677,22 @@ def main():
     jobs = [dict(chapter=chapter["id"], text=chapter["text"], seed=seed,
                  path=str(output / "raw" / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
             for chapter in chapters for seed in seeds]
+    if args.pause_after:
+        pauses = dict(value.rsplit("=", 1) for value in args.pause_after)
+        if set(pauses) - set(known):
+            parser.error("停顿幕号必须出现在所选章中")
+        for job in jobs:
+            chapter = next(c for c in chapters if c["id"] == job["chapter"])
+            sections, buffer, gaps = [], [], {}
+            for scene in chapter["scenes"]:
+                buffer.append(scene["text"])
+                if scene["id"] in pauses:
+                    sections.extend(semantic_chunks(" ".join(buffer)))
+                    buffer = []
+                    gaps[len(sections)] = float(pauses[scene["id"]])
+            if buffer:
+                sections.extend(semantic_chunks(" ".join(buffer)))
+            job.update(chunks=sections, pauses=gaps)
     generate(jobs)
     flow = load_voice_tool("voice-repair")
     records, timings, scenes, subtitles, offset = [], [], [], [], 0
@@ -647,7 +701,8 @@ def main():
         result = flow.process_chapter(chapter, [job for job in jobs if job["chapter"] == chapter["id"]],
             output / "candidates" / chapter["id"], generate, transcribe, exceptions=normalization,
             threshold=args.asr_threshold, silence=args.silence, offset=offset, anchors=anchors,
-            skip_post=args.skip_post, max_rounds=args.max_repair_rounds, post_options=dict(
+            skip_post=args.skip_post, max_rounds=args.max_repair_rounds,
+            cloud_backend=args.backend if args.backend != "local" else None, brand=args.brand, post_options=dict(
                 speed=args.speed, breath_db=args.breath_db, breath_cut_ms=args.breath_cut_ms,
                 breath_target_ms=args.breath_target_ms, fade_ms=args.fade_ms, lufs=args.lufs))
         record = result["record"]
@@ -660,6 +715,8 @@ def main():
         for name, value in [("aligned-characters", result["analysis"]), ("final-alignment", result["alignment"]),
                             ("voice-check", result["check"]), ("asr-audit", result["asr"])]:
             write_json(output / "analysis" / f"{name}-{chapter['id']}.json", value)
+        write_json(output / f"voice-check-{chapter['id']}.json", result["check"])
+        write_json(output / f"voice-timing-{chapter['id']}.json", result["timing"])
         records.append(record)
         timings.extend(result["timing"]); scenes.extend(result["scenes"]); subtitles.extend(result["captions"])
         offset = record["end"]
@@ -670,7 +727,7 @@ def main():
     from captions import export_subtitles
     (output / "voice.srt").write_text(export_subtitles(subtitles, max_words=1))
     write_json(output / "voice-timing.json", timings)
-    manifest = {"version": 1, "time_unit": "seconds", "time_origin": "whole_episode",
+    manifest = {"version": 1, "backend": args.backend, "stage": args.stage, "speed": args.speed, "time_unit": "seconds", "time_origin": "whole_episode",
                 "total_duration": offset, "chapters": records, "scene_timing": scenes,
                 "scene_count": len(scenes), "sentence_count": len(timings), "subtitle_count": len(subtitles),
                 "anchor_count": sum(len(t["anchors"]) for t in timings),

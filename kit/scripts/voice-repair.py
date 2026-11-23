@@ -277,33 +277,88 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
     return current
 
 
+def screen_chapter(chapter, candidate, folder, transcribe, exceptions, threshold,
+                   silence, offset, anchors, skip_post, post_options):
+    out = Path(folder)/f'seed{candidate["seed"]}'
+    (out/'analysis').mkdir(parents=True, exist_ok=True)
+    transcript = transcribe(Path(candidate['path']))
+    v.write_json(out/'analysis/raw-transcript.json', transcript)
+    record, timing, scenes, captions, analysis, checked = v.finish_chapter(
+        chapter, Path(candidate['path']), out, transcript, exceptions or {}, silence, offset, anchors,
+        skip_post=skip_post, post_options=post_options, asr_threshold=threshold)
+    audio = out/record['path']
+    final_transcript = transcribe(audio)
+    audit = quality.audit(chapter['text'], final_transcript, exceptions, threshold)
+    audit['alignment_ratio'] = analysis['matched_ratio']
+    audit['ok'] = audit['ok'] and audit['alignment_ratio'] >= threshold
+    checked.update(asr=audit, ok=checked['prosody_ok'] and audit['ok'])
+    record.update(asr_matched_ratio=audit['ratio'], asr_passed=audit['ok'])
+    v.write_json(out/'analysis/final-transcript.json', final_transcript)
+    v.write_json(out/'analysis/final-asr-audit.json', audit)
+    v.write_json(out/'analysis/final-check.json', checked)
+    return dict(seed=candidate['seed'], audio=str(audio), alignment=dict(text=chapter['text'], mapped=analysis['output_mapped']),
+                         asr=audit, check=checked, record=record, timing=timing, scenes=scenes,
+                         captions=captions, analysis=analysis, folder=str(out))
+
+
 def process_chapter(chapter, candidates, folder, generate, transcribe, *, exceptions=None, threshold=.97,
-                    silence=.2, offset=0, anchors=(), post_options=None, skip_post=False, max_rounds=3):
-    screened = []
-    for candidate in candidates:
-        out = Path(folder)/f'seed{candidate["seed"]}'
-        (out/'analysis').mkdir(parents=True, exist_ok=True)
-        transcript = transcribe(Path(candidate['path']))
-        v.write_json(out/'analysis/raw-transcript.json', transcript)
-        record, timing, scenes, captions, analysis, checked = v.finish_chapter(
-            chapter, Path(candidate['path']), out, transcript, exceptions or {}, silence, offset, anchors,
-            skip_post=skip_post, post_options=post_options, asr_threshold=threshold)
-        audio = out/record['path']
-        final_transcript = transcribe(audio)
-        audit = quality.audit(chapter['text'], final_transcript, exceptions, threshold)
-        audit['alignment_ratio'] = analysis['matched_ratio']
-        audit['ok'] = audit['ok'] and audit['alignment_ratio'] >= threshold
-        checked.update(asr=audit, ok=checked['prosody_ok'] and audit['ok'])
-        record.update(asr_matched_ratio=audit['ratio'], asr_passed=audit['ok'])
-        v.write_json(out/'analysis/final-transcript.json', final_transcript)
-        v.write_json(out/'analysis/final-asr-audit.json', audit)
-        v.write_json(out/'analysis/final-check.json', checked)
-        screened.append(dict(seed=candidate['seed'], audio=str(audio), alignment=dict(text=chapter['text'], mapped=analysis['output_mapped']),
-                             asr=audit, check=checked, record=record, timing=timing, scenes=scenes,
-                             captions=captions, analysis=analysis, folder=str(out)))
+                    silence=.2, offset=0, anchors=(), post_options=None, skip_post=False, max_rounds=3,
+                    cloud_backend=None, brand=None):
+    def screen(candidate):
+        return screen_chapter(chapter, candidate, folder, transcribe, exceptions, threshold,
+                              silence, offset, anchors, skip_post, post_options)
+    screened = [screen(candidate) for candidate in candidates]
     chosen = min(screened, key=quality.rank)
     v.write_json(Path(folder)/'selection.json', dict(selected_seed=chosen['seed'], candidates=[
         dict(seed=x['seed'], asr_ok=x['asr']['ok'], ratio=x['asr']['ratio'], alerts=len(x['check']['alerts'])) for x in screened]))
+    if cloud_backend:
+        source = next(Path(c["path"]) for c in candidates if c["seed"] == chosen["seed"])
+        chunk_dir = source.with_suffix(".chunks")
+        history = []
+        if max_rounds and not chosen["check"]["ok"]:
+            if not (chunk_dir / "chunks.json").is_file():
+                raise ValueError("云端重抽需要原始句组音频和清单")
+            manifest = json.loads((chunk_dir / "chunks.json").read_text())
+            texts = manifest["texts"]
+            paths = [chunk_dir / f"chunk-{i:03}.wav" for i in range(len(texts))]
+            pauses = {int(k): val for k, val in manifest["pauses"].items()}
+            sentences = check_tool.sentence_ranges(chapter["text"])
+            compact = lambda text: "".join(text.split())
+            lengths = np.cumsum([len(compact(t)) for t in texts])
+            for attempt in range(1, max_rounds + 1):
+                flagged = flagged_sentences(chapter["text"], chosen["check"], chosen["asr"])
+                indexes = set()
+                for n in flagged:
+                    lo, hi, _ = sentences[n]
+                    left = len(compact(chapter["text"][:lo]))
+                    right = len(compact(chapter["text"][:hi]))
+                    for k, end in enumerate(lengths):
+                        if left < end and right > (lengths[k-1] if k else 0):
+                            indexes.add(k)
+                if not indexes:
+                    break
+                indexes = sorted(indexes)
+                dest = Path(folder) / f"redraw-{attempt}"
+                dest.mkdir()
+                temps = (.65, .72, .78)
+                temp = temps[(int(chosen["seed"]) + attempt) % len(temps)]
+                resp = v._remote_batch([texts[k] for k in indexes], brand, cloud_backend, temp)
+                redrawn = paths.copy()
+                for k, wav in zip(indexes, resp):
+                    redrawn[k] = dest / f"chunk-{k:03}.wav"
+                    redrawn[k].write_bytes(wav)
+                master = dest / "assembled.wav"
+                v._concat_wavs(redrawn, master, pauses=pauses)
+                candidate = screen(dict(seed=1000000+attempt, path=str(master)))
+                better = quality.rank(candidate) < quality.rank(chosen)
+                history.append(dict(round=attempt, chunks=indexes, temperature=temp, accepted=better))
+                if better:
+                    paths, chosen = redrawn, candidate
+                if chosen["check"]["ok"]:
+                    break
+        chosen["repair_rounds"] = history
+        chosen["record"].update(seed=chosen["seed"], backend=cloud_backend, repair_unit="semantic_chunk")
+        return chosen
     final = repair(chapter, chosen, Path(folder)/'repair', generate, transcribe, exceptions=exceptions, threshold=threshold,
                    max_rounds=max_rounds, lufs=(post_options or {}).get('lufs', -16.), anchors=anchors,
                    offset=offset, post_options=post_options)

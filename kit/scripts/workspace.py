@@ -33,7 +33,7 @@ def load_environment(environ=None):
     workspace = path(environ.get("YICE_WORKSPACE") or values.get("YICE_WORKSPACE") or home / "Documents/Codex/个人IP")
     toolkit = path(environ.get("YICE_TOOLKIT") or values.get("YICE_TOOLKIT") or workspace / "claude-code-video-toolkit")
     dotenv = toolkit / ".env"
-    endpoints = {f"MODAL_{service}_ENDPOINT_URL" for service in ("QWEN3_TTS", "FLUX2", "MUSIC_GEN", "LTX2")}
+    endpoints = {f"MODAL_{service}_ENDPOINT_URL" for service in ("QWEN3_TTS", "FLUX2", "MUSIC_GEN", "LTX2")} | {"KAGGLE_TTS_ENDPOINT_URL", "KAGGLE_TTS_TOKEN"}
     if dotenv.is_file():
         for line in dotenv.read_text(encoding="utf-8").splitlines():
             key, sep, raw = line.strip().removeprefix("export ").partition("=")
