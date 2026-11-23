@@ -252,7 +252,7 @@ class EditorialStage:
                 unit = str(overlay.get('unit',''))
                 if not isfinite(value):
                     raise ValueError('数字角标需要有穷实测值')
-                body = group('rise',rect(1194,105,585,245,'#203333e8','rx="23" stroke="#7aaba0"')
+                body = group('rise',rect(1194,105,585,245,'#172322fa','rx="23" stroke="#7aaba0"')
                              +txt(1235,157,label,32)+txt(1235,267,f'{value:g}{unit}',82,CORAL,attrs='class="stat-readout"')
                              +rule(1235,304,460))
                 audio = 'pop'

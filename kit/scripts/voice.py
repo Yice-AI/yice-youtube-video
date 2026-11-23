@@ -337,7 +337,7 @@ def room_tone(source, rate, frames, seed=0, dbfs=-60.):
 
 
 def preserve_room_floor(samples, rate, dbfs):
-    """Replace only prolonged digital silence in a seam's protection window."""
+    """Replace prolonged digital silence without changing sample counts."""
     import numpy as np
     if not len(samples):
         return samples
@@ -345,7 +345,7 @@ def preserve_room_floor(samples, rate, dbfs):
     edges = np.flatnonzero(np.diff(np.r_[False,quiet,False]))
     for a,b in edges.reshape(-1,2):
         if b-a > round(.04*rate):
-            samples[a:b] = room_tone(samples,rate,b-a,seed=int(a),dbfs=dbfs)
+            samples[a:b] = room_tone(samples[a:b],rate,b-a,seed=int(a),dbfs=dbfs)
     return samples
 
 
@@ -378,18 +378,17 @@ def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-68
         left = max(source_left, voiced[0]-fade_frames-pre_roll) if index else source_left
         right = min(len(samples), voiced[-1]+1+fade_frames+post_roll) if index+1<len(paths) else len(samples)
         piece = samples[left:right].copy()
+        preserve_room_floor(piece,rate,room_tone_dbfs)
         lead = int(voiced[0])-left
         tail_count = right-int(voiced[-1])-1
         if index and lead:
             head = piece[:lead]
-            preserve_room_floor(head,rate,room_tone_dbfs)
             phase = np.clip(1 - (lead-np.arange(lead))/pre_roll,0.,1.)
             gain = ((1-np.cos(np.pi*phase))/2)[:,None]
             floor = room_tone(head,rate,lead,seed=index,dbfs=room_tone_dbfs)
             head[:] = head*gain + floor*(1-gain)
         if index+1<len(paths) and tail_count:
             tail = piece[-tail_count:]
-            preserve_room_floor(tail,rate,room_tone_dbfs)
             phase = np.clip((np.arange(tail_count)+1)/post_roll,0.,1.)
             gain = ((1+np.cos(np.pi*phase))/2)[:,None]
             floor = room_tone(tail,rate,tail_count,seed=index,dbfs=room_tone_dbfs)

@@ -378,6 +378,25 @@ def test_concat_removes_dc_and_fades_across_the_protected_windows(tmp_path):
     assert sf.info(target).duration == pytest.approx(.625)
 
 
+def test_decode_pocket_room_floor_and_stat_badge_plate(tmp_path):
+    breath = tone(.1,.0038,400)
+    source = wave(tmp_path/'raw.wav',np.r_[tone(.3),tone(.05,10**(-95/20),460),breath,tone(.3)])
+    target = tmp_path/'chapter.wav'
+    voice._concat_wavs([source],target)
+    assert sf.info(target).frames==sf.info(source).frames
+    assert breath_integrity_gate(tmp_path,{'voice_tracks':[{'path':target.name}]})['ok']
+    audio,rate = sf.read(target)
+    pocket = audio[round(.3*rate):round(.35*rate)]
+    assert 20*np.log10(np.sqrt(np.mean(pocket**2)))==pytest.approx(-68.,abs=.25)
+    audible = np.abs(breath) > 10**(-68/20)
+    np.testing.assert_allclose(audio[round(.35*rate):round(.45*rate)][audible],breath[audible],atol=1e-6)
+
+    stage = EditorialStage('读数',duration=3)
+    stage.add_callout_rig(0,3,'terminal.mp4',overlays=[dict(kind='stat_badge',at=.5,label='响应',value=9)])
+    assert 'fill="#172322fa"' in ''.join(stage.plates)
+    assert 'stroke="#7aaba0"' in ''.join(stage.plates) and 'data-layout-allow-overlap' in ''.join(stage.plates)
+
+
 @pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
 def test_assemble_episode_end_to_end(tmp_path):
     def footage(path,color,duration):
