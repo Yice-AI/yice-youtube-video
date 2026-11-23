@@ -28,12 +28,12 @@ THRESHOLDS = dict(single_character_N=2.4, active_character_N=2., onset_character
 NATURAL_V7 = {
     **THRESHOLDS,
     'profile': 'natural_v7',
-    'comma_pause_ms': [0., 650.],
-    'contrast_pause_ms': [80., 950.],
-    'sentence_pause_ms': [80., 950.],
-    'nonpunct_pause_max_ms': 1000.,
-    'intra_word_drop_db': 22.,
-    'intra_word_min_ms': 110.,
+    'comma_pause_ms': [0., 950.],
+    'contrast_pause_ms': [0., 1250.],
+    'sentence_pause_ms': [0., 1250.],
+    'nonpunct_pause_max_ms': 280.,
+    'intra_word_drop_db': 28.,
+    'intra_word_min_ms': 230.,
 }
 
 
@@ -257,7 +257,11 @@ def measure(path, alignment, cache=None, thresholds=None):
         kind, interval, punct = pause_class(text, left, right, thresholds)
         planned = alignment.get('planned_pauses', {}).get(str(left['charEnd']))
         if planned is not None and kind in ('comma', 'contrast', 'sentence'):
-            interval = [1000 * float(planned)] * 2
+            planned_ms = 1000 * float(planned)
+            if (thresholds or {}).get('profile') == 'natural_v7':
+                interval = [max(0., planned_ms - 150.), planned_ms + 600.]
+            else:
+                interval = [planned_ms, planned_ms]
         # Whisper often assigns the pause to the NEXT word; examine a boundary
         # window extending into its first 80%, without conflating a whole word.
         lo = max(left['s'], left['e'] - .10)
@@ -416,11 +420,7 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
         elif b['kind'] in ['comma', 'contrast', 'sentence']:
             low, high = b['range_ms']
             measured_pause = b['pause_ms']
-            if natural and b['range_ms'] == NATURAL_V7[b['kind']+'_pause_ms']:
-                low, high = (0. if b['kind'] == 'comma' else 40.), 1000.
-                if measured_pause < low:
-                    measured_pause = max(measured_pause,min(high,b['asr_gap_ms']))
-            else:
+            if not natural:
                 low -= thresholds['punctuation_tolerance_ms']
                 high += thresholds['punctuation_tolerance_ms']
             if not low <= measured_pause <= high:

@@ -102,6 +102,33 @@ class VoiceCheckTests(unittest.TestCase):
         audio, aligned = self.synth(text="免费没有，得用账号。")
         self.assertTrue(any(f.get("pause_class") == "contrast" for f in self.scan(audio, aligned)["alerts"]))
 
+    def test_natural_v7_accepts_linked_speech_and_protected_planned_pause(self):
+        text = "免费没有，得用账号。现在开始。等等再看。"
+        planned_at = text.index("。", text.index("。") + 1)
+        gap_after = sum(c.isalnum() for c in text[:planned_at]) - 1
+        audio, aligned = self.synth(text, gaps={gap_after: 3.34})
+        aligned["planned_pauses"] = {str(planned_at): 3.0}
+        natural = check.check_chapter(audio, aligned, profile="natural_v7")
+        boundaries = [b for b in natural["measurement"]["boundaries"] if b["kind"] != "none"]
+        self.assertEqual([b["range_ms"] for b in boundaries], [[0.,1250.],[0.,1250.],[2850.,3600.]])
+        self.assertEqual([b["pause_ms"] for b in boundaries[:2]], [0.,0.])
+        self.assertEqual([a for a in natural["alerts"] if a["kind"] == "punctuation_pause"], [], boundaries)
+        legacy = self.scan(audio, aligned)
+        self.assertTrue(any(a["kind"] == "punctuation_pause" for a in legacy["alerts"]))
+        audio, aligned = self.synth(text="甲乙。丙丁戊己。", gaps={1: 1.4})
+        natural = check.check_chapter(audio, aligned, profile="natural_v7")
+        self.assertTrue(any(a.get("pause_class") == "sentence" for a in natural["alerts"]))
+
+    def test_natural_v7_tolerates_short_unpunctuated_breath_and_flags_long_pause(self):
+        audio, aligned = self.synth(gaps={1: .20})
+        natural = check.check_chapter(audio, aligned, profile="natural_v7")
+        kinds = {a["kind"] for a in natural["alerts"]}
+        self.assertFalse(kinds & {"hesitation", "intra_word_stutter"})
+        self.assertTrue(any("nonpunct_pause" in a.get("reasons", []) for a in self.scan(audio, aligned)["alerts"]))
+        audio, aligned = self.synth(gaps={1: .34})
+        natural = check.check_chapter(audio, aligned, profile="natural_v7")
+        self.assertTrue(any("nonpunct_pause" in a.get("reasons", []) for a in natural["alerts"]))
+
     def test_lexical_falling_tone_alone_is_not_flagged(self):
         audio, aligned = self.synth(falling=2)
         result = self.scan(audio, aligned)
