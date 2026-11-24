@@ -1,6 +1,10 @@
 """读取跨机器路径配置；配置作为数据解析，不执行其中的 shell 内容。"""
 import os
+import json
+import re
 import shlex
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -13,8 +17,6 @@ def valid_whisper_directory(path):
 
 
 def load_voice_reference(toolkit, brand):
-    import json
-
     config = toolkit / "brands" / brand / "voice.json"
     if not config.is_file():
         raise ValueError(f"缺少声音配置：{config}")
@@ -24,6 +26,78 @@ def load_voice_reference(toolkit, brand):
     if not ref.is_file():
         raise ValueError(f"缺少声音参考音频：{ref}")
     return ref, clone.get("refText", ""), qwen.get("language", "Chinese")
+
+
+def resolve_hyperframes_command(environ=None):
+    environ = os.environ if environ is None else environ
+    override = shlex.split(environ.get("YICE_HYPERFRAMES_BIN", ""))
+    if override:
+        return override
+    installed = shutil.which("hyperframes", path=environ.get("PATH",os.defpath))
+    if installed:
+        return [installed]
+    home = Path(environ.get("HOME",str(Path.home()))).expanduser()
+    candidates = []
+    for binary in (home / ".npm/_npx").glob("*/node_modules/.bin/hyperframes"):
+        if not binary.is_file() or not os.access(binary,os.X_OK):
+            continue
+        manifest = binary.parent.parent / "hyperframes/package.json"
+        try:
+            version = json.loads(manifest.read_text())["version"]
+            parts = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?",version)
+        except (OSError,ValueError,TypeError,KeyError):
+            continue
+        if parts:
+            release = tuple(map(int,parts.groups()[:3]))
+            prerelease = parts[4]
+            sequence = tuple((0,int(part)) if part.isdecimal() else (1,part)
+                             for part in (prerelease or "").split("."))
+            candidates.append((release,prerelease is None,sequence,str(binary)))
+    return [max(candidates)[-1]] if candidates else ["npx","--offline","hyperframes"]
+
+
+def resolve_gsap_runtime(explicit=None, *, root=None, environ=None):
+    env = dict(os.environ if environ is None else environ)
+    home = Path(env.get("HOME",str(Path.home()))).expanduser()
+    root = Path.cwd() if root is None else Path(root)
+
+    def locate(value):
+        if not value:
+            return None
+        value = str(value)
+        if value.startswith("~/"):
+            value = str(home / value[2:])
+        path = (root / Path(value).expanduser()).resolve()
+        return path if path.is_file() else None
+
+    for value in (explicit,env.get("YICE_GSAP_PATH")):
+        path = locate(value)
+        if path:
+            return path
+    workspace, toolkit = load_environment(env)
+    for value in (toolkit/"local/vendor/gsap.min.js",home/".config/yice-video/vendor/gsap.min.js"):
+        path = locate(value)
+        if path:
+            return path
+
+    repo = Path(__file__).resolve().parents[2]
+    directories = dict.fromkeys(item.resolve() for item in (root,repo,workspace,toolkit))
+    node = shutil.which("node",path=env.get("PATH",os.defpath))
+    if node is None:
+        return None
+    for directory in directories:
+        if not directory.is_dir():
+            continue
+        try:
+            result = subprocess.run([node,"-p","require.resolve('gsap/dist/gsap.min.js')"],
+                                    cwd=directory,env=env,capture_output=True,text=True,timeout=8)
+        except (OSError,subprocess.TimeoutExpired):
+            continue
+        if result.returncode==0:
+            path = locate(result.stdout.strip())
+            if path:
+                return path
+    return None
 
 
 def load_environment(environ=None):

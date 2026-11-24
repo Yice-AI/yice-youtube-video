@@ -1,4 +1,4 @@
-# 配音生成、后期和韵律检测
+# v7.2 配音生成、后期和韵律检测
 
 `voice.sh` 每章多 seed 生成 → post → ASR 与韵律 check → 不通过就整句 repair（最多 3 轮）。只有全部章节匹配率达到阈值、差异已明确登记且零告警，才输出可组装的 `voice-manifest.json`、`voice-timing.json` 和 SRT。规则解释见 [配音规则](../../references/voice.md)。
 
@@ -16,18 +16,19 @@ bash install.sh --check
 
 ```bash
 bash kit/scripts/voice.sh episode/script.md --output episode/voice \
+  --backend kaggle --chunk-mode long_paragraph --profile natural_v7 --speed 1.0 \
   --anchors episode/anchors.json --seeds 42,43
 ```
 
-默认后期：保音高提速 `1.08`；宽频低能量的呼吸候选压低 `12dB`，超过 `250ms` 缩到 `150ms`；剪切及补停顿边缘淡化 `10ms`。逗号停顿 `180–300ms`，转折和句末 `300–450ms`，已经在区间内的保留。声学候选不等于人工确认的呼吸声，日志保留原区间及实际操作。
+v7.2 默认 `long_paragraph` 按中文句末分为优先 65–115 字的自然段。已授权 Kaggle 用异步提交和轮询，配音保持 `1.000×` 原速。`natural_v7` 保留自然呼吸，拼缝以 −68 dBFS 室温底噪托底并用半余弦过渡。历史制品如需复现 `1.08` 提速及超过 `250ms` 的呼吸缩到 `150ms`，使用 `--profile legacy --speed 1.08`。
 
-`--speed`、`--breath-db`、`--breath-cut-ms`、`--breath-target-ms`、`--fade-ms` 可调整初始后期参数；整句拼接固定 10ms。`--skip-post` 只跳过初始后期，**没有跳过检测的开关**，后续修复仍按标准后期处理。内部生成子进程仅输出 raw 文件，不能产生已通过检测的组装清单。
+`--skip-post` 只跳过初始后期，检测及后续修复仍正常运行。内部生成子进程仅输出原音，可装配清单由完整检测流程签发。
 
 `--seeds` 默认 `42,43`，每章每个 seed 连续生成一次，不逐句生成原章；保留所有候选。优先选择 ASR 与韵律都通过的候选，再按内容差异数、告警数、匹配率、seed 排序。`--asr-threshold` 默认 `0.97`；即使匹配率很高，未登记的中文差异仍不放行。`--chapters 00,01` 可只处理指定章节。
 
 检测不通过时，定位有问题的整句，每句生成 3 个新 seed，筛选 ASR、韵律、音色代理余弦 ≥0.94 和音高中位数偏差 ≤3.5 半音；只在已验证的自然低能量句间替换，匹配有效发声 RMS，接缝 10ms 交叉淡化。每轮保留原片、所有候选、连续性指标和修改前后 1–2 秒切片，再整章 ASR/韵律重扫。`--max-repair-rounds` 默认 3、最大 3；无法安全定位或三轮仍不过就报失败，不导出组装清单。代理指标不代替试听。
 
-默认 `--silence 0.2` 先计入语义停顿预算，再插入换幕静音，并对实际波形闭环校正；重算时间时不再次插静音。默认 `--lufs -16` 执行两遍响度归一化，保留采样数，归一化后必须重扫。每章输出最终字时间及 `analysis/voice-check-章号.json`、`asr-audit-章号.json`；SRT、章节和锚点由最终时间重新生成。成片 −14 LUFS、真峰值 ≤ −1 dBTP 仍须在混音后测量。
+自然档以 `--pause-after` 登记所需幕间留白，保留实测语音时间。每章输出最终字时间、`analysis/voice-check-章号.json` 和 `asr-audit-章号.json`，SRT 与锚点由最终时序生成。全片母带在装配时测量，目标 −14.5 ± 0.8 LUFS，真峰值 ≤ −1 dBTP。
 
 ## ASR 例外与复跑
 
@@ -39,7 +40,7 @@ bash kit/scripts/voice.sh episode/script.md --output episode/voice \
 
 键是朗读原文，值是明确接受的 ASR 别写。每项分别写入审计；不同数值不会因为例外表就被放过。兼容旧的平面原文→别写对象，也会分类记录。`--asr-prompt` 仅用于提供领域词表，不把整段台词喂给识别器。原始和最终转写都保留，ASR 缓存绑定音频 SHA-256 与模型/词表设置。
 
-要用已有原始候选重跑同一流程，传 `--reuse-candidates cache.json`。缓存为记录列表，每项必须含 `text`、`seed`、`brand`、`path`、`sha256`；只有原文、seed、品牌和文件哈希全部匹配才复用，复制到新输出目录，保留原文件。没有匹配项才本地生成；这不是跳过检测或直接接受旧的成片。示例：
+要用已有原始候选重跑同一流程，传 `--reuse-candidates cache.json`。缓存为记录列表，每项含 `text`、`seed`、`brand`、`path`、`sha256`。原文、seed、品牌和文件哈希均匹配时复制到新输出目录并保留原文件。缺少匹配项时使用已选配音后端，并继续执行检测。示例：
 
 ```json
 [{"text":"示例原文。","seed":42,"brand":"example","path":"/absolute/raw.wav","sha256":"填写原音的完整SHA256"}]
@@ -76,9 +77,9 @@ bash kit/scripts/voice-repair.sh --audio episode/post.wav \
 
 也接受同结构的 `characters` 列表或独立列表。索引是朗读文本中的字符位置，时间单位为秒、原点为章音频起点，所有读出的字母、数字、汉字必须完整覆盖；重叠、缺失或超出音频的时间会失败。后期输出保持此格式并附操作日志；再次检测必须使用新音频和新字时间，不能沿用旧时间。
 
-检测 JSON 包含 `chapter`、`ok`、`alerts`、阈值和声学测量。退出码：`0` 零告警，`1` 有告警，`2` 参数或输入失败。可调默认值为 `--long-ratio 2.4`、`--active-ratio 2`、`--onset-ratio 1.7`、`--hesitation-ms 60`、`--nonpunct-max-ms 150`、`--fall-semitones 4`、`--pause-tolerance-ms 20`；停顿区间用 `--comma-ms`、`--contrast-ms`、`--sentence-ms` 的两个数设置。一个低能量间隔只归属一个字边界；降调还须同时满足前字拖长和低能量间隔，不能把汉语声调单独判错。
+检测 JSON 包含 `chapter`、`ok`、`alerts`、阈值和声学测量。退出码为 `0` 零告警、`1` 有告警、`2` 输入失败。`natural_v7` 默认允许句末和转折 0–1250ms、普通逗号 0–950ms，非标点停顿上限 340ms。可用 `--comma-ms`、`--contrast-ms`、`--sentence-ms` 设置区间。历史档才使用 150ms 非标点上限。每段低能量间隔只归属一个字边界，自动检测后仍须听审。
 
-独立后期若要预留换幕静音，传 `--scene-boundaries`（JSON 单字边界索引列表）和 `--scene-padding`；未传则不预留。后期保留输入文件，输出为单声道 PCM24 WAV；`--speed 1` 不做变速。检测只给出候选，交付仍需听审。
+独立后期默认保留自然呼吸，保留输入文件并输出单声道 PCM24 WAV。特殊的历史静音方案可显式选用旧处理并传 `--scene-boundaries`（JSON 单字边界索引列表）和 `--scene-padding`。
 
 ## 离线测试与隐私
 

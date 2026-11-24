@@ -18,6 +18,8 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.2�
 
 所有时间用秒。镜头 `start`、`end`、旁白 `at` 和 `firstCharTime` 以全片起点为零。`overlays[].at` 是镜内相对时间。素材路径相对清单解析。
 
+`gsap` 是可选覆盖项。省略时自动发现本机 GSAP，包括 toolkit 的 `local/vendor/gsap.min.js`。
+
 ```json
 {
   "title": "实操样片",

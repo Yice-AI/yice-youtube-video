@@ -10,10 +10,53 @@ from unittest.mock import patch
 
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / 'kit/scripts'))
-from workspace import load_environment, ensure_voice_dependencies
+from workspace import load_environment, ensure_voice_dependencies, resolve_gsap_runtime, resolve_hyperframes_command
 
 
 class EnvironmentTests(unittest.TestCase):
+    def test_hyperframes_uses_highest_cached_version_and_respects_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            env = {'HOME':tmp,'PATH':str(home/'no-path')}
+            def cached(slot, version, executable=True):
+                modules = home/'.npm/_npx'/slot/'node_modules'
+                binary = modules/'.bin/hyperframes'
+                binary.parent.mkdir(parents=True)
+                binary.write_text('#!/bin/sh\n')
+                binary.chmod(0o755 if executable else 0o644)
+                manifest = modules/'hyperframes/package.json'
+                manifest.parent.mkdir()
+                manifest.write_text(json.dumps({'version':version}))
+                return binary
+            cached('first','0.9.72')
+            newest = cached('second','0.9.82')
+            cached('rc','0.9.82-rc.1')
+            cached('nonexecutable','0.10.0',executable=False)
+            self.assertEqual(resolve_hyperframes_command(env),[str(newest)])
+            command = '/custom folder/hyperframes'
+            self.assertEqual(resolve_hyperframes_command({**env,'YICE_HYPERFRAMES_BIN':f'"{command}" --quiet'}),
+                             [command,'--quiet'])
+
+    def test_gsap_finds_toolkit_vendor_without_environment_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            toolkit = root/'toolkit'
+            vendor = toolkit/'local/vendor/gsap.min.js'
+            vendor.parent.mkdir(parents=True)
+            vendor.write_text('// bundled in test toolkit')
+            cfg = root/'.config/yice-video/env'
+            cfg.parent.mkdir(parents=True)
+            cfg.write_text(f'YICE_TOOLKIT="{toolkit}"\n')
+            env = {'HOME':tmp,'PATH':str(root/'no-path')}
+            self.assertEqual(resolve_gsap_runtime(root=root,environ=env),vendor)
+            explicit = root/'episode-gsap.js'
+            explicit.touch()
+            self.assertEqual(resolve_gsap_runtime('episode-gsap.js',root=root,environ=env),explicit)
+            home_override = root/'configured-gsap.js'
+            home_override.touch()
+            self.assertEqual(resolve_gsap_runtime(root=root,environ={**env,'YICE_GSAP_PATH':'~/configured-gsap.js'}),
+                             home_override)
+
     def test_priority_and_default_are_independent_of_checkout(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp).resolve()

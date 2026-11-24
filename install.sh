@@ -12,7 +12,8 @@ from pathlib import Path
 
 repo = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(repo / 'kit/scripts'))
-from workspace import load_environment, ensure_voice_dependencies, load_voice_reference, valid_whisper_directory
+from workspace import (load_environment, ensure_voice_dependencies, load_voice_reference,
+                       resolve_gsap_runtime, resolve_hyperframes_command, valid_whisper_directory)
 
 parser = argparse.ArgumentParser(description='安装/检查 skill；自动补齐现有 ASR 环境的配音依赖，其余依赖仅检查。')
 parser.add_argument('--workspace', type=Path)
@@ -100,15 +101,7 @@ def whisper_ready():
 
 
 def gsap_ready():
-    provided = env.get('YICE_GSAP_PATH')
-    if provided:
-        return Path(provided).expanduser().is_file()
-    for root in (repo,workspace,toolkit):
-        if root.is_dir():
-            result = local_command(['node','-p',"require.resolve('gsap/dist/gsap.min.js')"],root)
-            if result and result.returncode==0 and Path(result.stdout.strip()).is_file():
-                return True
-    return False
+    return resolve_gsap_runtime(root=repo,environ=env) is not None
 
 
 def brand_ready():
@@ -119,7 +112,7 @@ def brand_ready():
         return False
 
 
-hyperframes = local_command(['npx','--offline','hyperframes','--version'])
+hyperframes = local_command([*resolve_hyperframes_command(env),'--version'])
 token_file = home / '.kaggle/access_token'
 stock_config = home / '.config/yice-video/stock.env'
 checks = {name: bool(shutil.which(name)) for name in ['node', 'npm', 'ffmpeg', 'ffprobe', 'python3']}

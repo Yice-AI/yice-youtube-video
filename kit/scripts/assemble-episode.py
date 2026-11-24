@@ -8,7 +8,6 @@ from math import isfinite
 import os
 from pathlib import Path
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -18,6 +17,7 @@ from urllib.parse import unquote
 KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(KIT.parent))
 from audit_v7 import probe_video, semantic_binding_gate
+from workspace import resolve_gsap_runtime, resolve_hyperframes_command
 from kit.editorial.audio_mix import mix_episode_audio
 from kit.editorial.editorial import EditorialStage
 from kit.studio_ui import add_workbench
@@ -185,14 +185,10 @@ def install_asset(source, target):
 
 
 def gsap_runtime(raw, root):
-    provided = raw.get('gsap') or os.environ.get('YICE_GSAP_PATH')
-    if provided:
-        return locate(root,provided)
-    proc = subprocess.run(['node','-p',"require.resolve('gsap/dist/gsap.min.js')"],cwd=root,
-                          capture_output=True,text=True)
-    if proc.returncode:
-        raise ValueError('请通过清单 gsap 或 YICE_GSAP_PATH 提供本地 GSAP 运行时')
-    return locate(root,proc.stdout.strip())
+    runtime = resolve_gsap_runtime(raw.get('gsap'),root=root)
+    if runtime is None:
+        raise ValueError('找不到本地 GSAP 运行时，请运行 install.sh --check')
+    return runtime
 
 
 def restore_file_paths(value):
@@ -428,7 +424,7 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
     (output/f'{name}.srt').write_text('\n'.join(f"{i}\n{clock(c['start'])} --> {clock(c['end'])}\n{c['text']}\n"
                                                   for i,c in enumerate(captions,1)))
     wave,rate = sf.read(output/'mix.wav',dtype='float32')
-    command = shlex.split(os.environ.get('YICE_HYPERFRAMES_BIN','npx --offline hyperframes'))
+    command = resolve_hyperframes_command()
     env = {**os.environ,'HYPERFRAMES_TELEMETRY_DISABLED':'1','DO_NOT_TRACK':'1'}
     render_status = {}
     for folder,stage,offset in stages:

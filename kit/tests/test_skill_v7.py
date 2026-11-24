@@ -588,7 +588,7 @@ def test_concat_rejects_periodically_silent_room_tone(tmp_path):
 
 
 @pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
-def test_assemble_episode_end_to_end(tmp_path):
+def test_assemble_episode_end_to_end(tmp_path, monkeypatch):
     def footage(path,color,duration):
         subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i',
                         f'color={color}:s=1920x1080:r=30:d={duration}',
@@ -600,6 +600,7 @@ def test_assemble_episode_end_to_end(tmp_path):
     live = os.environ.get('YICE_TEST_HYPERFRAMES') == '1'
     gsap = os.environ.get('YICE_GSAP_PATH')
     if not live:
+        monkeypatch.setenv('YICE_HYPERFRAMES_BIN','npx --offline hyperframes')
         gsap = tmp_path/'gsap.min.js'
         gsap.write_text('// runtime substituted by the renderer fixture')
     input_data = dict(filename='sample',gsap=str(gsap),duration=8.5,

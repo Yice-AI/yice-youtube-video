@@ -34,8 +34,7 @@
 
 ## 2. 配音与渲染核心底座
 
-- **Modal GPU 克隆配音**：`$KIT/scripts/voice.sh`
-  - 端点由 `$YICE_TOOLKIT/.env` 的 `MODAL_QWEN3_TTS_ENDPOINT_URL` 提供；克隆参考音频直走 HTTPS Base64 内存传输，**绝不上传 R2 或任何外部存储桶**；Modal 账户锁定 `spend_limit_usd = 0`（只用 Starter 免费额度）。
+- **GPU 克隆配音**用 `$KIT/scripts/voice.sh`。优先指定已授权 Kaggle 端点，以 `--backend kaggle --speed 1.0` 走 `/tts_async` 和任务轮询。克隆参考音频通过 HTTPS 直传内存。单句离线补录可显式使用 `--backend local --allow-slow-local`。Modal 仅在用户明确授权时显式指定 `--backend modal`。
 - **原生 HyperFrames 编排与渲染**：
   - 统一使用开放式编辑部版式原语库 **`$KIT/editorial/editorial.py`**（深松墨绿主舞台 + 暖米纸扉页 + 四角 L 型取景框 + 20px 刻度尺 + 珊瑚红底线字幕）生成标准 HTML/SVG/GSAP 工程；
-  - 优先复用本机已安装的 `hyperframes`（`0.9.52+`）、`gsap` 与 `playwright-core`；渲染输出 `1920×1080`、`30fps`、H.264 `yuv420p` MP4。
+  - 先查显式覆盖及 PATH 上的 HyperFrames CLI，再复用本机 npm 缓存中可执行的最高版本，最后尝试 `npx --offline hyperframes`。GSAP 默认从本机 toolkit、用户配置目录或 Node 模块发现。渲染输出 `1920×1080`、`30fps`、H.264 `yuv420p` MP4。
