@@ -53,6 +53,25 @@ def group(cls: str, body: str) -> str:
     return f'<g class="{cls}">{body}</g>'
 
 
+def verified_spotlight_box(overlay):
+    note, box = overlay.get('target_note'), overlay.get('box')
+    if overlay.get('target_verified') is not True or not isinstance(note,str) or not note.strip():
+        raise ValueError('局部高亮框需要核对像素目标并填写 target_note')
+    if not isinstance(box,(list,tuple)) or len(box)!=4:
+        raise ValueError('局部高亮框需要显式 box 坐标')
+    try:
+        x,y,w,h = map(float,box)
+    except (TypeError,ValueError):
+        raise ValueError('局部高亮框坐标须为有限数值') from None
+    if not all(isfinite(value) for value in (x,y,w,h)):
+        raise ValueError('局部高亮框坐标须为有限数值')
+    if w>680 or h>340:
+        raise ValueError('局部高亮框尺寸过大，请改用 corner_tag 或复合舞台')
+    if w<64 or h<48:
+        raise ValueError('局部高亮框尺寸至少为 64×48')
+    return x,y,w,h
+
+
 def grid(color: str = LINE) -> str:
     v_lines = "".join(ln(x, 146, x, 901, color, 1, 'opacity=".30"') for x in range(92, 1835, 100))
     h_lines = "".join(ln(88, y, 1832, y, color, 1, 'opacity=".30"') for y in range(195, 890, 100))
@@ -151,6 +170,7 @@ class EditorialStage:
         self.scripts: list[str] = []
         self.shots: list[dict] = []
         self.sound_marks: list[tuple[str, float]] = []
+        self.sound_gains: dict[int, float] = {}
         self.music_drops: list[tuple[float, float]] = []
         self.light_zones: list[tuple[float, float]] = []
         self._camera_move_history: list[str] = []
@@ -216,6 +236,67 @@ class EditorialStage:
         row.update(stage_mode='title_sequence',layout='fullbleed',has_motion_overlay=True,beats=[0.,.12,.82])
         return row['id']
 
+    def add_reference_breakdown(self, start, end, src, *, channel, claim,
+                                cut_points=(), metrics=(), media_start=0.):
+        if any(not isinstance(value,str) or not value.strip() for value in (channel,claim)):
+            raise ValueError('原片拆解需要非空频道署名与拆解主张')
+        try:
+            points = tuple(float(point) for point in cut_points)
+        except (TypeError,ValueError):
+            raise ValueError('拆解切点须为镜头内的有效时间') from None
+        if not all(0 < point < end-start for point in points) or any(a>=b for a,b in zip(points,points[1:])):
+            raise ValueError('拆解切点须在镜头内严格递增')
+        if (not isinstance(metrics,(list,tuple)) or len(metrics)>3
+                or any(not isinstance(row,dict) or not isinstance(row.get('label'),str)
+                       or not row['label'].strip() or row.get('value') is None for row in metrics)):
+            raise ValueError('拆解指标最多三项，每项需要名称和实测值')
+
+        def panel_text(y, value, size, color=IVORY):
+            fit = 'textLength="500" lengthAdjust="spacingAndGlyphs"' if len(str(value))*size>500 else ''
+            return txt(1304,y,value,size,color,attrs=fit)
+
+        self.add_video(start,end,src,80,156,1152,648,fit='cover',media_start=media_start)
+        credit = f'画面引用 · {channel}'
+        fit = 'textLength="1160" lengthAdjust="spacingAndGlyphs"' if len(credit)*30>1160 else ''
+        grid_id = f'ref-grid-{len(self.plates)}'
+        backdrop = (f'<defs><clipPath id="{grid_id}"><path clip-rule="evenodd" '
+                    'd="M0 0H1920V1080H0Z M80 156H1232V804H80Z"/></clipPath></defs>'
+                    f'<g clip-path="url(#{grid_id})">{grid()}</g>')
+        body = (backdrop + rect(80,84,5,34,CORAL) + txt(103,112,credit,30,attrs=fit)
+                + txt(1840,112,'静音拆解 · 剪辑节奏实测',22,MUTED,anchor='end',attrs='data-layout-ignore')
+                + frame(80,156,1152,648) + rule(80,826,1152)
+                + rect(1268,156,572,648,'#1d2b2af5','rx="18" stroke="#7aaba0"')
+                + panel_text(222,claim,34)
+                + txt(1304,318,'镜头 #01',62,CORAL,attrs='class="ref-cut-counter"')
+                + ln(1304,358,1804,358))
+        for index, row in enumerate(metrics):
+            baseline = 418+96*index
+            body += panel_text(baseline,row['label'],28,MUTED)
+            body += panel_text(baseline+45,row['value'],38)
+        plate = self.add_plate(start,end,claim,body,bg='#141d1d',kind='real_video',files=[src])
+        row = self.shots[-1]
+        row.update(stage_mode='reference_breakdown',layout='split_inspector',has_motion_overlay=True,
+                   channel=channel,claim=claim,cut_count=1+len(points),cut_points=list(points),
+                   metrics=list(metrics),media_start=media_start,beats=[0.,*points])
+        for index, point in enumerate((0.,*points),start=1):
+            self.scripts.append(f"tl.set('#{plate} .ref-cut-counter',"
+                                f"{{textContent:'镜头 #{index:02d}',immediateRender:false}},{start+point:.5f});")
+            if point:
+                self.add_sound_mark('tick',start+point,gain=.10)
+        return row['id']
+
+    def add_sound_mark(self, kind, at, *, gain=None):
+        if gain is not None:
+            self.sound_gains[len(self.sound_marks)] = gain
+        self.sound_marks.append((kind,at))
+
+    def sound_events(self, offset=0.):
+        for index,(kind,at) in enumerate(self.sound_marks):
+            event = dict(kind=kind,at=round(offset+at,5))
+            if index in self.sound_gains:
+                event['gain'] = self.sound_gains[index]
+            yield event
+
     def add_callout_rig(self, start, end, src, *, overlays, media_start=0., motion='glide'):
         sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion)
         self.shots[-1].update(stage_mode='callout_rig',media_start=media_start)
@@ -238,14 +319,32 @@ class EditorialStage:
             style = overlay['kind']
             label = str(overlay.get('label',''))
             if style == 'spotlight_box':
-                x,y,w,h = map(float,overlay.get('box',[632,208,620,405]))
-                if min(x,y,w,h) < 64 or x+w > 1856 or y+h > 890:
+                x,y,w,h = verified_spotlight_box(overlay)
+                if min(x,y) < 64 or x+w > 1856 or y+h > 890:
                     raise ValueError('高亮框超出可用视窗')
                 shape = f'M{x} {y}h{w}v{h}h{-w}z'
-                body = f'<path fill="#101b1bd9" fill-rule="evenodd" d="M0 0H1920V1080H0Z {shape}"/>'
-                body += rect(x,y,w,h,'none',f'rx="14" stroke="{CORAL}" stroke-width="5" '
-                                            'style="filter:drop-shadow(0 0 12px #ff745a)"')
-                body += '<g class="rise" data-layout-allow-overlap>'+rect(x,y-49,min(700,85+len(label)*28),44,INK,'rx="8"')+txt(x+16,y-18,label,28)+'</g>'
+                body = f'<path fill="#101b1b42" fill-rule="evenodd" d="M0 0H1920V1080H0Z {shape}"/>'
+                body += rect(x,y,w,h,'none',f'rx="10" stroke="{CORAL}" stroke-width="3"')
+                label_y = y+h+8 if y<125 else y-49
+                label_width = min(700,85+len(label)*28,1856-x)
+                fit = f'textLength="{label_width-24}" lengthAdjust="spacingAndGlyphs"' if len(label)*28>label_width-24 else ''
+                body += ('<g class="rise" data-layout-allow-overlap>'+rect(x,label_y,label_width,44,INK,'rx="8"')
+                         +txt(x+12,label_y+31,label,28,attrs=fit)+'</g>')
+                audio = 'pop'
+            elif style == 'corner_tag':
+                sublabel = str(overlay.get('sublabel',''))
+                if not label.strip():
+                    raise ValueError('角落铭牌需要文字')
+                width = min(760,max(190,57+max(len(label)*28,len(sublabel)*22)))
+                height = 80 if sublabel else 56
+                text_width = width-48
+                main_fit = f'textLength="{text_width}" lengthAdjust="spacingAndGlyphs"' if len(label)*28>text_width else ''
+                body = rect(80,82,width,height,'#172322eb','rx="10"') + rect(80,82,5,height,CORAL)
+                body += txt(104,118,label,28,attrs=main_fit)
+                if sublabel:
+                    sub_fit = f' textLength="{text_width}" lengthAdjust="spacingAndGlyphs"' if len(sublabel)*22>text_width else ''
+                    body += txt(104,147,sublabel,22,MUTED,attrs='data-layout-ignore'+sub_fit)
+                body = group('rise',body)
                 audio = 'pop'
             elif style == 'stat_badge':
                 value = float(overlay['value'])
@@ -300,7 +399,8 @@ class EditorialStage:
                         beats.append(at+delay)
             if style == 'verdict_stamp':
                 self.add_stamp_slam(plate,begin)
-            self.sound_marks.append((audio,begin))
+            if style!='corner_tag' or not overlay.get('silent'):
+                self.add_sound_mark(audio,begin,gain=.10 if style=='corner_tag' else None)
             beats.append(at)
         shot['beats'] = sorted(set(beats))
         if nle_windows:
@@ -724,7 +824,7 @@ svg{display:block}"""
                 json.dumps({
                     "end": self.duration,
                     "shots": self.shots,
-                    "sound_marks": [{"kind": kind, "at": round(float(at), 5)} for kind, at in self.sound_marks],
+                    "sound_marks": list(self.sound_events()),
                     "music_drops": [[round(float(a), 5), round(float(b), 5)] for a, b in self.music_drops],
                 }, ensure_ascii=False, indent=2) + "\n"
             )

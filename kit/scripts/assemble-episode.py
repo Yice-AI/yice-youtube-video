@@ -20,7 +20,7 @@ from kit.editorial.editorial import EditorialStage
 from kit.studio_ui import add_workbench
 
 FPS = 30
-MODES = {'cold_open_ab','title_sequence','callout_rig','fullbleed_rig','studio_ui','explainer_clip','triptych_cards'}
+MODES = {'cold_open_ab','title_sequence','callout_rig','fullbleed_rig','studio_ui','explainer_clip','triptych_cards','reference_breakdown'}
 
 
 def read(path):
@@ -142,7 +142,7 @@ def prepare_shots(raw, root, cues):
         media_start = float(src.get('media_start',0.))
         if not isfinite(media_start) or media_start<0:
             raise ValueError(f'镜头 {key} 的源入点不合法')
-        expected = {'cold_open_ab':2,'callout_rig':1,'fullbleed_rig':1}.get(mode)
+        expected = {'cold_open_ab':2,'callout_rig':1,'fullbleed_rig':1,'reference_breakdown':1}.get(mode)
         if expected is not None and len(media)!=expected:
             raise ValueError(f'镜头 {key} 需要 {expected} 条视频源')
         if expected:
@@ -154,7 +154,7 @@ def prepare_shots(raw, root, cues):
         result.append(dict(src,id=key,act=act,start=start,end=end,media=media,media_start=media_start,
                            anchor_text=cue.get('text',''),anchor_cue_start=cue['firstCharTime'],
                            has_motion_overlay=(mode in {'callout_rig','studio_ui'} and bool(src.get('overlays'))
-                                               or mode in {'cold_open_ab','title_sequence','triptych_cards'})))
+                                               or mode in {'cold_open_ab','title_sequence','triptych_cards','reference_breakdown'})))
     if not result:
         raise ValueError('清单至少需要一个镜头')
     if 'duration' in raw and abs(float(raw['duration'])-previous)>1/FPS:
@@ -268,6 +268,9 @@ def build_act(shots, root, folder, title, run):
         elif mode == 'triptych_cards':
             cards = [dict(card,source=asset) for card,asset in zip(shot['cards'],assets)]
             stage.add_triptych_cards(a,b,heading=shot['heading'],cards=cards)
+        elif mode == 'reference_breakdown':
+            stage.add_reference_breakdown(a,b,assets[0],channel=shot.get('channel'),claim=shot.get('claim'),
+                                          cut_points=shot.get('cut_points',()),metrics=shot.get('metrics',()),media_start=start)
         else:
             clip,spec = explainer(shot,root,folder,run)
             stage.add_video(a,b,clip,0,0,1920,1080,fit='cover')
@@ -312,7 +315,7 @@ def assemble(manifest, output, *, build_only=False, run=subprocess.run):
         offset = items[0]['start']
         stage = build_act(items,root,folder,raw.get('title',name),run)
         stages.append((folder,stage,offset))
-        marks.extend(dict(kind=kind,at=round(offset+at,5)) for kind,at in stage.sound_marks)
+        marks.extend(stage.sound_events(offset))
         for row in stage.shots:
             files = [(folder/p).relative_to(output).as_posix() for p in row['files']]
             global_row = dict(row,start=round(offset+row['start'],5),end=round(offset+row['end'],5),files=files)

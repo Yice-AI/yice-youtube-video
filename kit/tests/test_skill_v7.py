@@ -21,7 +21,8 @@ import soundfile as sf
 KIT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(KIT.parent), str(KIT/'scripts')]
 from audit_v7 import (breath_integrity_gate, first_half_motion_density_gate,
-                      opener_bgm_and_sfx_gate, semantic_binding_gate, timeline_gates)
+                      opener_bgm_and_sfx_gate, semantic_binding_gate,
+                      spotlight_restraint_gate, timeline_gates)
 from kit.editorial.audio_mix import EpisodeAudioMixer
 from kit.editorial.autopilot import Beat, SemanticBeatPlanner
 from kit.editorial.editorial import EditorialStage
@@ -325,7 +326,8 @@ def test_overlay_primitives_emit_real_actions():
     stage = EditorialStage('实操样片',duration=14)
     stage.add_cold_open_ab(0,4,'left.mp4','right.mp4',hook='哪段更清楚？')
     stage.add_title_sequence(4,6,['实操','现场'],highlight='现场')
-    stage.add_callout_rig(6,10,'source.mp4',overlays=[{'kind':'spotlight_box','at':.3,'label':'执行按钮'},
+    stage.add_callout_rig(6,10,'source.mp4',overlays=[{'kind':'spotlight_box','at':.3,'label':'执行按钮',
+              'box':[650,240,420,220],'target_verified':True,'target_note':'按钮像素边界'},
               {'kind':'stat_badge','at':1.5,'label':'实测','value':16.5,'unit':' 秒'}])
     stage.add_callout_rig(10,14,'more.mp4',overlays=[{'kind':'strikethrough_list','at':0,'label':'排查',
                'items':['重新安装','重跑步骤']},{'kind':'verdict_stamp','at':2,'label':'通过'}])
@@ -351,13 +353,103 @@ def test_semantic_gate_rejects_unrelated_website_and_recognizes_exact_capture():
 
 
 def test_motion_gate_requires_two_halves_and_caps_bare_footage():
-    bare = [{'start':0,'end':15,'stage_mode':'fullbleed_rig'},
-            {'start':15,'end':17,'stage_mode':'title_sequence'},
-            {'start':17,'end':30,'stage_mode':'explainer_clip'}]
-    result = first_half_motion_density_gate(bare,30)
-    assert not result['ok'] and result['longest_bare_video_seconds']==15
-    bare[0].update(stage_mode='callout_rig',has_motion_overlay=True,overlays=[{'kind':'spotlight_box'}])
-    assert first_half_motion_density_gate(bare,30)['ok']
+    bare = [{'start':0,'end':17,'stage_mode':'fullbleed_rig'},
+            {'start':17,'end':19,'stage_mode':'studio_ui'},
+            {'start':19,'end':36,'stage_mode':'explainer_clip'}]
+    result = first_half_motion_density_gate(bare,36)
+    assert not result['ok'] and result['longest_bare_video_seconds']==17
+    bare[0].update(stage_mode='callout_rig',has_motion_overlay=True,overlays=[{'kind':'corner_tag'}])
+    assert first_half_motion_density_gate(bare,36)['ok']
+
+
+def test_spotlight_requires_verified_target_and_rejects_reuse():
+    stage = EditorialStage('标注',duration=4)
+    overlay = dict(kind='spotlight_box',at=0,label='大小列',box=[350,220,420,240],
+                   target_verified=True,target_note='右上区域大小列标题')
+    for invalid, message in ((dict(overlay,target_verified=False),'像素目标'),
+                             (dict(overlay,box=[350,220,1180,485]),'尺寸过大'),
+                             (dict(overlay,box=None),'显式 box')):
+        with pytest.raises(ValueError,match=message):
+            stage.add_callout_rig(0,4,'source.mp4',overlays=[invalid])
+    shots = [dict(id=str(index),overlays=[dict(overlay,box=[350+index*.01,220,420,240])])
+             for index in range(4)]
+    report = spotlight_restraint_gate(shots)
+    assert not report['ok'] and report['spotlight_count']==4 and report['maximum']==3
+    assert any('复制粘贴' in item['reason'] for item in report['violations'])
+    assert any('8%' in item['reason'] for item in report['violations'])
+    assert not spotlight_restraint_gate([dict(id='bad',stage_mode='reference_breakdown',channel='Fireship')])['ok']
+    assert spotlight_restraint_gate([shots[0]])['ok']
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
+def test_reference_breakdown_and_restraint_offline(tmp_path):
+    subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','color=#475853:s=320x180:r=30:d=5',
+                    '-c:v','libx264','-pix_fmt','yuv420p',str(tmp_path/'clip.mp4')],check=True)
+    overlay = dict(kind='spotlight_box',at=.5,duration=2.6,label='执行按钮',box=[680,105,380,240],
+                   target_verified=True,target_note='画面上方按钮像素边界')
+    shots = [
+        dict(id='reference',start=0,end=4,stage_mode='reference_breakdown',source='clip.mp4',
+             anchor_cue_id='a',spoken_topic='Johnny Harris 的剪辑节奏',visual_subject='Johnny Harris 参考片',
+             semantic_binding='conceptual_explainer',semantic_tags=['Johnny Harris','剪辑节奏'],
+             channel='Johnny Harris',claim='剪辑节奏',cut_points=[1.25,2.5],metrics=[dict(label='平均镜长',value='1.25 秒')]),
+        dict(id='capture',start=4,end=8,stage_mode='callout_rig',source='clip.mp4',
+             anchor_cue_id='b',spoken_topic='看高亮区域',visual_subject='现场',semantic_binding='exact_tool_capture',
+             semantic_tags=['现场'],overlays=[dict(kind='corner_tag',at=.15,label='录屏实测',sublabel='现场 A'),overlay]),
+    ]
+    cues = {'a':{'firstCharTime':0},'b':{'firstCharTime':4}}
+    prepared,_ = assemble.prepare_shots({'shots':shots},tmp_path,cues)
+    stage = assemble.build_act(prepared,tmp_path,tmp_path,'原片拆解',subprocess.run)
+    row,tags = stage.shots
+    assert row['stage_mode']=='reference_breakdown' and row['cut_count']==3 and row['beats']==[0.,1.25,2.5]
+    assert row['channel']=='Johnny Harris' and row['claim']=='剪辑节奏' and row['metrics']==shots[0]['metrics']
+    assert tags['overlays'][1]['target_verified'] is True
+    assert 'left:80px;top:156px;width:1152px;height:648px' in stage.media_layers[0] and 'muted' in stage.media_layers[0]
+    html = ''.join(stage.plates)
+    assert all(word in html for word in ('画面引用 · Johnny Harris','镜头 #01','平均镜长','1.25 秒','#101b1b42','#172322eb'))
+    assert 'drop-shadow' not in html and 'y="353.0"' in html
+    assert "textContent:'镜头 #03',immediateRender:false},2.50000)" in ''.join(stage.scripts)
+    assert dict(kind='pop',at=4.15,gain=.10) in stage.sound_events()
+    assert dict(kind='tick',at=2.5,gain=.10) in stage.sound_events()
+    assert spotlight_restraint_gate(stage.shots)['ok']
+    props = dict(shots[0],stage_mode='fullbleed_rig',visual_subject='书和笔',semantic_tags=['书和笔'],semantic_binding='physical_prop')
+    assert semantic_binding_gate([props])['ok']
+    assert not semantic_binding_gate([dict(props,spoken_topic='Johnny 用 FFmpeg 展示书和笔')])['ok']
+    if os.environ.get('YICE_TEST_REF_LAYOUT')=='1':
+        assemble.install_asset(Path(os.environ['YICE_GSAP_PATH']),tmp_path/'vendor/gsap.min.js')
+        wave(tmp_path/'assets/mix.wav',tone(8.,.1))
+        stage.write_project(tmp_path,timeline_out=tmp_path/'shot-timeline.json')
+        result = subprocess.run(['npx','--offline','hyperframes','check','.'],cwd=tmp_path,
+                                text=True,capture_output=True)
+        output = result.stdout+result.stderr
+        print(output)
+        assert result.returncode==0
+        for section, following in (('Layout','Motion'),('Craft','Audio')):
+            body = output.split(f'\n{section}\n',1)[1].split(f'\n{following}\n',1)[0]
+            assert re.search(r'\b0 (?:issues|errors?)\b',body)
+        counter = subprocess.run(['node','-e',"""
+            const {chromium} = require(process.env.YICE_PLAYWRIGHT_MODULE);
+            const {pathToFileURL} = require('node:url');
+            (async () => {
+                const browser = await chromium.launch({channel:'chrome'});
+                try {
+                    const page = await browser.newPage();
+                    await page.goto(pathToFileURL(process.argv[1]).href);
+                    const readings = await page.evaluate(() => {
+                        const timeline = window.__timelines.main;
+                        const counter = document.querySelector('.ref-cut-counter');
+                        return [0, 2, 3, .5, 2.6].map(time => {
+                            timeline.seek(time);
+                            return counter.textContent;
+                        });
+                    });
+                    process.stdout.write(JSON.stringify(readings));
+                } finally {
+                    await browser.close();
+                }
+            })().catch(error => { console.error(error); process.exitCode = 1; });
+        """,str(tmp_path/'index.html')],check=True,capture_output=True,text=True)
+        assert json.loads(counter.stdout)==['镜头 #01','镜头 #02','镜头 #03','镜头 #01','镜头 #03']
+        print('Chrome 正向及逆向 seek 的镜头计数均正确')
 
 
 def test_breath_gate_catches_digital_zero_and_insertion_log(tmp_path):

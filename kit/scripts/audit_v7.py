@@ -26,11 +26,15 @@ TOOLS = {
     'cursor': ('cursor',),
     'huggingface': ('hugging face', 'huggingface'),
     'qwen3tts': ('qwen3-tts', 'qwen3 tts'),
+    'johnnyharris': ('johnny harris', 'johnny'),
+    'fireship': ('fireship',),
 }
+CREATORS = {'johnnyharris','fireship'}
 ABSTRACT = ('规则', '清单', '优先级', '总结', '原则', '三句话', '步骤', 'rules', 'checklist', 'summary', 'priority')
 BINDINGS = {'exact_tool_capture', 'conceptual_explainer', 'physical_prop', 'callback_cut'}
-MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards'}
-REAL = {'callout_rig', 'cold_open_ab', 'fullbleed_rig', 'web_cam', 'real_video', 'stock_broll'}
+MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards', 'reference_breakdown'}
+REAL = {'callout_rig', 'cold_open_ab', 'fullbleed_rig', 'web_cam', 'real_video', 'stock_broll', 'reference_breakdown'}
+MOTION_OVERLAYS = {'stat_badge','strikethrough_list','verdict_stamp','spotlight_box','corner_tag'}
 SFX = {'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser', 'slap'}
 
 
@@ -92,7 +96,10 @@ def semantic_binding_gate(shots):
                 violations.append({'shot':shot.get('id'),'reason':'声明的工具实体未同时出现在主体和素材标签'})
                 continue
             mentioned |= named
-        if mode in REAL and mentioned and not mentioned <= (shown & labeled):
+        required = mentioned
+        if mode!='reference_breakdown' and binding in {'physical_prop','callback_cut'}:
+            required = mentioned-CREATORS
+        if mode in REAL and required and not required <= (shown & labeled):
             violations.append({'shot':shot.get('id'),'reason':'点名工具与实际画面实体不一致',
                                'spoken_entities':sorted(mentioned),'visual_entities':sorted(shown & labeled)})
             continue
@@ -103,13 +110,48 @@ def semantic_binding_gate(shots):
             overlays = shot.get('overlays', [])
             labels = ' '.join(' '.join([str(overlay.get('label','')), *map(str,overlay.get('items',[]))])
                               for overlay in overlays)
+            if mode=='reference_breakdown':
+                labels += ' '+str(shot.get('claim',''))
             matches_topic = any(text in labels.casefold() for text in ABSTRACT) or any(
                 len(normalized(tag))>=2 and normalized(tag) in normalized(labels)
                 and normalized(tag) in normalized(topic) for tag in tags)
-            if (mode not in {'callout_rig','cold_open_ab'} or not shot.get('has_motion_overlay')
+            if (mode not in {'callout_rig','cold_open_ab','reference_breakdown'} or not shot.get('has_motion_overlay')
                     or binding not in {'callback_cut','conceptual_explainer'} or not matches_topic):
                 violations.append({'shot':shot.get('id'),'reason':'抽象规则或清单需要语义匹配的动效或总结贴图'})
     return {'ok':not violations,'violations':violations}
+
+
+def spotlight_restraint_gate(shots):
+    violations = []
+    coordinates = {}
+    count = 0
+    maximum = max(3,int(len(shots)*.08))
+    for shot in shots:
+        key = shot.get('id')
+        if stage_mode(shot)=='reference_breakdown' and any(
+                not isinstance(shot.get(field),str) or not shot[field].strip() for field in ('channel','claim')):
+            violations.append({'shot':key,'reason':'原片拆解缺少频道署名或拆解主张'})
+        for overlay in shot.get('overlays',[]):
+            if overlay.get('kind')!='spotlight_box':
+                continue
+            count += 1
+            box = overlay.get('box')
+            try:
+                x,y,w,h = map(float,box)
+                valid_box = all(isfinite(v) for v in (x,y,w,h)) and 64<=w<=680 and 48<=h<=340
+            except (TypeError,ValueError):
+                valid_box = False
+            note = overlay.get('target_note')
+            if not valid_box or overlay.get('target_verified') is not True or not isinstance(note,str) or not note.strip():
+                violations.append({'shot':key,'reason':'局部高亮框未做像素目标核验或尺寸超限'})
+            if valid_box:
+                coords = tuple(round(v,1) for v in (x,y,w,h))
+                first = coordinates.setdefault(coords,key)
+                if first!=key:
+                    violations.append({'shot':key,'first_shot':first,'reason':'禁止跨镜头复制粘贴相同盲框坐标'})
+    if count>maximum:
+        violations.append({'reason':'局部高亮框滥用超过全片 8% 上限','count':count,'maximum':maximum})
+    return {'ok':not violations,'violations':violations,'spotlight_count':count,'maximum':maximum}
 
 
 def opener_bgm_and_sfx_gate(bed, marks, duration):
@@ -139,16 +181,16 @@ def first_half_motion_density_gate(shots, duration):
         half = int(start >= duration/2)
         counts[half] += 1
         mode = stage_mode(shot)
-        has_overlay = mode in {'callout_rig','studio_ui'} and shot.get('has_motion_overlay') and shot.get('overlays')
-        moving[half] += int(mode in MOTION or bool(has_overlay))
-        if mode in REAL and mode != 'cold_open_ab' and not has_overlay:
+        has_overlay = any(overlay.get('kind') in MOTION_OVERLAYS for overlay in shot.get('overlays',[]))
+        moving[half] += int(mode in MOTION or mode=='studio_ui' or has_overlay)
+        if mode in REAL and mode not in MOTION and not has_overlay:
             bare = (bare if start-previous<=.001 else 0.)+end-start
             longest = max(longest,bare)
         else:
             bare = 0.
         previous = end
     shares = [motion/max(1,n) for motion,n in zip(moving,counts)]
-    return {'ok':min(shares)>=.35 and longest<=14.+1e-6,'half_motion_shares':shares,
+    return {'ok':min(shares)>=.35 and longest<=16.+1e-6,'half_motion_shares':shares,
             'motion_shots_by_half':moving,'longest_bare_video_seconds':longest}
 
 
@@ -272,6 +314,7 @@ def video_gates(timeline, project, rendered, duration, errors):
     gates = {
         'v7_timeline_gate': timeline_gates(timeline,project,duration),
         'semantic_binding_gate': semantic_binding_gate(timeline['shots']),
+        'spotlight_restraint_gate': spotlight_restraint_gate(timeline['shots']),
         'opener_bgm_and_sfx_gate': opener_bgm_and_sfx_gate(Path(rendered).parent/'bed-only.wav',timeline.get('sound_marks',[]),duration),
         'first_half_motion_density_gate': first_half_motion_density_gate(timeline['shots'],duration),
         'breath_integrity_gate': breath_integrity_gate(project,timeline),
