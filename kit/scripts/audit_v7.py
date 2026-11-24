@@ -1,5 +1,5 @@
 """Audit the relationship between narration, shot subjects and actual masters."""
-from collections import Counter
+from collections import defaultdict
 import hashlib
 import json
 from math import isfinite
@@ -36,6 +36,20 @@ MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards', 
 REAL = {'callout_rig', 'cold_open_ab', 'fullbleed_rig', 'web_cam', 'real_video', 'stock_broll', 'reference_breakdown'}
 MOTION_OVERLAYS = {'stat_badge','strikethrough_list','verdict_stamp','spotlight_box','corner_tag'}
 SFX = {'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser', 'slap'}
+VIDEO_EXTENSIONS = {'.mp4','.m4v','.mov','.webm'}
+WHITEBOARD_ICONS = {'person','cat','network','doc','chat','bulb','check','cross','screen','stack','gear','target','clock','chart'}
+STRUCTURED_CUES = {'bar','line','candle','image','clip','card','equation'}
+
+
+def difference_hash(image):
+    resized = image.convert('L').resize((9,8))
+    pixels = list(resized.get_flattened_data()) if hasattr(resized,'get_flattened_data') else list(resized.getdata())
+    bits = 0
+    for row in range(8):
+        for column in range(8):
+            i = row*9+column
+            bits = (bits << 1) | int(pixels[i]>pixels[i+1])
+    return bits
 
 
 def probe_video(path):
@@ -247,7 +261,8 @@ def timeline_gates(timeline, project, duration):
     invalid, unaligned, missing = [],[],[]
     seen_ids, digest_cache = set(),{}
     card_durations, invalid_cards = {}, []
-    source_reuse = Counter()
+    source_reuse = defaultdict(list)
+    overlaps, bad_callbacks = [], []
     for shot in sorted(shots,key=lambda row:float(row['start'])):
         key = shot['id']
         a,b = float(shot['start']),float(shot['end'])
@@ -261,6 +276,8 @@ def timeline_gates(timeline, project, duration):
         if cue is None or abs(a-cue)>.220001:
             unaligned.append(key)
         mode = stage_mode(shot)
+        span = b-a
+        video_windows = []
         if mode=='triptych_cards':
             cards = shot.get('cards',[])
             if (not isinstance(cards,list) or not 2<=len(cards)<=4
@@ -276,38 +293,94 @@ def timeline_gates(timeline, project, duration):
                         if (card.get('loop') or not path.is_file() or not 0<=reveal_at<b-a
                                 or not isfinite(media_start) or media_start<0):
                             raise ValueError('卡片源或入点无效')
-                        if path.suffix.lower()=='.mp4':
+                        if path.suffix.lower() in VIDEO_EXTENSIONS:
                             if path not in card_durations:
                                 card_durations[path] = probe_video(path)
-                            if card_durations[path]+1e-5<media_start+b-a-reveal_at+.2:
+                            if card_durations[path]+1e-5<media_start+span-reveal_at+.2:
                                 raise ValueError('卡片视频缺少余量')
+                            video_windows.append((path,media_start,span-reveal_at))
                         elif path.suffix.lower() not in {'.png','.jpg','.jpeg'}:
                             raise ValueError('卡片素材格式无效')
                     except (TypeError,ValueError,KeyError,OSError,subprocess.CalledProcessError):
                         invalid_cards.append(key)
                         break
         if mode in REAL:
-            real_seconds += b-a
-            files = [project/f for f in shot.get('files',[]) if Path(f).suffix.lower() in {'.mp4','.m4v','.mov','.webm'}]
+            real_seconds += span
+            files = [project/f for f in shot.get('files',[]) if Path(f).suffix.lower() in VIDEO_EXTENSIONS]
             if not files:
                 missing.append(key)
-            for path in files:
-                if not path.is_file():
-                    missing.append(key)
-                    continue
-                if path not in digest_cache:
-                    with path.open('rb') as f:
-                        digest_cache[path] = hashlib.file_digest(f,'sha256').hexdigest()
-                source_reuse[digest_cache[path]] += 1
+            media_start = float(shot.get('media_start',0.))
+            video_windows.extend((path,media_start,span) for path in files)
+        callback_of = shot.get('callback_of')
+        valid_callback = False
+        for path, source_start, play_span in video_windows:
+            if not path.is_file():
+                missing.append(key)
+                continue
+            if not isfinite(source_start) or source_start<0 or play_span<=0:
+                invalid.append(key)
+                continue
+            if path not in digest_cache:
+                with path.open('rb') as f:
+                    digest_cache[path] = hashlib.file_digest(f,'sha256').hexdigest()
+            digest = digest_cache[path]
+            previous_uses = source_reuse[digest]
+            callback = bool(callback_of and callback_of!=key and any(use['shot']==callback_of for use in previous_uses))
+            valid_callback |= callback
+            source_end = source_start+play_span
+            if not callback:
+                for use in previous_uses:
+                    overlap = min(source_end,use['end'])-max(source_start,use['start'])
+                    if not use['callback'] and overlap>.250001:
+                        overlaps.append(dict(sha256=digest,first_shot=use['shot'],shot=key,seconds=round(overlap,5)))
+            previous_uses.append(dict(shot=key,start=source_start,end=source_end,callback=callback))
+        if callback_of and not valid_callback:
+            bad_callbacks.append(key)
     if abs(previous-duration)>.045:
         invalid.append('timeline_end')
     ratio = real_seconds/duration if duration else 0.
     ratio_ok = .45<=ratio<=.72
-    repeats = {digest:count for digest,count in source_reuse.items() if count>3}
-    return {'ok':not (invalid or unaligned or repeats or missing or invalid_cards) and ratio_ok,
+    repeats = {digest:len(uses) for digest,uses in source_reuse.items()
+               if sum(not use['callback'] for use in uses)>2 or sum(use['callback'] for use in uses)>1}
+    return {'ok':not (invalid or unaligned or repeats or missing or invalid_cards or overlaps or bad_callbacks) and ratio_ok,
             'real_ratio':ratio,'ratio_ok':ratio_ok,'invalid_shots':invalid,'missing_real_media':missing,
             'invalid_triptych_media':invalid_cards,
+            'overlapping_source_windows':overlaps,'invalid_callbacks':bad_callbacks,
             'max_anchor_deviation':deviation,'unaligned':unaligned,'overused_sources':repeats}
+
+
+def explainer_density_gate(shots, project=None):
+    violations = []
+    for shot in shots:
+        if stage_mode(shot)!='explainer_clip':
+            continue
+        key = shot['id']
+        spec = shot.get('spec')
+        if not isinstance(spec,dict) and project is not None:
+            root = Path(project)
+            path = shot.get('explainer_spec') or spec
+            if not path:
+                files = shot.get('files',[])
+                expected = f'exp-{key}.json'
+                path = next((str(Path(item).with_suffix('.json')) for item in files
+                             if Path(item).with_suffix('.json').name==expected),None)
+            candidates = [root/path] if path else sorted(root.glob(f'acts/*/assets/exp-{key}.json'))
+            try:
+                spec = json.loads(candidates[0].read_text()) if len(candidates)==1 else None
+            except (OSError,ValueError):
+                spec = None
+        if not isinstance(spec,dict) or not isinstance(spec.get('cues'),list):
+            violations.append(dict(shot=key,reason='缺少可核验的解说动效 spec'))
+            continue
+        cues = spec['cues']
+        if spec.get('grammar')=='y3_whiteboard' and any(
+                cue.get('kind')=='draw' and (cue.get('data') or {}).get('icon') not in WHITEBOARD_ICONS for cue in cues):
+            violations.append(dict(shot=key,reason='y3_whiteboard 的 draw 缺少有效 data.icon，禁止空笔画白板'))
+        visible = sum(len(''.join(str(row.get(field) or '').split())) for cue in cues
+                      for row in (cue,cue.get('data') or {}) for field in ('text','sub','bad','good','label'))
+        if visible<26 and not any(cue.get('kind') in STRUCTURED_CUES for cue in cues):
+            violations.append(dict(shot=key,reason='解说动效信息密度过低（少于 26 字且无图表/卡片结构），页面过于空旷'))
+    return {'ok':not violations,'violations':violations}
 
 
 def video_gates(timeline, project, rendered, duration, errors):
@@ -318,6 +391,7 @@ def video_gates(timeline, project, rendered, duration, errors):
         'opener_bgm_and_sfx_gate': opener_bgm_and_sfx_gate(Path(rendered).parent/'bed-only.wav',timeline.get('sound_marks',[]),duration),
         'first_half_motion_density_gate': first_half_motion_density_gate(timeline['shots'],duration),
         'breath_integrity_gate': breath_integrity_gate(project,timeline),
+        'explainer_density_gate': explainer_density_gate(timeline['shots'],project),
     }
     for name,report in gates.items():
         if not report['ok']:

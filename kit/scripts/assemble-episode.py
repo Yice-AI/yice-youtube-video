@@ -303,10 +303,11 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
             stage.add_video(a,b,clip,0,0,1920,1080,fit='cover')
             stage._shot(text,'explainer_graphic',a,b,[clip],beats=[r['at'] for r in spec['cues']])
             stage.shots[-1]['grammar'] = spec['grammar']
+            stage.shots[-1]['explainer_spec'] = str(Path(clip).with_suffix('.json'))
             if spec['grammar']=='t6_swiss_card':
                 stage.light_zones.append((a,b))
         fields = ('anchor_cue_id','anchor_cue_start','anchor_text','spoken_topic','visual_subject',
-                  'semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','overlays','media_start')
+                  'semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','overlays','media_start','callback_of')
         stage.shots[-1].update({field:shot[field] for field in fields if field in shot},id=key,stage_mode=mode)
     return stage
 
@@ -404,6 +405,8 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
             global_row = dict(row,start=round(offset+row['start'],5),end=round(offset+row['end'],5),files=files)
             if row['stage_mode']=='triptych_cards':
                 global_row['cards'] = [dict(card,source=file) for card,file in zip(row['cards'],files)]
+            if 'explainer_spec' in row:
+                global_row['explainer_spec'] = (folder/row['explainer_spec']).relative_to(output).as_posix()
             global_shots.append(global_row)
     cuts = None
     music = audio.get('bgm',[])

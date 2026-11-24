@@ -1,18 +1,24 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.2。长段落原速配音、全片混音、静音参考片拆解与真实视频叠层、声明式分幕装配及成片审计。适用于旁白、真实录屏、分镜、成片和返修。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.3。六路选材、渲染前核验实际画面、原速配音、结构化看板、分幕装配与成片审计。适用于旁白、真实录屏、分镜、成片和返修。
 ---
 
-# 一策 YouTube 视频制作 v7.2
+# 一策 YouTube 视频制作 v7.3
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。
 
 ## 制片入口
 
-1. 整理实测底账、旁白与逐镜画面。每镜注明实际画面主体、语义绑定和首字锚点。公开网页用 `kit/scripts/record-web-cam.sh` 采集深色实录，实操优先连续多点跟焦，概念及数据用解说动效或语义对应叠层。
-2. 执行 `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`，也可显式选择已授权端点。默认 `--chunk-mode long_paragraph` 和 `--profile natural_v7`，在中文句末分段，每段优先 65–115 字、最多 5 句。`--pause-after 0-3=3.0` 登记一处设计留白。Kaggle 默认异步提交并每 2.5 秒轮询，等待上限 900 秒（可用 `YICE_TTS_TIMEOUT` 调整），异步提交返回 HTTP 404 时自动回退同步接口。
-3. 写成 `episode-manifest.json` 后执行 `bash kit/scripts/assemble-episode.sh episode-manifest.json --output out`。装配会校验媒体时长、切点和语义，渲染所需动效，合成母带并运行 HyperFrames check 和 render。输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 与 `acts/`。分幕按工程、素材和分幕母带指纹增量复用，`--force-render` 可强制重渲。`--build-only` 生成分幕工程与母带。
-4. 执行 `bash kit/scripts/audit-v3.sh --v7 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，结合成片目检交付。
+1. **拆稿定证据。** 每句注明要证明的事实、实际画面主体、语义绑定和首字锚点。「第一遍挡住、第二遍移开」「改前、改后」按可辨认的画面状态和台词时序编排。
+2. **按主体找素材。** 以下入口均在 `kit/scripts/`，保留素材来源和可复查的时间窗。
+   - 本机实操用 `rec-demo.sh` 或常驻录屏师，保留连续操作。
+   - 公开网页、文档与开源仓库用 `record-web-cam.sh` 录制深色高倍率画面。
+   - 官方产品页的原生视频、图标和矢量标志用 `collect-entity.sh`。
+   - 往期成片或长录屏用 `scout-video-scenes.sh long.mp4 --output scout` 找互不重叠、画面不同且信息量高的选段，默认过滤大面积纯色字卡。
+   - 具象实物特写和人物抠像分别用 `find-media.sh`、`people-add.sh`。
+   - 对原片内容或剪辑的具体评论可用 `reference_breakdown`，原片静音，明确频道署名和实测切点。
+3. **配音并验帧。** 执行 `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`。默认 `long_paragraph` 优先 65–115 字、最多 5 句，`natural_v7` 保留呼吸。`--pause-after 0-3=3.0` 可登记留白。Kaggle 异步每 2.5 秒轮询，默认总等待 900 秒，异步提交 HTTP 404 才回退。清单写好后运行 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify`，按首、中、尾帧逐镜核对台词及因果顺序。
+4. **装配与审片。** 规则、分步和片尾总结优先用 `t7_editorial_board` 正反对照或结构看板，数值关系用 `t3_finance_chart`。用 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 装片，输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 和分幕工程。输入一致的幕可复用，`--force-render` 强制刷新，`--build-only` 生成工程与母带。最后执行 `kit/scripts/audit-v3.sh --v7 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
 
 ## episode-manifest.json
 
@@ -88,7 +94,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.2�
 - `natural_v7` 保留呼吸。段间采用室温底噪及余弦过渡，独立后期默认 `--preserve-natural-breath`，只收紧验证过的超长静音，保留登记的戏剧留白。Whisper 的同音同调及英文拼写变体会单独留档，漏读和实质错读进入整句修复。历史项目可指定 `--chunk-mode legacy_chunk` 和 `--profile legacy`。
 - 已有多段原音可执行 `kit/scripts/voice.sh --concat-wavs part-a.wav part-b.wav --pause 1=3.0 --crossfade-ms 80 --room-tone-dbfs -68 --output chapter.wav`。边界编号从 1 起，表示第一段与第二段之间。默认使用 −68 dBFS 底噪，并在拼接处以半余弦包络融入 110 ms 前导和 130 ms 尾音。
 - `EpisodeAudioMixer` 从 0 秒铺入底乐，人声 -22 dB、留白 -13 dB 闪避，跨幕余弦换曲，支持 Music Drop。母带目标 -14.5 ± 0.8 LUFS，真峰值 ≤ -1.0 dBTP。
-- v7 审计核对语义对口、首字切点、真实视频底图占比 45%–72%、同源素材最多三次回扣。前 15 秒底乐高于 -42 dBFS，前 45 秒至少三处动作音效。前后半程各至少 35% 动效，连续裸视频至多 16 秒。原始人声和处理记录参加真空检查，成片参加像素、OCR、黑帧与重复审计。
+- v7 审计核对语义、首字切点和 45%–72% 真视频底图。同源视频常规使用至多两次，窗口重叠超过 0.25 秒触发门禁，另可明确用 `callback_of` 登记一次回扣。多栏视频也纳入复用检查。跨镜相似帧至多出现两次。低于 26 字又缺少图表、图像或结构卡的解说会被拦截。前 15 秒底乐高于 −42 dBFS，前 45 秒至少三处动作音效，前后半各至少 35% 动效，连续裸视频至多 16 秒。人声参加真空检查，成片参加像素、OCR 和黑帧审计。
 
 实测数字保留可核对底账。`reference_breakdown` 与对比双卡支持符合合理使用（Fair Use）条件的参考短切片拆解。原片音轨全程静音，显式声明并展示 `channel` 来源署名，配合实测切点和针对原片的分析。使用 `spotlight_box` 的非静止实录围绕核验坐标同心跟焦，角落标识、数字角标保持固定。Claude 桌面使用脱敏静态截图，参考音频仅走已授权云端端点，画面移除本机路径、私人会话和凭据。
 

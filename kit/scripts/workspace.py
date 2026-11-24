@@ -196,6 +196,7 @@ def main():
                "voice-post.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "voice-repair.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "assemble-episode.py": ("YICE_VOICE_PYTHON", "asr-venv"),
+               "scout-video-scenes.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "mix-episode-audio.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "props.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
                "cutout.py": ("YICE_IMAGE_PYTHON", "tts-venv"),

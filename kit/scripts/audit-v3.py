@@ -14,6 +14,7 @@ from fractions import Fraction
 from pathlib import Path
 
 from review import run
+from audit_v7 import difference_hash
 
 REAL = {"real_video", "web_cam", "screenshot"}
 VISUAL = {".mp4", ".mov", ".webm", ".jpg", ".jpeg", ".png", ".webp", ".svg"}
@@ -108,16 +109,11 @@ def _dhash(path: Path, second: float) -> int:
     from PIL import Image
     with tempfile.NamedTemporaryFile(suffix=".png") as tmp:
         run(["ffmpeg", "-v", "error", "-y", "-ss", f"{second:.3f}", "-i", str(path), "-frames:v", "1", tmp.name])
-        image = Image.open(tmp.name).convert("L").resize((9, 8))
-        pixels = list(image.get_flattened_data()) if hasattr(image, "get_flattened_data") else list(image.getdata())
-    bits = 0
-    for row in range(8):
-        for col in range(8):
-            bits = (bits << 1) | int(pixels[row * 9 + col] > pixels[row * 9 + col + 1])
-    return bits
+        with Image.open(tmp.name) as image:
+            return difference_hash(image)
 
 
-def dhash_gate(rendered: Path, timeline: dict, errors: list[str]) -> dict:
+def dhash_gate(rendered: Path, timeline: dict, errors: list[str], *, v7=False) -> dict:
     shots = sorted(timeline.get("shots", []), key=lambda row: float(row["start"]))
     hashes = []
     for shot in shots:
@@ -133,9 +129,10 @@ def dhash_gate(rendered: Path, timeline: dict, errors: list[str]) -> dict:
             groups.append([item])
         else:
             group.append(item)
-    repeats = [group for group in groups if len(group) > 4]
+    repeats = [group for group in groups if len(group) > (2 if v7 else 4)]
     for group in repeats:
-        errors.append("v4 dHash 跨镜重复超过 4 次：" + ", ".join(item["shot"] for item in group))
+        reason = "v7 dHash 跨镜视觉重复超过 2 次" if v7 else "v4 dHash 跨镜重复超过 4 次"
+        errors.append(reason + "：" + ", ".join(item["shot"] for item in group))
     return {"shot_samples": len(hashes), "duplicate_groups": [[item["shot"] for item in group] for group in repeats]}
 
 
@@ -557,7 +554,7 @@ def rendered(args, out, errors):
         else:
             result["pixel_gate"] = pixel_dead_frame_gate(args.rendered, duration, errors, timeline)
             result["black_frame_gate"] = black_frame_gate(args.rendered, timeline, duration, errors)
-            result["dhash_gate"] = dhash_gate(args.rendered, timeline, errors)
+            result["dhash_gate"] = dhash_gate(args.rendered, timeline, errors,v7=v7)
             result["music_drop_acoustic"] = music_drop_acoustic_gate(args.rendered, timeline, errors,
                                                                     minimum=0 if v7 else 4)
         result["subzone_gate"] = subzone_gate(args.project, errors)

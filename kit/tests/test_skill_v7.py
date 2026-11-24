@@ -20,7 +20,7 @@ import soundfile as sf
 
 KIT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(KIT.parent), str(KIT/'scripts')]
-from audit_v7 import (breath_integrity_gate, first_half_motion_density_gate,
+from audit_v7 import (breath_integrity_gate, explainer_density_gate, first_half_motion_density_gate,
                       opener_bgm_and_sfx_gate, semantic_binding_gate,
                       spotlight_restraint_gate, timeline_gates)
 from kit.editorial.audio_mix import EpisodeAudioMixer
@@ -428,6 +428,111 @@ def test_v7_ocr_channel_exemption_is_scoped_to_declared_shot_and_keeps_privacy()
         assert set(hits(second)) == {*privacy,'Johnny Harris','Fireship'}
     assert set(hits(1,None)) == {*privacy,'Johnny Harris','Fireship'}
     assert 'Johnny Harris' in hits(1,terms=[*privacy,'Johnny Harris'])
+
+
+def test_v73_reuse_counts_triptych_windows_and_explicit_callback(tmp_path, monkeypatch):
+    audit = importlib.import_module('audit_v7')
+    for name in ('clip.mp4','renamed.mov','callback.mp4'):
+        (tmp_path/name).write_bytes(b'identical encoded video')
+    (tmp_path/'still.png').touch()
+    monkeypatch.setattr(audit,'probe_video',lambda path: 12.)
+    shots = [
+        dict(id='a',start=0,end=3,anchor_cue_id='a',stage_mode='fullbleed_rig',files=['clip.mp4'],media_start=0),
+        dict(id='b',start=3,end=6,anchor_cue_id='b',stage_mode='triptych_cards',files=['renamed.mov','still.png'],
+             cards=[dict(source='renamed.mov',media_start=2.5,reveal_at=.5),dict(source='still.png',reveal_at=0)]),
+        dict(id='c',start=6,end=9,anchor_cue_id='c',stage_mode='reference_breakdown',files=['callback.mp4'],media_start=0),
+        dict(id='d',start=9,end=11,anchor_cue_id='d',stage_mode='title_sequence'),
+    ]
+    timeline = {'shots':shots,'cues':[dict(id=shot['id'],firstCharTime=shot['start']) for shot in shots]}
+    rejected = timeline_gates(timeline,tmp_path,11)
+    assert not rejected['ok'] and any(row['shot']=='b' and row['seconds']==.5 for row in rejected['overlapping_source_windows'])
+    assert list(rejected['overused_sources'].values())==[3]
+    shots[1]['cards'][0]['media_start'] = 2.75
+    shots[2]['callback_of'] = 'a'
+    allowed = timeline_gates(timeline,tmp_path,11)
+    assert allowed['ok'] and not allowed['overlapping_source_windows']
+    shots[2]['callback_of'] = 'd'
+    assert timeline_gates(timeline,tmp_path,11)['invalid_callbacks']==['c']
+
+
+def test_v73_dhash_and_explainer_density_gates(tmp_path, monkeypatch):
+    audit = importlib.import_module('audit-v3')
+    monkeypatch.setattr(audit,'_dhash',lambda file, at: 0x12341234)
+    timeline = {'shots':[dict(id=str(i),start=i,end=i+1) for i in range(3)]}
+    legacy, current = [],[]
+    audit.dhash_gate(Path('fixture.mp4'),timeline,legacy)
+    rejected = audit.dhash_gate(Path('fixture.mp4'),timeline,current,v7=True)
+    assert not legacy and rejected['duplicate_groups']==[['0','1','2']] and '超过 2 次' in current[0]
+
+    sparse = dict(id='sparse',stage_mode='explainer_clip',
+                  spec=dict(grammar='y3_whiteboard',cues=[dict(kind='draw',text='方法')]))
+    violations = explainer_density_gate([sparse])['violations']
+    assert len(violations)==2 and 'data.icon' in violations[0]['reason'] and '26 字' in violations[1]['reason']
+    sparse['spec']['cues'] = [dict(kind='draw',data={'icon':'doc'},text='从真实操作到量化结果，把每一步和观测证据、下一步行动写清楚。')]
+    assert explainer_density_gate([sparse])['ok']
+    path = tmp_path/'acts/act-1/assets/exp-board.json'
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(dict(grammar='t7_editorial_board',cues=[dict(kind='card',text='短标题')])))
+    assert explainer_density_gate([dict(id='board',stage_mode='explainer_clip')],tmp_path)['ok']
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
+def test_scout_filters_flat_frames_and_verifies_source_time(tmp_path):
+    source = tmp_path/'old-cut.mp4'
+    subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','color=green:s=320x180:r=30:d=2',
+                    '-f','lavfi','-i','testsrc2=s=320x180:r=30:d=4','-f','lavfi','-i','testsrc2=s=320x180:r=30:d=3',
+                    '-filter_complex','[2:v]hflip[mirror];[0:v][1:v][mirror]concat=n=3:v=1:a=0',
+                    '-c:v','libx264','-pix_fmt','yuv420p',str(source)],check=True)
+    script = str(KIT/'scripts/scout-video-scenes.py')
+    output = tmp_path/'scout'
+    subprocess.run([sys.executable,script,str(source),'--output',str(output),'--window','1.5','--step','.5'],check=True)
+    candidates = json.loads((output/'scene-candidates.json').read_text())
+    assert len(candidates)>=2 and all(not row['is_flat_slide'] and row['end']<=8.75 for row in candidates)
+    for i,row in enumerate(candidates):
+        for old in candidates[:i]:
+            assert max(row['start'],old['start'])>=min(row['end'],old['end'])
+            assert (int(row['dhash'],16)^int(old['dhash'],16)).bit_count()>8
+    assert (output/'scene-candidates.jpg').is_file()
+    manifest = tmp_path/'episode-manifest.json'
+    manifest.write_text(json.dumps({
+        'cues':[dict(id='c1',text='第二遍移开鼠标。')],
+        'shots':[dict(id='step-2',stage_mode='callout_rig',start=0,end=2,media_start=2,source=source.name,
+                      anchor_cue_id='c1',spoken_topic='移开挡字的鼠标',overlays=[dict(kind='spotlight_box',box=[600,200,300,200])]),
+                 dict(id='cards',stage_mode='triptych_cards',start=2,end=4,cards=[
+                     dict(source=source.name,media_start=3,reveal_at=.4),dict(source='frame.png',reveal_at=0)])],
+    }))
+    subprocess.run([sys.executable,script,'--verify-manifest',str(manifest),'--output',str(output)],check=True)
+    verification = json.loads((output/'manifest-visual-verify.json').read_text())
+    step, cards = verification['shots']
+    assert step['times']==[2.3,3.,3.7] and step['anchor_text']=='第二遍移开鼠标。'
+    assert step['spotlight_boxes']==[[600,200,300,200]] and cards['times']==[3.3,3.8,4.3]
+    assert verification['manual_review_required'] and (output/'manifest-visual-verify.jpg').is_file()
+
+
+def test_t7_editorial_board_schema_and_offline_render(tmp_path):
+    schema = json.loads((KIT/'explainer/clip_schema.json').read_text())
+    assert schema['grammars']['t7_editorial_board']['kinds']==['title','card','footer']
+    if os.environ.get('YICE_TEST_BOARD_LIVE') != '1':
+        return
+    cards = [
+        ('保留操作证据','选择可以复现的首帧与尾帧','只放网站大标题','展示真实点击后的状态','先确认'),
+        ('先核对因果','源片的状态随旁白推进','改前改后用同一张图','核对鼠标是否移动到空白','逐镜核对'),
+        ('写清验收结果','每步都有能复测的数据','只说处理效果更好','写下失败条件和复测数字','再签发'),
+        ('存档实测底账','素材出处和数字可定位','从文件名猜测源片信息','保存来源与切片起止时间','记录来源'),
+    ]
+    spec = dict(grammar='t7_editorial_board',duration=3.,fps=30,width=1920,height=1080,
+                safe={'top':64,'bottom':172},data={'eyebrow':'教程复盘','layout':'rows'},
+                cues=[dict(kind='title',at=0,text='怎样选出能说明问题的画面',sub='核对证据、时序与结果'),
+                      *[dict(kind='card',at=.3+index*.43,text=title,sub=sub,
+                             data=dict(badge=f'0{index+1}',bad=bad,good=good,tag=tag))
+                        for index,(title,sub,bad,good,tag) in enumerate(cards)],
+                      dict(kind='footer',at=2.2,text='实操录屏  →  核对首中尾帧  →  留下可复测的证据')])
+    path, output = tmp_path/'board.json', tmp_path/'board.mp4'
+    path.write_text(json.dumps(spec,ensure_ascii=False))
+    run = subprocess.run(['bash',str(KIT/'scripts/render-explainer-clip.sh'),'--spec',str(path),
+                          '--out',str(output),'--audit'],check=True,text=True,capture_output=True)
+    print(run.stdout)
+    assert '红灯 0　黄灯 0' in run.stdout and output.stat().st_size>0
 
 
 @pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
