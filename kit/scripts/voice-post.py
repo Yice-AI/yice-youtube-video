@@ -362,15 +362,36 @@ def normalize_lufs(source, destination, target=-16.):
         raise ValueError('LUFS normalization changed sample count')
     levels = loudness(destination, target)
     delta = target - float(levels['input_i'])
-    if abs(delta) > .1 and float(levels['input_tp']) + delta <= -1.1:
-        adjusted = Path(destination).with_name(Path(destination).stem + '-gain.wav')
-        subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(destination),
-                        '-af', f'volume={delta}dB', '-c:a', 'pcm_s24le', str(adjusted)],
-                       check=True, capture_output=True)
-        if sf.info(adjusted).frames != info.frames:
-            raise ValueError('Gain changed sample count')
-        adjusted.replace(destination)
-        levels = loudness(destination, target)
+    if abs(delta) > .1:
+        destination = Path(destination)
+        ceiling = -1.35
+        force_limiter = False
+        with tempfile.TemporaryDirectory(prefix='lufs-gain-',dir=destination.parent) as directory:
+            adjusted = Path(directory)/'gain.wav'
+            for _ in range(2):
+                peak = float(levels['input_tp'])
+                gain = f'volume={delta}dB'
+                limited = force_limiter or peak + delta > -1.1
+                if limited:
+                    # Fourfold oversampling catches intersample peaks. Compensate
+                    # the look-ahead delay and enforce the original sample count.
+                    rate = info.samplerate
+                    gain += (f',aresample={4*rate},alimiter=limit={10**(ceiling/20):.8f}:'
+                             f'level=false:attack=3:release=40:latency=true,aresample={rate},'
+                             f'apad=whole_len={info.frames},atrim=end_sample={info.frames}')
+                subprocess.run(['ffmpeg','-v','error','-y','-i',str(destination),
+                                '-af',gain,'-c:a','pcm_s24le',str(adjusted)],check=True,capture_output=True)
+                if sf.info(adjusted).frames != info.frames:
+                    raise ValueError('Gain changed sample count')
+                levels = loudness(adjusted,target)
+                adjusted.replace(destination)
+                delta = target - float(levels['input_i'])
+                peak_error = max(0.,float(levels['input_tp']) + 1.05)
+                if not limited or (abs(delta)<=.35 and not peak_error):
+                    break
+                if peak_error:
+                    ceiling -= peak_error + .15
+                    force_limiter = True
     return dict(target_lufs=target, measured_lufs=float(levels['input_i']),
                 true_peak_dbtp=float(levels['input_tp']), samples=info.frames)
 

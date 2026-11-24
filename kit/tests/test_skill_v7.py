@@ -290,6 +290,37 @@ def test_music_and_effects_start_with_first_frame(tmp_path):
     assert not opener_bgm_and_sfx_gate(bed,effects[:2],5)['ok']
 
 
+@pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
+def test_master_gain_limits_transients_without_changing_frame_count(tmp_path, monkeypatch):
+    seconds = 32
+    time = np.arange(seconds*RATE)/RATE
+    voicebed = (.8*np.sin(2*np.pi*212*time)+.2*np.sin(2*np.pi*340*time))
+    voicebed *= np.repeat([.05,.4,.05,.05],8*RATE) * (.5+.5*np.sin(2*np.pi*2.8*time)**2)
+    for at in (3,8,13,18,23,28):
+        voicebed[at*RATE:at*RATE+round(1.1*RATE)] = 0
+    for at in (4,9,14,19,24,29):
+        voicebed[at*RATE:at*RATE+24] = .95*np.hanning(24)
+    source, target = tmp_path/'premaster.wav', tmp_path/'master.wav'
+    sf.write(source,voicebed,RATE,subtype='FLOAT')
+    measurements = []
+    measure = post.loudness
+
+    def record(path, target_lufs):
+        levels = measure(path,target_lufs)
+        measurements.append(levels)
+        return levels
+
+    monkeypatch.setattr(post,'loudness',record)
+    result = post.normalize_lufs(source,target,-14.5)
+    first_lufs = float(measurements[1]['input_i'])
+    first_peak = float(measurements[1]['input_tp'])
+    assert first_lufs < -15.3 and first_peak + (-14.5-first_lufs) > -1.1
+    assert sf.info(target).frames == sf.info(source).frames == result['samples']
+    assert abs(result['measured_lufs']+14.5)<=.35
+    assert result['true_peak_dbtp']<=-1.05
+    print('首轮',first_lufs,first_peak,'补偿后',result['measured_lufs'],result['true_peak_dbtp'],'采样帧',result['samples'])
+
+
 def test_overlay_primitives_emit_real_actions():
     stage = EditorialStage('实操样片',duration=14)
     stage.add_cold_open_ab(0,4,'left.mp4','right.mp4',hook='哪段更清楚？')
