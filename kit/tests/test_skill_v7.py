@@ -381,6 +381,33 @@ def test_spotlight_requires_verified_target_and_rejects_reuse():
     assert spotlight_restraint_gate([shots[0]])['ok']
 
 
+def test_v7_ocr_channel_exemption_is_scoped_to_declared_shot_and_keeps_privacy():
+    audit = importlib.import_module('audit-v3')
+    timeline = {'shots': [
+        {'start':0,'end':2,'stage_mode':'reference_breakdown','channel':'Johnny Harris'},
+        {'start':2,'end':4,'stage_mode':'triptych_cards','cards':[{'label':'画面引用 · Fireship'}],
+         'semantic_tags':['Johnny Harris 对照']},
+        {'start':4,'end':6,'stage_mode':'fullbleed_rig','semantic_tags':['Johnny Harris','Fireship']},
+        {'start':6,'end':8,'stage_mode':'triptych_cards','cards':[{'source':'fireship.mp4'}],
+         'semantic_tags':['NotFireshipClone']},
+    ]}
+    privacy = ['sample-owner','/Users/','alias@example.test','192.0.2.23']
+    rows = [{'text':'画面引用 · JOHNNY HARRIS / Fireship','box':[80,110,500,40]},
+            {'text':'Johnny Harris /Users/sample-owner alias@example.test 192.0.2.23','box':[80,160,720,40]},
+            {'text':'alias@example.test','box':[80,980,460,40]}]
+
+    def hits(second, citations=timeline, terms=privacy):
+        return [row['term'] for row in audit.frame_ocr_hits(rows,second,terms,citation_timeline=citations)]
+
+    assert set(hits(1)) == {*privacy,'Fireship'}
+    assert set(hits(2)) == set(privacy)
+    assert hits(2).count('alias@example.test') == 2
+    for second in (4,6,8):
+        assert set(hits(second)) == {*privacy,'Johnny Harris','Fireship'}
+    assert set(hits(1,None)) == {*privacy,'Johnny Harris','Fireship'}
+    assert 'Johnny Harris' in hits(1,terms=[*privacy,'Johnny Harris'])
+
+
 @pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
 def test_reference_breakdown_and_restraint_offline(tmp_path):
     subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','color=#475853:s=320x180:r=30:d=5',

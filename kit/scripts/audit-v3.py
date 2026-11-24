@@ -415,13 +415,45 @@ def timeline_metrics(data, duration, project, errors, *, v4=False, v5=False):
     return result
 
 
-def scan_frames(args, duration, out, errors):
+VIEWPORT_ONLY_TERMS = ("Johnny Harris", "Fireship")
+
+
+def cited_viewport_terms(timeline, second):
+    """Return only channel names declared in a reference shot at this frame."""
+    declared = []
+    for shot in (timeline or {}).get("shots", []):
+        if (shot.get("stage_mode") not in {"reference_breakdown", "triptych_cards"}
+                or not shot["start"] <= second < shot["end"]):
+            continue
+        declared.extend([shot.get("channel"), *(shot.get("semantic_tags") or [])])
+        for card in shot.get("cards") or []:
+            if isinstance(card, dict):
+                declared.extend(card.get(field) for field in ("channel", "label", "sublabel"))
+    names = [name.casefold() for name in declared if isinstance(name, str)]
+    return {term for term in VIEWPORT_ONLY_TERMS
+            if any(re.search(r"(?<![a-z0-9])" + r"\s*".join(map(re.escape,term.casefold().split()))
+                             + r"(?![a-z0-9])", name) for name in names)}
+
+
+def frame_ocr_hits(rows, second, terms, *, citation_timeline=None):
+    viewport_terms = tuple(term for term in VIEWPORT_ONLY_TERMS
+                           if term not in cited_viewport_terms(citation_timeline, second))
+    for row in rows:
+        normalized = "".join(row["text"].casefold().split())
+        box_y = row.get("box", [0, 0, 0, 0])[1]
+        active_terms = (*terms, *viewport_terms) if box_y < 930 else terms
+        for term in active_terms:
+            if term.strip() and "".join(term.casefold().split()) in normalized:
+                yield dict(seconds=second, term=term, text=row["text"])
+
+
+def scan_frames(args, duration, out, errors, *, timeline=None):
     from PIL import Image, ImageDraw
     source = Path(__file__).resolve().parents[1] / "tools/ocr/ocr.swift"
     binary = source.with_suffix("")
     terms = [os.getenv("USER") or getpass.getuser(), "/Users/", "Documents/Codex", "@gmail.com",
              "盲测", "片名卡", "静态截图", "本期实测底账", *args.forbid.split(",")]
-    viewport_only_terms = ["Johnny Harris", "Fireship"]
+    citation_timeline = timeline if getattr(args,"v7",False) else None
     times = range(0, math.ceil(duration), 2)
     canvas = Image.new("RGB", (320 * min(5, len(times)), 204 * math.ceil(len(times)/5)), "#202020")
     draw = ImageDraw.Draw(canvas)
@@ -439,13 +471,8 @@ def scan_frames(args, duration, out, errors):
                 x, y = index % 5 * 320, index // 5 * 204
                 canvas.paste(image, (x,y))
                 draw.text((x+8,y+183), f"{second:.1f}s", fill="white")
-            for row in json.loads(run([str(binary), str(frame)]).stdout)["results"]:
-                normalized = "".join(row["text"].casefold().split())
-                box_y = row.get("box", [0, 0, 0, 0])[1]
-                active_terms = terms + (viewport_only_terms if box_y < 930 else [])
-                for term in active_terms:
-                    if term.strip() and "".join(term.casefold().split()) in normalized:
-                        hits.append(dict(seconds=second, term=term, text=row["text"]))
+            rows = json.loads(run([str(binary), str(frame)]).stdout)["results"]
+            hits.extend(frame_ocr_hits(rows,second,terms,citation_timeline=citation_timeline))
             frame.unlink()
     canvas.save(out / "contact-sheet.jpg", quality=93)
     errors.extend(f"OCR {hit['seconds']}s {hit['text']}" for hit in hits)
@@ -523,7 +550,7 @@ def rendered(args, out, errors):
         result[key] = value if value is not None and math.isfinite(value) else None
         if value is None or not low <= value <= high:
             errors.append(f"{key} 超出范围或无法测量")
-    result["ocr"] = scan_frames(args, duration, out, errors)
+    result["ocr"] = scan_frames(args, duration, out, errors,timeline=timeline)
     if args.v4 or args.v5 or v6 or v7:
         if timeline is None:
             errors.append("v4 需要真实 shot-timeline.json 才能做跨镜像素审计")
