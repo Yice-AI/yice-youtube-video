@@ -4,7 +4,7 @@
 
 ## 环境
 
-沿用 toolkit 的 MLX / Whisper 环境，另需 `numpy`、`scipy`、`soundfile`、`librosa` 和 PATH 中的 `ffmpeg`。安装器会把 `librosa==1.0.1`、`soundfile==0.14.0` 及缺失的 `scipy`、`numpy` 装入现有 `asr-venv`；版本正确且能导入的包跳过。只检查并补齐依赖、不修改 skill 软链接或路径配置时运行：
+沿用 toolkit 的 MLX / Whisper 环境，另需 `numpy`、`scipy`、`soundfile`、`librosa` 和 PATH 中的 `ffmpeg`。配音和成片审计共用现有 `asr-venv`。安装器检查 `librosa==1.0.1`、`soundfile==0.14.0`、`scipy`、`numpy` 和用于 OCR 抽帧的 `Pillow`，按需补齐。检查并补齐依赖时运行：
 
 ```bash
 bash install.sh --check

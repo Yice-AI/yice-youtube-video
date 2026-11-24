@@ -149,20 +149,16 @@ def load_environment(environ=None):
 
 def ensure_voice_dependencies(toolkit):
     """Install only missing/wrong-version voice dependencies in the existing ASR venv."""
-    import json
-    import shutil
-    import subprocess
-
     python = Path(toolkit) / "local/asr-venv/bin/python"
-    required = {"librosa": "1.0.1", "soundfile": "0.14.0", "scipy": None, "numpy": None}
+    required = {"librosa": "1.0.1", "soundfile": "0.14.0", "scipy": None, "numpy": None, "Pillow": None}
     if not python.is_file():
         return {"ready": False, "python": str(python), "installed": [], "missing_environment": True}
     probe = """
-import importlib, importlib.metadata, json
+import importlib, importlib.metadata, json, sys
 result = {}
-for package in ["librosa", "soundfile", "scipy", "numpy"]:
+for package in sys.argv[1:]:
     try:
-        importlib.import_module(package)
+        importlib.import_module("PIL" if package == "Pillow" else package)
         result[package] = importlib.metadata.version(package)
     except Exception:
         result[package] = None
@@ -170,7 +166,8 @@ print(json.dumps(result))
 """
 
     def inspect():
-        completed = subprocess.run([str(python), "-I", "-c", probe], capture_output=True, text=True, check=True)
+        completed = subprocess.run([str(python), "-I", "-c", probe, *required],
+                                   capture_output=True, text=True, check=True)
         return json.loads(completed.stdout)
 
     before = inspect()
@@ -203,7 +200,7 @@ def main():
                "props.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
                "cutout.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
                "people_add.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
-               "audit-v3.py": ("YICE_REVIEW_PYTHON", "tts-venv"),
+               "audit-v3.py": ("YICE_REVIEW_PYTHON", "asr-venv"),
                "review.py": ("YICE_REVIEW_PYTHON", "tts-venv")}
     if len(sys.argv) < 2 or sys.argv[1] not in runners:
         raise SystemExit('内部入口：workspace.py ' + '|'.join(runners) + ' [参数]')

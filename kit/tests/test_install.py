@@ -164,7 +164,7 @@ class InstallTests(unittest.TestCase):
 
 
 class VoiceDependencyTests(unittest.TestCase):
-    versions = {'librosa': '1.0.1', 'soundfile': '0.14.0', 'scipy': '1.18.1', 'numpy': '2.5.4'}
+    versions = {'librosa': '1.0.1', 'soundfile': '0.14.0', 'scipy': '1.18.1', 'numpy': '2.5.4', 'Pillow': '13.0.0'}
 
     def toolkit(self, directory):
         toolkit = Path(directory)
@@ -184,7 +184,7 @@ class VoiceDependencyTests(unittest.TestCase):
             self.assertIn('-I', run.call_args.args[0])
 
     def test_only_missing_or_wrong_version_packages_are_installed(self):
-        before = {**self.versions, 'librosa': '0.11.0', 'soundfile': None, 'scipy': None}
+        before = {**self.versions, 'librosa': '0.11.0', 'soundfile': None, 'scipy': None, 'Pillow': None}
         responses = [subprocess.CompletedProcess([], 0, stdout=json.dumps(before)),
                      subprocess.CompletedProcess([], 0, stdout='', stderr=''),
                      subprocess.CompletedProcess([], 0, stdout=json.dumps(self.versions))]
@@ -192,8 +192,8 @@ class VoiceDependencyTests(unittest.TestCase):
                 patch('subprocess.run', side_effect=responses) as run:
             result = ensure_voice_dependencies(self.toolkit(tmp))
         self.assertTrue(result['ready'])
-        self.assertEqual(result['installed'], ['librosa==1.0.1', 'soundfile==0.14.0', 'scipy'])
-        self.assertEqual(run.call_args_list[1].args[0][-3:], result['installed'])
+        self.assertEqual(result['installed'], ['librosa==1.0.1', 'soundfile==0.14.0', 'scipy', 'Pillow'])
+        self.assertEqual(run.call_args_list[1].args[0][-4:], result['installed'])
 
     def test_install_failure_does_not_claim_ready(self):
         responses = [subprocess.CompletedProcess([], 0, stdout=json.dumps({})),
