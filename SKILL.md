@@ -1,9 +1,9 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.1。长段落原速配音、全片混音、静音参考片拆解与真实视频叠层、声明式分幕装配及对抗性成片审计。适用于旁白、真实录屏、分镜、成片和返修。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.2。长段落原速配音、全片混音、静音参考片拆解与真实视频叠层、声明式分幕装配及成片审计。适用于旁白、真实录屏、分镜、成片和返修。
 ---
 
-# 一策 YouTube 视频制作 v7.1
+# 一策 YouTube 视频制作 v7.2
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。
 
@@ -11,7 +11,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.1�
 
 1. 整理实测底账、旁白与逐镜画面。每镜注明实际画面主体、语义绑定和首字锚点。公开网页用 `kit/scripts/record-web-cam.sh` 采集深色实录，实操优先连续多点跟焦，概念及数据用解说动效或语义对应叠层。
 2. 执行 `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`，也可显式选择已授权端点。默认 `--chunk-mode long_paragraph` 和 `--profile natural_v7`，在中文句末分段，每段优先 65–115 字、最多 5 句。`--pause-after 0-3=3.0` 登记一处设计留白。Kaggle 默认异步提交并每 2.5 秒轮询，等待上限 900 秒（可用 `YICE_TTS_TIMEOUT` 调整），异步提交返回 HTTP 404 时自动回退同步接口。
-3. 写成 `episode-manifest.json` 后执行 `bash kit/scripts/assemble-episode.sh episode-manifest.json --output out`。装配会校验媒体时长、切点和语义，渲染所需动效，合成母带并运行 HyperFrames check 和 render。输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 与 `acts/`。`--build-only` 可用于检查分幕工程和母带。
+3. 写成 `episode-manifest.json` 后执行 `bash kit/scripts/assemble-episode.sh episode-manifest.json --output out`。装配会校验媒体时长、切点和语义，渲染所需动效，合成母带并运行 HyperFrames check 和 render。输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 与 `acts/`。分幕按工程、素材和分幕母带指纹增量复用，`--force-render` 可强制重渲。`--build-only` 生成分幕工程与母带。
 4. 执行 `bash kit/scripts/audit-v3.sh --v7 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，结合成片目检交付。
 
 ## episode-manifest.json
@@ -88,6 +88,6 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.1�
 - `EpisodeAudioMixer` 从 0 秒铺入底乐，人声 -22 dB、留白 -13 dB 闪避，跨幕余弦换曲，支持 Music Drop。母带目标 -14.5 ± 0.8 LUFS，真峰值 ≤ -1.0 dBTP。
 - v7 审计核对语义对口、首字切点、真实视频底图占比 45%–72%、同源素材最多三次回扣。前 15 秒底乐高于 -42 dBFS，前 45 秒至少三处动作音效。前后半程各至少 35% 动效，连续裸视频至多 16 秒。原始人声和处理记录参加真空检查，成片参加像素、OCR、黑帧与重复审计。
 
-实测数字保留可核对底账。参考频道只作研究，成片使用自己的录屏、实拍及有授权的公开素材。Claude 桌面只使用脱敏静态截图，参考音频仅走已授权云端端点，画面移除本机路径、私人会话和凭据。
+实测数字保留可核对底账。`reference_breakdown` 与对比双卡支持符合合理使用（Fair Use）条件的参考短切片拆解。原片音轨全程静音，显式声明并展示 `channel` 来源署名，配合实测切点和针对原片的分析。使用 `spotlight_box` 的非静止实录围绕核验坐标同心跟焦，角落标识、数字角标保持固定。Claude 桌面使用脱敏静态截图，参考音频仅走已授权云端端点，画面移除本机路径、私人会话和凭据。
 
 相关参考见 [配音规则](references/voice.md)、[导演层](references/director-layer.md) 和 [审片门禁](references/review-gates.md)。

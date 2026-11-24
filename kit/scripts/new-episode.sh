@@ -2,7 +2,7 @@
 set -euo pipefail
 KIT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 exec python3 - "$KIT_DIR" "$@" <<'PY'
-import argparse, json, os, re, shutil, sys
+import argparse, json, re, shlex, shutil, sys
 from pathlib import Path
 kit = Path(sys.argv[1])
 sys.path.insert(0, str(kit / 'scripts'))
@@ -30,15 +30,26 @@ for src in (kit / 'template').rglob('*'):
         copy_missing(src, project / src.relative_to(kit / 'template'))
 notes.mkdir(parents=True, exist_ok=True)
 for name in ('script', 'asset-needs', 'beat-table'):
-    copy_missing(project / f'{name}.example.md', notes / f'{name}.md')
+    existing = project / f'{name}.md'
+    copy_missing(existing if existing.is_file() else project / f'{name}.example.md',notes / f'{name}.md')
+copy_missing(notes / 'script.md',project / 'script.md')
 copy_missing(project / 'anchors.example.json', notes / 'anchors.json')
 (notes / 'evidence').mkdir(exist_ok=True)
-for name in ('voice', 'assets/local', 'assets/props', 'assets/stock', 'renders'):
+for name in ('voice', 'assets/local', 'assets/props', 'assets/stock', 'assets/ref-clips', 'renders'):
     (project / name).mkdir(parents=True, exist_ok=True)
 config = json.loads((project / 'episode.example.json').read_text())
 config['id'] = ep
 if not (project / 'episode.json').exists():
     (project / 'episode.json').write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
 copy_missing(project / 'beats.example.json', project / 'beats.json')
-print(json.dumps({'project':str(project),'notes':str(notes),'next':'准备素材与旁白，运行voice.sh，再调整episode.json和beats.json并构建。'},ensure_ascii=False,indent=2))
+copy_missing(project / 'episode-manifest.example.json',project / 'episode-manifest.json')
+scripts = shlex.quote(str(kit/'scripts'))
+steps = [
+    f'{scripts}/voice.sh script.md --backend kaggle --speed 1.0 --output voice',
+    f'{scripts}/record-web-cam.sh --project . --url "$PUBLIC_URL_A" --id shot-a --seconds 7 && '
+    f'{scripts}/record-web-cam.sh --project . --url "$PUBLIC_URL_B" --id shot-b --seconds 7',
+    f'{scripts}/assemble-episode.sh episode-manifest.json --output renders',
+    f'{scripts}/audit-v3.sh --v7 --project renders --timeline renders/shot-timeline.json --rendered renders/episode.mp4',
+]
+print(json.dumps({'project':str(project),'notes':str(notes),'next':steps},ensure_ascii=False,indent=2))
 PY

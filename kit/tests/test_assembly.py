@@ -19,7 +19,15 @@ class NewEpisodeTests(unittest.TestCase):
             project.mkdir(); (project / 'notes.md').write_text('原有笔记')
             env = {**os.environ, 'YICE_WORKSPACE': str(root / 'workspace'), 'YICE_TOOLKIT': str(root / 'toolkit')}
             cmd = [str(KIT / 'scripts/new-episode.sh'), 'ep02', '--dir', str(project)]
-            subprocess.run(cmd, env=env, capture_output=True, check=True)
+            output = subprocess.run(cmd, env=env, capture_output=True, check=True)
+            self.assertEqual(len(json.loads(output.stdout)['next']), 4)
+            self.assertEqual((project / 'script.md').read_text(), '已经完成的剧本')
+            self.assertTrue((project / 'assets/ref-clips').is_dir())
+            manifest = json.loads((project / 'episode-manifest.json').read_text())
+            self.assertEqual([shot['stage_mode'] for shot in manifest['shots']],
+                             ['cold_open_ab', 'title_sequence', 'callout_rig', 'reference_breakdown'])
+            manifest['title'] = '已有标题'
+            (project/'episode-manifest.json').write_text(json.dumps(manifest))
             self.assertEqual((notes / 'script.md').read_text(), '已经完成的剧本')
             self.assertEqual((project / 'notes.md').read_text(), '原有笔记')
             config = json.loads((project / 'episode.json').read_text()); config['end'] = 42
@@ -28,6 +36,7 @@ class NewEpisodeTests(unittest.TestCase):
             subprocess.run(cmd, env=env, capture_output=True, check=True)
             self.assertEqual(json.loads((project / 'episode.json').read_text())['end'], 42)
             self.assertEqual((project / 'beats.json').read_text(), '{"scenes": []}')
+            self.assertEqual(json.loads((project/'episode-manifest.json').read_text())['title'], '已有标题')
             bad = subprocess.run([str(KIT / 'scripts/new-episode.sh'), 'ep03', '--dir', str(project)],
                                  env=env, capture_output=True)
             self.assertNotEqual(bad.returncode, 0)

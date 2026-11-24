@@ -337,6 +337,28 @@ def test_overlay_primitives_emit_real_actions():
     assert 'stat-readout' in ''.join(stage.plates+stage.scripts)
 
 
+def test_default_motion_spans_the_shot_and_spotlight_follows_verified_center():
+    stage = EditorialStage('运镜',duration=12)
+    stage.add_fullbleed_rig(2,6,'capture.mp4',motion='push')
+    assert stage.scripts[0] == (
+        "tl.fromTo('#vp0 .vp-inner',{scale:1.000,x:0.0},{scale:1.120,x:0.0,"
+        "duration:4.00000,ease:'none',immediateRender:false},2.00000);"
+    )
+    stage.add_callout_rig(6,11,'detail.mp4',motion='push',overlays=[
+        dict(kind='spotlight_box',at=.4,label='大小列',box=[1300,180,240,120],
+             target_verified=True,target_note='窗口右上方大小列'),
+        dict(kind='corner_tag',at=1,label='录屏'),
+    ])
+    camera = [script for script in stage.scripts if "transformOrigin:'1420.0px 240.0px'" in script]
+    assert len(camera)==2
+    assert "#vp1 .vp-inner" in camera[0] and "#s0'" in camera[1]
+    assert [script.split(',{scale:',1)[1] for script in camera][0]==camera[1].split(',{scale:',1)[1]
+    assert all('duration:5.00000' in script and script.endswith(',6.00000);') for script in camera)
+    hold = EditorialStage('静止',duration=4)
+    hold.add_fullbleed_rig(0,4,'clip.mp4',motion='hold')
+    assert hold.scripts==[]
+
+
 def test_semantic_gate_rejects_unrelated_website_and_recognizes_exact_capture():
     shot = dict(id='a',stage_mode='fullbleed_rig',spoken_topic='素材优先级清单',visual_subject='FFmpeg 官网',
                 semantic_tags=['FFmpeg'],semantic_binding='physical_prop')
@@ -604,7 +626,7 @@ def test_assemble_episode_end_to_end(tmp_path):
         if 'hyperframes' in command and 'render' in command:
             folder = kwargs['cwd']
             duration = json.loads((folder/'shot-timeline.json').read_text())['end']
-            footage(folder/'render.mp4','#526760',duration)
+            footage(folder/command[command.index('--output')+1],'#526760',duration)
             rendered.append(folder.name)
         elif any(arg.endswith('/render-explainer-clip.sh') for arg in command):
             spec = json.loads(Path(command[command.index('--spec')+1]).read_text())
@@ -622,6 +644,50 @@ def test_assemble_episode_end_to_end(tmp_path):
     assert opener_bgm_and_sfx_gate(output/'bed-only.wav',timeline['sound_marks'],8.5)['ok']
     assert first_half_motion_density_gate(timeline['shots'],8.5)['ok']
     assert '00:00:04,000' in (output/'sample.srt').read_text()
+
+
+@pytest.mark.skipif(not shutil.which('ffmpeg'),reason='需要本地 ffmpeg')
+def test_act_render_cache_force_and_browser_cleanup_retry(tmp_path, monkeypatch):
+    folder = tmp_path/'act'
+    (folder/'assets').mkdir(parents=True)
+    (folder/'vendor').mkdir()
+    (folder/'index.html').write_text('<main>v7.2</main>')
+    (folder/'vendor/gsap.min.js').write_text('// local runtime')
+    (folder/'assets/source.mp4').write_bytes(b'fixture source')
+    wave(folder/'assets/mix.wav',tone(1.))
+    stage = SimpleNamespace(duration=1.,shots=[{'files':['assets/source.mp4']}])
+    closed = 'Layout\n  0 issues\nMotion\n  0 errors\nContrast\n  0 errors\nAudio\n  0 errors\nSnapshots\n'
+    calls, waits = [], []
+    monkeypatch.setattr(assemble.time,'sleep',waits.append)
+
+    def runner(command, **options):
+        action = command[1]
+        calls.append(action)
+        assert options['capture_output'] and options['text'] and options['cwd']==folder
+        if len(calls)<=2:
+            raise subprocess.CalledProcessError(1,command,output=closed,
+                                                stderr='Browser process did not exit after forced shutdown')
+        if action=='render':
+            if calls.count('render')==1:
+                raise subprocess.CalledProcessError(1,command,stderr='check_cleanup_failure')
+            output = folder/command[command.index('--output')+1]
+            subprocess.run(['ffmpeg','-v','error','-y','-f','lavfi','-i','color=gray:s=64x64:r=30:d=1',
+                            '-c:v','libx264',str(output)],check=True)
+
+    assert assemble.render_act(folder,stage,['hyperframes'],{},runner)=='rendered'
+    assert calls==['check','check','check','render','render'] and waits==[2.,2.,2.]
+    stamp = json.loads((folder/'.render-stamp.json').read_text())
+    assert set(stamp['media'])=={'assets/source.mp4','assets/mix.wav','vendor/gsap.min.js'}
+    assert assemble.render_act(folder,stage,['hyperframes'],{},runner)=='reused'
+    assert len(calls)==5
+    assert assemble.render_act(folder,stage,['hyperframes'],{},runner,force_render=True)=='rendered'
+    assert calls[-2:]==['check','render'] and len(calls)==7
+    (folder/'assets/source.mp4').write_bytes(b'fixture change')
+    assert assemble.render_act(folder,stage,['hyperframes'],{},runner)=='rendered'
+    assert len(calls)==9
+    rejected = subprocess.CalledProcessError(1,['hyperframes','check'],stderr='check_cleanup_failure',
+                                             output=closed.replace('0 issues','1 error'))
+    assert not assemble.cleanup_failure(rejected,checked=False)
 
 
 def test_studio_ui_reuses_callout_overlays(tmp_path):

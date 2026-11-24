@@ -80,6 +80,9 @@ class InstallTests(unittest.TestCase):
             report = json.loads(result.stdout)
             self.assertTrue(report['check_only'])
             self.assertEqual(report['links'], [])
+            self.assertIn('Whisper 离线模型', report['missing'])
+            self.assertIn('HyperFrames 离线 CLI', report['dependencies'])
+            self.assertIn('品牌参考音', report['missing_hints'])
             self.assertFalse((test_root / '.codex').exists())
             self.assertFalse((test_root / '.claude').exists())
             self.assertFalse((test_root / '.config/yice-video/env').exists())
@@ -91,17 +94,22 @@ class InstallTests(unittest.TestCase):
             (claude / 'keep.txt').write_text('existing skill')
             codex = home / '.codex/skills/yice-youtube-video'; codex.parent.mkdir(parents=True)
             codex.symlink_to(home / 'missing-target')
+            antigravity = home / '.gemini/config/skills/yice-youtube-video'
+            antigravity.mkdir(parents=True)
+            (antigravity/'original.txt').write_text('existing skill')
             env = {k: v for k, v in os.environ.items() if k not in ['YICE_WORKSPACE', 'YICE_TOOLKIT']}
             env['HOME'] = str(home)
             ws, tk = home / 'workspace space', home / 'toolkit'
             command = [str(REPO / 'install.sh'), '--workspace', str(ws), '--toolkit', str(tk)]
             first = subprocess.run(command, env=env, capture_output=True, text=True, check=True)
             result = json.loads(first.stdout)
-            self.assertEqual(len(result['backups']), 2)
+            self.assertEqual(len(result['backups']), 3)
             self.assertEqual(claude.resolve(), REPO)
             self.assertEqual(codex.resolve(), REPO)
+            self.assertEqual(antigravity.resolve(), REPO)
             self.assertEqual(next(home.joinpath('.config/yice-video/backups/.claude').glob('yice-youtube-video.bak-*')).joinpath('keep.txt').read_text(), 'existing skill')
             self.assertTrue(next(home.joinpath('.config/yice-video/backups/.codex').glob('yice-youtube-video.bak-*')).is_symlink())
+            self.assertTrue(any((Path(item)/'original.txt').is_file() for item in result['backups']))
             self.assertEqual(load_environment(env), (ws, tk))
             self.assertIn('toolkit', result['missing'])
             self.assertEqual((home / '.config/yice-video/env').stat().st_mode & 0o777, 0o600)

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """从声明式清单导出标准 HyperFrames 分幕工程、母带、成片与字幕。"""
 import argparse
+import copy
+import hashlib
 import json
 from math import isfinite
 import os
@@ -10,6 +12,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from urllib.parse import unquote
 
 KIT = Path(__file__).resolve().parents[1]
@@ -203,19 +206,34 @@ def restore_file_paths(value):
     return value
 
 
-def explainer(shot, root, folder, run):
+def file_fingerprint(path):
+    with path.open('rb') as source:
+        return dict(size=path.stat().st_size,sha256=hashlib.file_digest(source,'sha256').hexdigest())
+
+
+def matching_render(output, stamp, inputs, duration):
+    if not output.is_file() or not stamp.is_file():
+        return False
+    try:
+        return read(stamp)==inputs and abs(probe_video(output)-duration)<=1/FPS+.00001
+    except (OSError,ValueError,TypeError,KeyError,subprocess.SubprocessError):
+        return False
+
+
+def explainer(shot, root, folder, run, *, force_render=False):
     spec_source = shot['spec']
     if isinstance(spec_source,str):
         spec_file = locate(root,spec_source)
         spec,base = read(spec_file), spec_file.parent
     else:
-        spec,base = dict(spec_source),root
+        spec,base = copy.deepcopy(spec_source),root
     # Resolve sources before moving the adjusted spec to the act directory.
     from importlib.util import spec_from_file_location,module_from_spec
     loader = spec_from_file_location('explainer_spec_assets',KIT/'explainer/spec_assets.py')
     assets = module_from_spec(loader)
     loader.loader.exec_module(assets)
-    spec = restore_file_paths(assets.localize(spec,base,allowed=set()))
+    local_files = set()
+    spec = restore_file_paths(assets.localize(spec,base,allowed=local_files))
     span = shot['end']-shot['start']
     cues = spec['cues']
     latest = max((float(row['at']) for row in cues),default=0.)
@@ -226,14 +244,27 @@ def explainer(shot, root, folder, run):
     target = folder/'assets'/f"exp-{shot['id']}.mp4"
     target.parent.mkdir(parents=True,exist_ok=True)
     config = target.with_suffix('.json')
+    stamp = target.with_suffix('.render-stamp.json')
+    renderer = KIT/'scripts/render-explainer-clip.sh'
+    engine_files = [renderer,*(path for path in (KIT/'explainer').rglob('*')
+                               if path.is_file() and path.suffix in {'.py','.js','.mjs','.css','.html'})]
+    inputs = dict(spec=spec,media={name:file_fingerprint(Path(name)) for name in sorted(local_files)},
+                  engine={path.relative_to(KIT).as_posix():file_fingerprint(path) for path in sorted(engine_files)})
     write(config,spec)
-    run(['bash',str(KIT/'scripts/render-explainer-clip.sh'),'--spec',str(config),'--out',str(target)],check=True)
-    if probe_video(target)+1/FPS < span+.35:
-        raise ValueError(f"解说动效未覆盖镜头时长：{shot['id']}")
+    if force_render or not matching_render(target,stamp,inputs,span+.35):
+        pending = target.with_suffix('.pending.mp4')
+        try:
+            run(['bash',str(renderer),'--spec',str(config),'--out',str(pending)],check=True)
+            if probe_video(pending)+1/FPS < span+.35:
+                raise ValueError(f"解说动效未覆盖镜头时长：{shot['id']}")
+            pending.replace(target)
+            write(stamp,inputs)
+        finally:
+            pending.unlink(missing_ok=True)
     return target.relative_to(folder).as_posix(),spec
 
 
-def build_act(shots, root, folder, title, run):
+def build_act(shots, root, folder, title, run, *, force_render=False):
     first,last = shots[0]['start'],shots[-1]['end']
     stage = EditorialStage(title,duration=last-first,fps=FPS)
     for shot in shots:
@@ -272,7 +303,7 @@ def build_act(shots, root, folder, title, run):
             stage.add_reference_breakdown(a,b,assets[0],channel=shot.get('channel'),claim=shot.get('claim'),
                                           cut_points=shot.get('cut_points',()),metrics=shot.get('metrics',()),media_start=start)
         else:
-            clip,spec = explainer(shot,root,folder,run)
+            clip,spec = explainer(shot,root,folder,run,force_render=force_render)
             stage.add_video(a,b,clip,0,0,1920,1080,fit='cover')
             stage._shot(text,'explainer_graphic',a,b,[clip],beats=[r['at'] for r in spec['cues']])
             stage.shots[-1]['grammar'] = spec['grammar']
@@ -291,7 +322,63 @@ def clock(seconds):
     return f'{h:02}:{m:02}:{s:02},{ms:03}'
 
 
-def assemble(manifest, output, *, build_only=False, run=subprocess.run):
+def cleanup_failure(error, *, checked):
+    output = '\n'.join(part or '' for part in (error.stdout,error.stderr))
+    if not any(message in output for message in ('Browser process did not exit after forced shutdown','check_cleanup_failure')):
+        return False
+    for name, following in (('Layout','Motion'),('Motion','Contrast'),('Audio','Snapshots')):
+        section = re.search(rf'(?ms)^{name}\b(.*?)(?=^{following}\b|\Z)',output)
+        if section and re.search(r'(?<!\d)[1-9]\d*\s+errors?(?:\(s\))?',section[1]):
+            return False
+        if not checked and (not section or not re.search(r'\b0 (?:issues|errors?)\b',section[1])):
+            return False
+    return True
+
+
+def hyperframes_step(command, operation, args, folder, env, run):
+    for attempt in range(3):
+        try:
+            result = run(command+[operation,*args],cwd=folder,env=env,check=True,capture_output=True,text=True)
+        except subprocess.CalledProcessError as error:
+            if attempt==2 or not cleanup_failure(error,checked=operation=='render'):
+                if error.stdout:
+                    print(error.stdout,end='',file=sys.stderr)
+                if error.stderr:
+                    print(error.stderr,end='',file=sys.stderr)
+                raise
+            time.sleep(2.)
+        else:
+            if result is not None:
+                if result.stdout:
+                    print(result.stdout,end='',file=sys.stderr)
+                if result.stderr:
+                    print(result.stderr,end='',file=sys.stderr)
+            return
+
+
+def render_act(folder, stage, command, env, run, *, force_render=False):
+    arguments = ['.','--fps',str(FPS),'--quality','looks']
+    media = {'vendor/gsap.min.js','assets/mix.wav',*(path for row in stage.shots for path in row['files'])}
+    inputs = dict(duration=round(stage.duration,6),command=command,arguments=arguments,
+                  html=file_fingerprint(folder/'index.html'),
+                  media={name:file_fingerprint(folder/name) for name in sorted(media)})
+    output,stamp = folder/'render.mp4',folder/'.render-stamp.json'
+    if not force_render and matching_render(output,stamp,inputs,stage.duration):
+        return 'reused'
+    pending = folder/'render.pending.mp4'
+    try:
+        hyperframes_step(command,'check',['.'],folder,env,run)
+        hyperframes_step(command,'render',[*arguments,'--output',pending.name],folder,env,run)
+        if abs(probe_video(pending)-stage.duration)>1/FPS+.00001:
+            raise ValueError(f'分幕渲染时长不符：{folder.name}')
+        pending.replace(output)
+        write(stamp,inputs)
+    finally:
+        pending.unlink(missing_ok=True)
+    return 'rendered'
+
+
+def assemble(manifest, output, *, build_only=False, force_render=False, run=subprocess.run):
     import soundfile as sf
     from itertools import groupby
 
@@ -313,7 +400,7 @@ def assemble(manifest, output, *, build_only=False, run=subprocess.run):
         folder = output/'acts'/act
         folder.mkdir(parents=True,exist_ok=True)
         offset = items[0]['start']
-        stage = build_act(items,root,folder,raw.get('title',name),run)
+        stage = build_act(items,root,folder,raw.get('title',name),run,force_render=force_render)
         stages.append((folder,stage,offset))
         marks.extend(stage.sound_events(offset))
         for row in stage.shots:
@@ -343,6 +430,7 @@ def assemble(manifest, output, *, build_only=False, run=subprocess.run):
     wave,rate = sf.read(output/'mix.wav',dtype='float32')
     command = shlex.split(os.environ.get('YICE_HYPERFRAMES_BIN','npx --offline hyperframes'))
     env = {**os.environ,'HYPERFRAMES_TELEMETRY_DISABLED':'1','DO_NOT_TRACK':'1'}
+    render_status = {}
     for folder,stage,offset in stages:
         stop = offset+stage.duration
         local = [dict(text=row['text'],start=max(offset,row['start'])-offset,end=min(stop,row['end'])-offset)
@@ -353,9 +441,7 @@ def assemble(manifest, output, *, build_only=False, run=subprocess.run):
         (folder/'assets').mkdir(exist_ok=True)
         sf.write(folder/'assets/mix.wav',wave[round(offset*rate):round(stop*rate)],rate,subtype='PCM_24')
         if not build_only:
-            run(command+['check','.'],cwd=folder,env=env,check=True)
-            run(command+['render','.','--fps',str(FPS),'--quality','looks','--output','render.mp4'],
-                cwd=folder,env=env,check=True)
+            render_status[folder.name] = render_act(folder,stage,command,env,run,force_render=force_render)
     result = dict(ok=True,duration=duration,acts=len(stages),shots=len(shots),timeline='shot-timeline.json',srt=f'{name}.srt')
     if not build_only:
         concat = output/'acts.ffconcat'
@@ -368,6 +454,7 @@ def assemble(manifest, output, *, build_only=False, run=subprocess.run):
              '-c:a','aac','-b:a','256k','-movflags','+faststart','-shortest',str(staged)],check=True)
         staged.replace(output/f'{name}.mp4')
         result['mp4'] = f'{name}.mp4'
+        result['act_render_status'] = render_status
     write(output/'assembly-report.json',result)
     return result
 
@@ -377,9 +464,10 @@ def main(argv=None):
     parser.add_argument('manifest',type=Path)
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--build-only',action='store_true',help='生成分幕工程和母带，跳过浏览器渲染')
+    parser.add_argument('--force-render',action='store_true',help='忽略已有分幕渲染缓存')
     args = parser.parse_args(argv)
     try:
-        result = assemble(args.manifest,args.output,build_only=args.build_only)
+        result = assemble(args.manifest,args.output,build_only=args.build_only,force_render=args.force_render)
     except (OSError,ValueError,TypeError,KeyError,subprocess.SubprocessError) as exc:
         parser.error(str(exc))
     print(json.dumps(result,ensure_ascii=False))

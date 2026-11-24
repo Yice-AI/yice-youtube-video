@@ -5,6 +5,27 @@ import sys
 from pathlib import Path
 
 
+def valid_whisper_directory(path):
+    config = path / "config.json"
+    return config.is_file() and os.access(config, os.R_OK) and any(
+        (path / name).is_file() for name in ("weights.safetensors", "model.safetensors", "weights.npz")
+    )
+
+
+def load_voice_reference(toolkit, brand):
+    import json
+
+    config = toolkit / "brands" / brand / "voice.json"
+    if not config.is_file():
+        raise ValueError(f"缺少声音配置：{config}")
+    qwen = json.loads(config.read_text()).get("qwen3", {})
+    clone = qwen.get("clone", {})
+    ref = config.parent / clone.get("refAudio", "")
+    if not ref.is_file():
+        raise ValueError(f"缺少声音参考音频：{ref}")
+    return ref, clone.get("refText", ""), qwen.get("language", "Chinese")
+
+
 def load_environment(environ=None):
     environ = os.environ if environ is None else environ
     home = Path(environ.get("HOME", str(Path.home()))).expanduser()

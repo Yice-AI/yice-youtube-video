@@ -1,4 +1,4 @@
-# 一策 YouTube 视频制作
+# 一策 YouTube 视频制作 v7.2
 
 把中文教程视频的制作方法与执行工具放在一起：**skill 管内容与导演方法，kit 管配方、配音、渲染和审片**。适合不露脸的 AI 工具实操教程，素材和渲染留在本机。
 
@@ -10,12 +10,13 @@
 
 ```bash
 ./install.sh
+./install.sh --check
 # 需要自定义本机路径时：
 ./install.sh --workspace "$HOME/Documents/Codex/个人IP" \
   --toolkit "$HOME/Documents/Codex/个人IP/claude-code-video-toolkit"
 ```
 
-安装器会把 Claude 与 Codex 的 yice-youtube-video skill 目录链接到仓库根目录，写入 `~/.config/yice-video/env`。已有目标先移到 `~/.config/yice-video/backups/` 下（不留在 skills 目录里，免得被当成第二个 skill），并打印备份位置；已正确链接时重复运行不会重复备份。依赖只检查、列出缺项，不自动安装。每台电脑独立配置路径；仓库更新后，软链接直接读取新版方法与代码。
+安装器链接 Claude、Codex，以及已存在 `~/.gemini/config` 的 Antigravity 到仓库根目录，并写入 `~/.config/yice-video/env`。已有目标会先备份到 `~/.config/yice-video/backups/`。已正确链接时可重复运行。`--check` 输出 JSON 体检，不改 skill 链接或路径配置。已有 ASR 环境可自动补齐指定声学依赖，其余缺项给出提示。
 
 默认工作区为 `$HOME/Documents/Codex/个人IP`，默认 toolkit 为工作区下的 claude-code-video-toolkit。执行脚本的路径优先级为：**环境变量 → 本机 env 配置 → 默认值**。
 
@@ -23,7 +24,7 @@
 
 | 依赖 | 用途 |
 |---|---|
-| macOS、Node/npm、Python 3、FFmpeg/ffprobe | 本地命令、HyperFrames 0.9.52、视频检查；录屏与 MLX 配音针对 Apple 芯片 Mac。 |
+| macOS、Node/npm、Python 3、FFmpeg/ffprobe | 本地命令、离线 HyperFrames CLI、GSAP 与视频检查。录屏和 MLX 配音面向 Apple 芯片 Mac。 |
 | claude-code-video-toolkit | 单独准备在 `$YICE_TOOLKIT`；需要 tools/captions.py，以及 local/tools/local_voiceover.py、image2.py、rec/。这些本机附加工具不由本仓库安装。 |
 | local/tts-venv、local/asr-venv | 前者提供 MLX 配音、Pillow、requests、python-dotenv，后者提供 mlx-whisper；两者都须能读取 toolkit 的工具依赖。 |
 | 离线模型 | toolkit/local/models 下 Qwen3-TTS-12Hz-1.7B-Base-8bit；本机缓存的 mlx-community/whisper-large-v3-turbo。 |
@@ -32,7 +33,9 @@
 
 ## 开新一期
 
-从 [kit/README.md](kit/README.md) 的命令开始，再按 [SKILL.md](SKILL.md) 准备剧本、素材表和节拍表。[配方说明](kit/docs/recipes.md)与[幕表格式](kit/docs/beats-schema.md)描述实际支持的字段。
+运行 `kit/scripts/new-episode.sh ep01`，进入返回的 `project` 目录并按 `next` 中的四条命令执行。先用 `voice.sh` 原速生成旁白，再用 `record-web-cam.sh` 采集适配旁白的录屏。把首字锚点、素材和音乐填入 `episode-manifest.json`，运行 `assemble-episode.sh`，最后用 `audit-v3.sh --v7` 检查成片。
+
+Kaggle 优先走 `POST /tts_async` 和任务轮询。分幕装配复用输入指纹一致的渲染，局部调整后只重渲必要分幕，可用 `--force-render` 刷新全部。完整参数见 [制片规范](SKILL.md) 和 [云端配音](kit/cloud/README.md)。
 
 | 目录 | 内容 |
 |---|---|

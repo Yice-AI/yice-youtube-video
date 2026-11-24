@@ -1,0 +1,72 @@
+{
+  "title": "一期实操示例",
+  "filename": "episode",
+  "voice_manifest": "voice/voice-manifest.json",
+  "voice_timing": "voice/voice-timing.json",
+  "audio": {
+    "bgm": ["assets/bgm.wav"]
+  },
+  "shots": [
+    {
+      "id": "opening",
+      "act": "intro",
+      "start": 0,
+      "end": 3,
+      "anchor_cue_id": "0-1",
+      "stage_mode": "cold_open_ab",
+      "sources": ["assets/webcam/shot-a/video.mp4", "assets/webcam/shot-b/video.mp4"],
+      "labels": ["原始", "处理后"],
+      "hook": "先看处理前后的差别",
+      "spoken_topic": "样片效果对照",
+      "visual_subject": "原始与处理后样片",
+      "semantic_binding": "callback_cut",
+      "semantic_tags": ["样片效果"]
+    },
+    {
+      "id": "title",
+      "act": "intro",
+      "start": 3,
+      "end": 6,
+      "anchor_cue_id": "0-2",
+      "stage_mode": "title_sequence",
+      "title": "一次实际操作",
+      "spoken_topic": "介绍本期操作",
+      "visual_subject": "本期标题",
+      "semantic_binding": "conceptual_explainer",
+      "semantic_tags": ["实操"]
+    },
+    {
+      "id": "capture",
+      "act": "analysis",
+      "start": 6,
+      "end": 8,
+      "anchor_cue_id": "0-3",
+      "stage_mode": "callout_rig",
+      "source": "assets/webcam/shot-a/video.mp4",
+      "media_start": 3.3,
+      "motion": "push",
+      "overlays": [{"kind": "corner_tag", "at": 0.2, "label": "实操录屏"}],
+      "spoken_topic": "检查输出画面",
+      "visual_subject": "实操输出界面",
+      "semantic_binding": "exact_tool_capture",
+      "semantic_tags": ["输出界面"]
+    },
+    {
+      "id": "reference",
+      "act": "analysis",
+      "start": 8,
+      "end": 10,
+      "anchor_cue_id": "0-4",
+      "stage_mode": "reference_breakdown",
+      "source": "assets/ref-clips/reference.mp4",
+      "channel": "参考频道名称",
+      "claim": "观察剪辑节奏",
+      "cut_points": [0.8, 1.4],
+      "metrics": [{"label": "平均镜长", "value": "填入实测值"}],
+      "spoken_topic": "观察参考片剪辑节奏",
+      "visual_subject": "参考片的镜头切换",
+      "semantic_binding": "conceptual_explainer",
+      "semantic_tags": ["剪辑节奏"]
+    }
+  ]
+}

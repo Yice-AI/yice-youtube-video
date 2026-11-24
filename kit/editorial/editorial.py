@@ -298,12 +298,24 @@ class EditorialStage:
             yield event
 
     def add_callout_rig(self, start, end, src, *, overlays, media_start=0., motion='glide'):
-        sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion)
+        focus = None
+        if motion!='hold':
+            target = next((overlay for overlay in overlays if overlay.get('kind')=='spotlight_box'),None)
+            if target is not None:
+                x,y,w,h = verified_spotlight_box(target)
+                focus = (x+w/2,y+h/2)
+        sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion,focus=focus)
         self.shots[-1].update(stage_mode='callout_rig',media_start=media_start)
-        self.add_overlays(start,end,overlays)
+        self.add_overlays(start,end,overlays,focus=focus)
         return sid
 
-    def add_overlays(self, start, end, overlays, *, nle_plate=None):
+    def _camera_tween(self, selector, start, span, *, scale, shift=(0.,0.), focus=None):
+        origin = f",transformOrigin:'{focus[0]:.1f}px {focus[1]:.1f}px'" if focus else ''
+        self.scripts.append(f"tl.fromTo('{selector}',{{scale:{scale[0]:.3f},x:{shift[0]:.1f}{origin}}},"
+                            f"{{scale:{scale[1]:.3f},x:{shift[1]:.1f},duration:{span:.5f},"
+                            f"ease:'none',immediateRender:false}},{start:.5f});")
+
+    def add_overlays(self, start, end, overlays, *, nle_plate=None, focus=None):
         if not 1 <= len(overlays) <= 2:
             raise ValueError('叠层镜头需要一至两个明确的贴图动作')
         shot = self.shots[-1]
@@ -383,6 +395,8 @@ class EditorialStage:
                 body = '<g data-layout-allow-overlap>'+body+'</g>'
             plate = self.add_plate(begin,begin+hold,style,body,track=11+index)
             self.shots.pop()  # The overlay belongs to the underlying shot.
+            if style=='spotlight_box' and focus:
+                self._camera_tween(f'#{plate}',start,end-start,scale=(1.,1.12),focus=focus)
             if style == 'stat_badge':
                 decimals = min(3,len(str(overlay['value']).partition('.')[2]))
                 suffix = json.dumps(unit,ensure_ascii=False).replace('<','\\u003c')
@@ -470,6 +484,7 @@ class EditorialStage:
         tone: str = "natural",
         camera_moves: list[tuple[float, float, float, float]] | None = None,
         motion: str = "hold",
+        focus: tuple[float, float] | None = None,
         chapter_pill: str | None = None,
         checklist: list[tuple[float, str]] | None = None,
         callouts: list[dict] | None = None,
@@ -494,18 +509,25 @@ class EditorialStage:
             f'data-start="{start:.5f}" data-duration="{end - start:.5f}" data-media-start="{media_start:.3f}" '
             f'data-track-index="2" style="object-fit:cover;transform-origin:50% 50%"></video></div>'
         )
-        if camera_moves is None:
-            span = max(0.1, end - start)
-            if motion == "push":
-                camera_moves = [(0.0, 1.0, 960.0, 540.0), (span, 1.08, 960.0, 540.0)]
-            elif motion == "pull":
-                camera_moves = [(0.0, 1.08, 960.0, 540.0), (span, 1.0, 960.0, 540.0)]
-            elif motion == "glide":
-                camera_moves = [(0.0, 1.05, 860.0, 540.0), (span, 1.05, 1060.0, 540.0)]
-            else:
-                camera_moves = [(0.0, 1.0, 960.0, 540.0), (span, 1.02, 960.0, 540.0)]
         moves = sorted(camera_moves or [], key=lambda row: row[0])
         beats = [float(row[0]) for row in moves]
+        if camera_moves is None:
+            span = end-start
+            selector = f'#{vid} .vp-inner'
+            if focus or motion=="push":
+                self._camera_tween(selector,start,span,scale=(1.,1.12),focus=focus)
+            elif motion=="pull":
+                self._camera_tween(selector,start,span,scale=(1.12,1.))
+            elif motion=="glide":
+                self._camera_tween(selector,start,span,scale=(1.07,1.07),shift=(-42.,42.))
+            elif motion=="punch":
+                kick = min(.45,span*.35)
+                self._camera_tween(selector,start,kick,scale=(1.,1.08))
+                self._camera_tween(selector,start+kick,span-kick,scale=(1.08,1.12))
+                beats.append(kick)
+            beats.insert(0,0.)
+            if sfx:
+                self.add_sound_mark("whoosh",start)
         for index, row in enumerate(moves):
             at, scale, focus_x, focus_y = row[:4]
             row_motion = row[4] if len(row) > 4 else motion

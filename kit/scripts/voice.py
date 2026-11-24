@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 import wave
 from pathlib import Path
 
-from workspace import load_environment
+from workspace import load_environment, load_voice_reference, valid_whisper_directory
 
 WORKSPACE, TOOLKIT = load_environment()
 
@@ -172,18 +172,7 @@ def chapter_chunks(text, mode='long_paragraph'):
 
 
 def _clone_reference(brand):
-    config = TOOLKIT / "brands" / brand / "voice.json"
-    if not config.is_file():
-        raise ValueError(f"缺少声音配置：{config}")
-    data = json.loads(config.read_text())
-    qwen = data.get("qwen3", {})
-    clone = qwen.get("clone", {})
-    ref = Path(clone.get("refAudio", ""))
-    if not ref.is_absolute():
-        ref = config.parent / ref
-    if not ref.is_file():
-        raise ValueError(f"缺少声音参考音频：{ref}")
-    return ref, clone.get("refText", ""), qwen.get("language", "Chinese")
+    return load_voice_reference(TOOLKIT, brand)
 
 
 def resolve_backend(stage, backend, allow_slow_local=False):
@@ -546,9 +535,7 @@ def resolve_asr_model(explicit=None):
     if configured:
         return os.path.expanduser(configured)
     local = Path.home() / "yice-demo/我的视频/models/Whisper-Large-v3-Turbo"
-    config = local / "config.json"
-    weight_names = ("weights.safetensors", "model.safetensors", "weights.npz")
-    if config.is_file() and os.access(config, os.R_OK) and any((local / name).is_file() for name in weight_names):
+    if valid_whisper_directory(local):
         return str(local)
     return "mlx-community/whisper-large-v3-turbo"
 
