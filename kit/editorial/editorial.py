@@ -220,8 +220,10 @@ class EditorialStage:
         self.duration = duration
         self.fps = fps
         self.bg_layers: list[str] = []
+        self.glow_layers: list[str] = []
         self.media_layers: list[str] = []
         self.plates: list[str] = []
+        self.grain_layers: list[str] = []
         self.captions: list[str] = []
         self.scripts: list[str] = []
         self.shots: list[dict] = []
@@ -229,6 +231,9 @@ class EditorialStage:
         self.sound_gains: dict[int, float] = {}
         self.music_drops: list[tuple[float, float]] = []
         self.light_zones: list[tuple[float, float]] = []
+        self.subcompositions: list[str] = []
+        self.shot_layers: list[tuple[str, float, float, tuple]] = []
+        self.transition_filters: list[str] = []
         self._camera_move_history: list[str] = []
         self.font_assets = False
 
@@ -396,6 +401,95 @@ class EditorialStage:
             self.sound_gains[len(self.sound_marks)] = gain
         self.sound_marks.append((kind,at))
 
+    def visual_layers(self):
+        return self.bg_layers, self.glow_layers, self.media_layers, self.plates, self.grain_layers
+
+    def add_subcomposition(self, key, composition_id, entry, start, end):
+        self.subcompositions.append(entry)
+        self.media_layers.append(
+            f'<div id="sub-{key}" class="clip hf-subcomp" style="inset:0;z-index:4" '
+            f'data-composition-id="{composition_id}" data-composition-src="{html.escape(entry)}" '
+            f'data-start="{start:.5f}" data-duration="{end-start:.5f}" '
+            f'data-width="1920" data-height="1080" data-track-index="4"></div>'
+        )
+
+    def add_cinema_material(self, start, end, theme):
+        span = end-start
+        index = len(self.glow_layers)
+        ident = f'ambient-{index}'
+        timing = f'data-start="{start:.5f}" data-duration="{span:.5f}"'
+        tint = '#4B4B9A' if theme=='aurora_indigo' else '#2D5373'
+        self.glow_layers.append(f'<div id="{ident}" class="clip bg-fill ambient-glow-bloom" {timing} data-track-index="1" '
+                                f'data-layout-allow-overflow style="inset:0;pointer-events:none;background:'
+                                f'radial-gradient(ellipse at 42% 61%,{tint}75 0%,transparent 68%)"></div>')
+        self.scripts.append(f"tl.fromTo('#{ident}',{{opacity:.65,x:-28,y:-8}},"
+                            f"{{opacity:.98,x:23,y:12,duration:{span/2:.5f},repeat:1,yoyo:true,"
+                            f"ease:'sine.inOut',immediateRender:false}},{start:.5f});")
+        noise = ('data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22192%22 height=%22192%22%3E'
+                 '%3Cfilter id=%22n%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%22.89%22 '
+                 'numOctaves=%223%22 seed=%2217%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E'
+                 '%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23n)%22/%3E%3C/svg%3E')
+        self.grain_layers.append(f'<div id="grain-{index}" class="clip film-grain" {timing} data-track-index="13" data-layout-ignore '
+                                 f'style="inset:0;z-index:9;opacity:.055;pointer-events:none;background-image:url(\'{noise}\')"></div>')
+
+    def register_visual_shot(self, key, start, end, before, transition=None):
+        self.shot_layers.append((key,start,end,tuple((first,len(group)) for first,group in zip(before,self.visual_layers()))))
+        if transition is None:
+            return
+        prior, _, cut, ranges = self.shot_layers[-2]
+        duration = transition['duration']
+
+        def extend(match):
+            tag = match[0]
+            began = re.search(r'\bdata-start="([\d.]+)"',tag)
+            length = re.search(r'\bdata-duration="([\d.]+)"',tag)
+            if began and length and abs(float(began[1])+float(length[1])-cut)<.00002:
+                return tag[:length.start(1)] + f'{float(length[1])+duration:.5f}' + tag[length.end(1):]
+            return tag
+
+        for group,(first,last) in zip(self.visual_layers(),ranges):
+            for index in range(first,last):
+                group[index] = re.sub(r'<[^/!][^>]*\bdata-duration="[^"]+"[^>]*>',extend,group[index])
+        out, incoming = f'#visual-{prior}', f'#visual-{key}'
+        timing = f"duration:{duration:.5f},ease:'power2.inOut',immediateRender:false"
+        kind = transition['kind']
+        motion = {
+            'whip_push': ('xPercent:-100', 'xPercent:100', 'xPercent:0'),
+            'zoom_through': ('scale:1.85,opacity:0', 'scale:.82,opacity:0', 'scale:1,opacity:1'),
+            'iris_reveal': ('scale:1.08', "clipPath:'circle(0% at 50% 50%)'",
+                            "clipPath:'circle(135% at 50% 50%)'"),
+            'blur_crossfade': ("filter:'blur(16px)'", "filter:'blur(16px)',opacity:0",
+                               "filter:'blur(0px)',opacity:1"),
+        }
+        leave, enter, settle = motion[kind]
+        self.scripts.extend((
+            f"tl.to('{out}',{{{leave},{timing}}},{start:.5f});",
+            f"tl.fromTo('{incoming}',{{{enter}}},{{{settle},{timing}}},{start:.5f});",
+        ))
+        if kind=='whip_push':
+            filt = f'whip-{key}'
+            self.transition_filters.append(f'<filter id="{filt}" x="-10%" width="120%"><feGaussianBlur stdDeviation="0 0"/></filter>')
+            both = f'{out},{incoming}'
+            self.scripts.extend((
+                f"tl.set('{both}',{{filter:'url(#{filt})'}},{start:.5f});",
+                f"tl.to('#{filt} feGaussianBlur',{{attr:{{stdDeviation:'24 0'}},duration:{duration/2:.5f},"
+                f"repeat:1,yoyo:true,ease:'sine.inOut'}},{start:.5f});",
+                f"tl.set('{both}',{{filter:'none'}},{start+duration:.5f});",
+            ))
+        self.add_sound_mark('whoosh',start,gain=.12)
+
+    def render_visual_layers(self):
+        groups = self.visual_layers()
+        if not self.transition_filters and not any('transition_in' in row for row in self.shots):
+            return '\n'.join(layer for group in groups for layer in group)
+        filters = '<svg width="0" height="0" style="position:absolute"><defs>' + ''.join(self.transition_filters) + '</defs></svg>'
+        scenes = []
+        for key,_,_,ranges in self.shot_layers:
+            body = '\n'.join(layer for layers,(first,last) in zip(groups,ranges) for layer in layers[first:last])
+            scenes.append(f'<div id="visual-{key}" class="shot-visual" style="position:absolute;inset:0;isolation:isolate" '
+                          f'data-layout-allow-overflow>{body}</div>')
+        return filters+'\n'.join(scenes)
+
     def sound_events(self, offset=0.):
         for index,(kind,at) in enumerate(self.sound_marks):
             event = dict(kind=kind,at=round(offset+at,5))
@@ -404,7 +498,7 @@ class EditorialStage:
             yield event
 
     def add_callout_rig(self, start, end, src, *, overlays, media_start=0., motion='glide',
-                        framing='fullbleed', window_title=''):
+                        framing='fullbleed', window_title='', refractive=False):
         focus = None
         if motion!='hold':
             target = next((overlay for overlay in overlays if overlay.get('kind') in VERIFIED_OVERLAYS),None)
@@ -412,7 +506,7 @@ class EditorialStage:
                 x,y,w,h = verified_spotlight_box(target)
                 focus = (x+w/2,y+h/2)
         sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion,focus=focus,
-                                    framing=framing,window_title=window_title)
+                                    framing=framing,window_title=window_title,refractive=refractive)
         self.shots[-1].update(stage_mode='callout_rig',media_start=media_start)
         self.add_overlays(start,end,overlays,focus=focus,motion=motion,framing=framing)
         return sid
@@ -441,7 +535,8 @@ class EditorialStage:
         shot['has_motion_overlay'] = True
         beats = shot.setdefault('beats', [])
         nle_windows = []
-        studio = framing=='studio_window'
+        studio = framing in {'studio_window','perspective_3d'}
+        perspective = framing=='perspective_3d'
         def projected_box(overlay):
             x,y,w,h = verified_spotlight_box(overlay)
             if min(x,y)<64 or x+w>1856 or y+h>890:
@@ -543,13 +638,16 @@ class EditorialStage:
                 audio = 'stamp'
             elif style in {'prop_badge','reaction_cutout'}:
                 source, side = overlay.get('source'),overlay.get('side','right')
-                size = float(overlay.get('size',210))
+                foreground = overlay.get('placement')=='foreground_hero' or overlay.get('depth')=='foreground'
+                low,high = (340,460) if foreground else (140,260)
+                size = float(overlay.get('size',380 if foreground else 210))
                 if not isinstance(source,str) or Path(source).suffix.lower() not in IMAGE_EXTENSIONS:
                     raise ValueError('抠像挂件需要 PNG、WebP 或 SVG 素材')
-                if side not in {'left','right'} or not 140<=size<=260:
-                    raise ValueError('抠像挂件仅支持左右侧，尺寸须为 140–260')
-                x = 80 if side=='left' else 1840-size
-                y = 850-size-(42 if label else 0)
+                if side not in {'left','right'} or not low<=size<=high:
+                    raise ValueError(f'抠像挂件仅支持左右侧，尺寸须为 {low}–{high}')
+                margin = 42 if foreground else 80
+                x = margin if side=='left' else 1920-margin-size
+                y = (856 if foreground else 850)-size-(42 if label else 0)
                 image = svg_image(x,y,size,size,source)
                 if label:
                     image += rect(x,y+size+5,size,37,'#172322eb','rx="8"')
@@ -564,11 +662,12 @@ class EditorialStage:
             if studio and style in VERIFIED_OVERLAYS:
                 plate = f's{len(self.plates)}'
                 x,y,w,h = STUDIO_VIEW
-                self.plates.append(f'<div id="{plate}" class="clip studio-window-mark" data-start="{begin:.5f}" '
+                mark = (f'<div id="{plate}" class="clip studio-window-mark" data-start="{begin:.5f}" '
                                    f'data-duration="{hold:.5f}" data-track-index="{11+index}" data-layout-allow-occlusion '
                                    f'style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">'
                                    f'<div class="studio-mark-plane" data-layout-allow-overflow>'
                                    f'<svg viewBox="0 0 {w} {h}">{body}</svg></div></div>')
+                self.plates.append(self.perspective_plane(mark,start,7) if perspective else mark)
             else:
                 plate = self.add_plate(begin,begin+hold,style,body,track=11+index)
                 self.shots.pop()  # The overlay belongs to the underlying shot.
@@ -604,9 +703,13 @@ class EditorialStage:
             if style == 'verdict_stamp':
                 self.add_stamp_slam(plate,begin)
             if style in {'prop_badge','reaction_cutout'}:
+                ease = 'back.out(1.4)' if foreground else 'back.out(1.35)'
                 self.scripts.append(f"tl.fromTo('#{plate} .cutout-hit',{{scale:1.18,rotation:4,y:-9,opacity:0}},"
                                     f"{{scale:1,rotation:-1.5,y:0,opacity:1,duration:{min(.34,hold):.5f},"
-                                    f"transformOrigin:'center center',transformBox:'fill-box',ease:'back.out(1.35)',immediateRender:false}},{begin:.5f});")
+                                    f"transformOrigin:'center center',transformBox:'fill-box',ease:'{ease}',immediateRender:false}},{begin:.5f});")
+                if foreground and hold>.34:
+                    self.scripts.append(f"tl.to('#{plate} .cutout-hit',{{x:{8 if side=='left' else -8},y:-8,rotation:.8,"
+                                        f"duration:{(hold-.34)/2:.5f},repeat:1,yoyo:true,ease:'sine.inOut'}},{begin+.34:.5f});")
             if style!='corner_tag' or not overlay.get('silent'):
                 self.add_sound_mark(audio,begin,gain=.10 if style=='corner_tag' else None)
             beats.append(at)
@@ -745,22 +848,50 @@ class EditorialStage:
                                 f"{{opacity:1,scale:1,duration:{duration:.5f},ease:'back.out(1.22)',immediateRender:false}},{begin:.5f});")
         return self.shots[-1]['id']
 
-    def studio_window_chrome(self, start, end, title):
+    def perspective_plane(self, body, start, layer):
+        key = round(start*self.fps)
+        return (f'<div class="perspective-stage" data-layout-allow-overflow '
+                f'style="position:absolute;inset:0;perspective:1400px;z-index:{layer};pointer-events:none">'
+                f'<div class="perspective-window p3d-{key}" data-layout-allow-overflow '
+                f'style="position:absolute;inset:0;transform-style:preserve-3d">{body}</div></div>')
+
+    def studio_window_chrome(self, start, end, title, *, perspective=False, refractive=False):
         timing = f'data-start="{start:.5f}" data-duration="{end-start:.5f}"'
         self.bg_layers.append(f'<div class="clip bg-fill" {timing} data-track-index="1" data-studio-backdrop '
                               f'style="inset:0;background:{STUDIO_GLOW}"><div class="studio-grid"></div></div>')
         shadow = rect(144,122,1648,760,'rgba(0,0,0,.42)','rx="18"')
         shadow += rect(136,114,1648,760,'rgba(0,0,0,.22)','rx="18"')
-        self.bg_layers.append(f'<div class="clip studio-window-shadow" {timing} data-track-index="1" '
-                              f'data-layout-allow-occlusion><svg viewBox="0 0 1920 1080">{shadow}</svg></div>')
+        shadow_layer = (f'<div class="clip studio-window-shadow" {timing} data-track-index="1" '
+                        f'data-layout-allow-occlusion><svg viewBox="0 0 1920 1080">{shadow}</svg></div>')
+        self.bg_layers.append(self.perspective_plane(shadow_layer,start,1) if perspective else shadow_layer)
         body = '<path fill="#161D27" d="M136 142V124Q136 108 152 108H1768Q1784 108 1784 124V142Z"/>'
         body += ''.join(f'<circle cx="{x}" cy="125" r="5.5" fill="{color}"/>'
                         for x,color in zip((157,178,199),('#E06C65','#E5C07B','#7EC699')))
         if title:
             body += mono(960,132,title,min(21,1360//max(1,len(title))),'#D9E1EC',anchor='middle')
         body += rect(136,108,1648,760,'none','rx="18" stroke="rgba(255,255,255,.16)" stroke-width="1.5"')
-        self.plates.append(f'<div class="clip plate studio-window-chrome" {timing} data-track-index="8" '
-                           f'data-layout-allow-occlusion><svg viewBox="0 0 1920 1080">{body}</svg></div>')
+        optics = ''
+        if perspective or refractive:
+            key = f'shimmer-{round(start*self.fps)}'
+            optics = (f'<div class="refractive-edge" style="position:absolute;left:151px;top:108px;width:1618px;'
+                      f'height:1px;overflow:hidden;background:linear-gradient(90deg,transparent,#c0deffb0,transparent)">'
+                      f'<i id="{key}" class="shimmer-sweep" style="position:absolute;width:250px;height:1px;'
+                      f'background:linear-gradient(115deg,transparent,#edfaff,transparent)"></i></div>')
+            self.scripts.append(f"tl.fromTo('#{key}',{{x:-250}},{{x:1620,duration:{min(1.05,(end-start)*.72):.5f},"
+                                f"ease:'sine.inOut',immediateRender:false}},{start:.5f});")
+        chrome = (f'<div class="clip plate studio-window-chrome" {timing} data-track-index="8" '
+                  f'data-layout-allow-occlusion><svg viewBox="0 0 1920 1080">{body}</svg>{optics}</div>')
+        self.plates.append(self.perspective_plane(chrome,start,8) if perspective else chrome)
+        if perspective:
+            pose = f'.p3d-{round(start*self.fps)}'
+            intro = min(.78,(end-start)*.5)
+            self.scripts.extend((
+                f"tl.fromTo('{pose}',{{rotationY:-8,rotationX:3.5,rotationZ:-.55,scale:.94}},"
+                f"{{rotationY:-2,rotationX:1,rotationZ:0,scale:1.02,duration:{intro:.5f},"
+                f"ease:'power3.out',immediateRender:false}},{start:.5f});",
+                f"tl.to('{pose}',{{rotationY:-3.5,rotationX:1.7,rotationZ:.22,scale:1.008,"
+                f"duration:{end-start-intro:.5f},ease:'sine.inOut'}},{start+intro:.5f});",
+            ))
 
     def add_fullbleed_rig(
         self,
@@ -779,6 +910,7 @@ class EditorialStage:
         sfx: bool = False,
         framing: str = "fullbleed",
         window_title: str = "",
+        refractive: bool = False,
     ) -> str:
         """铺满 1920×1080 的连续跟焦镜头，并登记可审计的视觉 beats。
 
@@ -787,22 +919,23 @@ class EditorialStage:
         """
         if motion not in {"push", "glide", "pull", "hold", "punch"} | BREATHING_MOTIONS:
             raise ValueError("未知运镜方式")
-        if framing not in {'fullbleed','studio_window'} or not isinstance(window_title,str):
-            raise ValueError('framing 须为 fullbleed 或 studio_window，window_title 须为文本')
+        if framing not in {'fullbleed','studio_window','perspective_3d'} or not isinstance(window_title,str):
+            raise ValueError('framing 须为 fullbleed、studio_window 或 perspective_3d，window_title 须为文本')
         if motion == "push" and len(self._camera_move_history) >= 2 and self._camera_move_history[-2:] == ["push", "push"]:
             raise ValueError("禁止连续三镜使用 push，请改用 glide、pull、hold 或 punch")
         self._camera_move_history.append(motion)
         idx = len(self.media_layers)
         vid = f"vp{idx}"
         tone_cls = f" tone-{tone}" if tone != "natural" else ""
-        studio = framing=='studio_window'
+        studio = framing in {'studio_window','perspective_3d'}
+        perspective = framing=='perspective_3d'
         x,y,w,h = STUDIO_VIEW if studio else (0,0,1920,1080)
         cls = 'studio-window-media' if studio else 'fullbleed'
         if studio:
-            self.studio_window_chrome(start,end,window_title)
+            self.studio_window_chrome(start,end,window_title,perspective=perspective,refractive=refractive)
             if focus:
                 focus = studio_source_point(*focus)
-        self.media_layers.append(
+        media = (
             f'<div id="{vid}" class="viewport {cls}{tone_cls}" '
             + (f'style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">' if studio else
                'style="left:0;top:0;width:1920px;height:1080px">')
@@ -811,6 +944,7 @@ class EditorialStage:
             f'data-start="{start:.5f}" data-duration="{end - start:.5f}" data-media-start="{media_start:.3f}" '
             f'data-track-index="2" style="object-fit:cover;transform-origin:50% 50%"></video></div>'
         )
+        self.media_layers.append(self.perspective_plane(media,start,2) if perspective else media)
         moves = sorted(camera_moves or [], key=lambda row: row[0])
         beats = [float(row[0]) for row in moves]
         if camera_moves is None:
@@ -1155,7 +1289,7 @@ svg{display:block}"""
             f'<script src="vendor/gsap.min.js"></script><style>{css}</style></head>'
             f'<body><main id="root" data-composition-id="main" data-start="0" '
             f'data-width="1920" data-height="1080" data-duration="{self.duration:g}" data-fps="{self.fps}">'
-            + "\n".join(self.bg_layers + self.media_layers + self.plates + self.captions)
+            + self.render_visual_layers() + "\n".join(self.captions)
             + f'<audio id="mix" src="{html.escape(audio_src)}" data-start="0" '
               f'data-duration="{self.duration:g}" data-track-index="16" data-volume="1"></audio>'
             + "</main><script>\nwindow.__timelines = window.__timelines || {};\nconst tl = gsap.timeline({paused:true});\n"

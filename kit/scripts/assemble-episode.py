@@ -4,6 +4,7 @@ import argparse
 import copy
 import hashlib
 import json
+from html.parser import HTMLParser
 from math import ceil, isfinite
 import os
 from pathlib import Path
@@ -20,13 +21,14 @@ from PIL import Image
 KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(KIT.parent))
 from audit_v7 import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, probe_video, semantic_binding_gate
-from workspace import resolve_gsap_runtime, resolve_hyperframes_command
+from workspace import ONETAKE_FILES, ONETAKE_FONTS, composition_files, resolve_gsap_runtime, resolve_hyperframes_command, resolve_onetake
 from kit.editorial.audio_mix import mix_episode_audio
 from kit.editorial.editorial import EditorialStage, EXPLAINER_THEMES, FONT_FILES, PALETTES, evidence_box
 from kit.studio_ui import add_workbench
 
 FPS = 30
-MODES = {'cold_open_ab','title_sequence','callout_rig','fullbleed_rig','studio_ui','explainer_clip','triptych_cards','reference_breakdown','evidence_spotlight'}
+MODES = {'cold_open_ab','title_sequence','callout_rig','fullbleed_rig','studio_ui','explainer_clip','triptych_cards','reference_breakdown','evidence_spotlight','onetake_clip','hyperframes_block'}
+TRANSITIONS = {'whip_push','zoom_through','iris_reveal','blur_crossfade'}
 SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 LOGO_EXTENSIONS = {'.svg','.png','.webp'}
 
@@ -189,6 +191,13 @@ def prepare_shots(raw, root, cues):
                 validate_media(path,media_start+end-start,durations,allow_image=mode=='evidence_spotlight')
         if mode=='evidence_spotlight':
             src = evidence_metadata(src,root)
+        if 'transition_in' in src:
+            transition = src['transition_in']
+            if (not result or result[-1]['act'] != act or not isinstance(transition,dict)
+                    or not isinstance(transition.get('kind'),str) or transition['kind'] not in TRANSITIONS
+                    or type(transition.get('duration')) not in (int,float)
+                    or not 0 < transition['duration'] < end-start):
+                raise ValueError(f'镜头 {key} 的转场须位于同幕第二镜起，时长须短于入镜')
         result.append(dict(src,id=key,act=act,start=start,end=end,media=media,media_start=media_start,theme=theme,
                            anchor_text=cue.get('text',''),anchor_cue_start=cue['firstCharTime'],
                            has_motion_overlay=(mode in {'callout_rig','studio_ui'} and bool(src.get('overlays'))
@@ -332,6 +341,103 @@ def matching_render(output, stamp, inputs, duration):
         return False
 
 
+def composition_entry(root, value, default):
+    if not isinstance(value,str) or not value or not Path(value).parts:
+        raise ValueError('合成需要目录或 HTML 入口')
+    path = Path(value)
+    if path.is_absolute() or '..' in path.parts:
+        raise ValueError('合成入口须位于清单下的本地目录')
+    entry = root / path
+    if entry.is_dir():
+        entry /= default
+    if entry.parent == root or any(part.is_symlink() for part in (entry,*entry.parents) if part != root and root in part.parents):
+        raise ValueError('合成须位于专用目录，路径不可含软链接')
+    return entry
+
+
+def onetake(shot, root, folder, run, *, force_render=False):
+    entry = composition_entry(root,shot.get('comp'),'comp.html')
+    runtime = resolve_onetake()
+    if runtime is None:
+        raise ValueError('找不到本机 Onetake')
+    shutter = shot.get('shutter',180)
+    allow_staccato = shot.get('allow_staccato',False)
+    if type(shutter) not in (int,float) or not 0 < shutter <= 360 or not isinstance(allow_staccato,bool):
+        raise ValueError('Onetake 快门或 allow_staccato 参数无效')
+    output = folder/'assets'/f"otk-{shot['id']}.mp4"
+    stamp = output.with_suffix('.render-stamp.json')
+    probe = output.with_suffix('.onetake-probe.json')
+    render = output.with_suffix('.render.json')
+    span = round(shot['end']-shot['start'],6)
+    runtime_files = [*ONETAKE_FILES, 'lib/ui_kit.js']
+    inputs = dict(entry=entry.name,span=span,shutter=shutter,allow_staccato=allow_staccato,
+                  composition={p.relative_to(entry.parent).as_posix():file_fingerprint(p) for p in composition_files(entry)},
+                  runtime={name:file_fingerprint(runtime/name) for name in runtime_files if (runtime/name).is_file()},
+                  fonts={name:file_fingerprint(KIT/'template/assets/fonts'/name) for name in ONETAKE_FONTS},
+                  bridge=file_fingerprint(Path(__file__).with_name('render-onetake-clip.py')))
+    minimum_frames = ceil((span + .35)*FPS - 1e-6)
+    if not force_render and all(path.is_file() for path in (output,stamp,probe,render)):
+        try:
+            report = read(probe)
+            if (read(stamp)==inputs and not report['seek_errors'] and not report['page_errors']
+                    and read(render)['shutter']==shutter and round(probe_video(output)*FPS)>=minimum_frames):
+                return output.relative_to(folder).as_posix(), report
+        except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+            pass
+    cmd = [sys.executable,str(Path(__file__).with_name('render-onetake-clip.py')),str(entry),
+           '--out',str(output),'--span',str(span),'--shutter',str(shutter)]
+    if allow_staccato:
+        cmd.append('--allow-staccato')
+    run(cmd,check=True)
+    write(stamp,inputs)
+    return output.relative_to(folder).as_posix(), read(probe)
+
+
+class CompositionRoot(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.composition_id = None
+        self.templated = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'template' and self.composition_id is None:
+            self.templated = True
+        attributes = dict(attrs)
+        if self.composition_id is None and 'data-composition-src' not in attributes:
+            self.composition_id = attributes.get('data-composition-id')
+
+
+def install_subcomposition(shot, root, folder, gsap):
+    entry = composition_entry(root,shot.get('composition'),'index.html')
+    files = composition_files(entry)
+    parser = CompositionRoot()
+    markup = entry.read_text()
+    parser.feed(markup)
+    if parser.composition_id is None:
+        raise ValueError(f"子合成 {shot['id']} 缺少 data-composition-id")
+    composition_id = identifier(parser.composition_id)
+    dest = folder/'compositions'/shot['id']
+    if dest.is_symlink() or dest.parent.is_symlink():
+        raise ValueError('子合成输出目录不可为软链接')
+    if dest.exists():
+        shutil.rmtree(dest)
+    for source in files:
+        target = dest / source.relative_to(entry.parent)
+        target.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(source,target)
+    if not parser.templated:
+        head = re.search(r'<head\b[^>]*>(.*?)</head\s*>',markup,re.I|re.S)
+        body = re.search(r'<body\b[^>]*>(.*?)</body\s*>',markup,re.I|re.S)
+        assets = re.findall(r'<(?:style|script)\b[^>]*>.*?</(?:style|script)\s*>|<link\b[^>]*>',
+                            head[1],re.I|re.S) if head else []
+        fragment = body[1] if body else markup
+        (dest/entry.name).write_text('<!doctype html><meta charset="utf-8"><template>\n'
+                                    +'\n'.join(assets+[fragment])+'\n</template>\n')
+    install_asset(gsap,dest/'vendor/gsap.min.js')
+    install_fonts(dest)
+    return (dest/entry.name).relative_to(folder).as_posix(),composition_id
+
+
 def explainer(shot, root, folder, run, *, force_render=False):
     spec_source = shot['spec']
     if isinstance(spec_source,str):
@@ -382,7 +488,7 @@ def explainer(shot, root, folder, run, *, force_render=False):
     return target.relative_to(folder).as_posix(),spec
 
 
-def build_act(shots, root, folder, title, run, *, force_render=False):
+def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None):
     first,last = shots[0]['start'],shots[-1]['end']
     stage = EditorialStage(title,duration=last-first,fps=FPS)
     for shot in shots:
@@ -392,6 +498,8 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
         start = shot['media_start']
         span = b-a
         theme = shot.get('theme','pine')
+        cinema = theme in {'obsidian','aurora_indigo'} or shot.get('atmosphere')=='cinema_glow'
+        before = tuple(len(group) for group in stage.visual_layers())
         palette_start = (len(stage.bg_layers),len(stage.plates))
         assets, auxiliary, gif_hashes = [],[],{}
         for i,path in enumerate(shot['media']):
@@ -436,10 +544,10 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
                                      paper=theme=='pine' and shot.get('paper',False),logo=logo)
         elif mode == 'callout_rig':
             stage.add_callout_rig(a,b,assets[0],overlays=overlays,media_start=start,motion=shot.get('motion','glide'),
-                                  framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''))
+                                  framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''),refractive=cinema)
         elif mode == 'fullbleed_rig':
             stage.add_fullbleed_rig(a,b,assets[0],media_start=start,motion=shot.get('motion','glide'),
-                                    framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''))
+                                    framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''),refractive=cinema)
         elif mode == 'studio_ui':
             data = dict(shot['data'])
             data['evidence'] = assets
@@ -464,6 +572,18 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
         elif mode == 'reference_breakdown':
             stage.add_reference_breakdown(a,b,assets[0],channel=shot.get('channel'),claim=shot.get('claim'),
                                           cut_points=shot.get('cut_points',()),metrics=shot.get('metrics',()),media_start=start)
+        elif mode == 'onetake_clip':
+            clip,probe = onetake(shot,root,folder,run,force_render=force_render)
+            stage.add_video(a,b,clip,0,0,1920,1080,fit='cover')
+            stage._shot(text,'onetake_motion',a,b,[clip],beats=probe['beats'])
+            for event in probe['events']:
+                if event['t'] < span:
+                    stage.add_sound_mark(event['kind'],a+event['t'],gain=event.get('gain'))
+        elif mode == 'hyperframes_block':
+            entry,composition_id = install_subcomposition(shot,root,folder,gsap or gsap_runtime({},root))
+            stage.add_subcomposition(key,composition_id,entry,a,b)
+            stage._shot(text,'hyperframes_motion',a,b,[])
+            stage.shots[-1]['composition'] = entry
         else:
             clip,spec = explainer(shot,root,folder,run,force_render=force_render)
             stage.add_video(a,b,clip,0,0,1920,1080,fit='cover')
@@ -475,10 +595,12 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
             if theme_name in {'snow','paper','bauhaus'} or (not clip_theme and spec['grammar']=='t6_swiss_card'):
                 stage.light_zones.append((a,b))
         stage.apply_palette(theme,a,b,palette_start,keep_studio_panels=mode=='studio_ui')
+        if cinema:
+            stage.add_cinema_material(a,b,theme)
         if mode in {'fullbleed_rig','callout_rig'} and bright_caption_band(folder/assets[0],start+span/2):
             stage.light_zones.append((a,b))
         fields = ('anchor_cue_id','anchor_cue_start','anchor_text','spoken_topic','visual_subject',
-                  'semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme')
+                  'semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme','transition_in')
         row = stage.shots[-1]
         row.update({field:shot[field] for field in fields if field in shot},id=key,stage_mode=mode)
         if 'overlays' in shot:
@@ -488,6 +610,7 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
             row['files'] = list(dict.fromkeys([*row['files'],*auxiliary]))
         if gif_hashes:
             row['gif_source_hashes'] = gif_hashes
+        stage.register_visual_shot(key,a,b,before,shot.get('transition_in'))
     return stage
 
 
@@ -540,6 +663,11 @@ def render_act(folder, stage, command, env, run, *, force_render=False):
                   media={name:file_fingerprint(folder/name) for name in sorted(media)})
     if getattr(stage,'font_assets',False):
         inputs['fonts'] = {name:file_fingerprint(folder/'assets/fonts'/name) for name in FONT_FILES}
+    if getattr(stage,'subcompositions',[]):
+        inputs['subcompositions'] = {
+            path.relative_to(folder).as_posix():file_fingerprint(path)
+            for entry in stage.subcompositions for path in composition_files(folder/entry)
+        }
     output,stamp = folder/'render.mp4',folder/'.render-stamp.json'
     if not force_render and matching_render(output,stamp,inputs,stage.duration):
         return 'reused'
@@ -578,7 +706,7 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
         folder = output/'acts'/act
         folder.mkdir(parents=True,exist_ok=True)
         offset = items[0]['start']
-        stage = build_act(items,root,folder,raw.get('title',name),run,force_render=force_render)
+        stage = build_act(items,root,folder,raw.get('title',name),run,force_render=force_render,gsap=gsap)
         stages.append((folder,stage,offset))
         marks.extend(stage.sound_events(offset))
         for row in stage.shots:
@@ -599,8 +727,9 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
                 global_row['cards'] = [dict(card,**{key:(prefix/card[key]).as_posix()
                                                    for key in ('source','logo') if card.get(key)})
                                        for card in row['cards']]
-            if 'explainer_spec' in row:
-                global_row['explainer_spec'] = (folder/row['explainer_spec']).relative_to(output).as_posix()
+            for field in ('explainer_spec','composition'):
+                if field in row:
+                    global_row[field] = (prefix/row[field]).as_posix()
             global_shots.append(global_row)
     cuts = None
     music = audio.get('bgm',[])

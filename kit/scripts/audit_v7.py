@@ -43,7 +43,8 @@ TOOLS = {
 CREATORS = {'johnnyharris','fireship'}
 ABSTRACT = ('规则', '清单', '优先级', '总结', '原则', '三句话', '步骤', 'rules', 'checklist', 'summary', 'priority')
 BINDINGS = {'exact_tool_capture', 'conceptual_explainer', 'physical_prop', 'callback_cut'}
-MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards', 'reference_breakdown', 'evidence_spotlight'}
+MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards', 'reference_breakdown', 'evidence_spotlight',
+          'onetake_clip', 'hyperframes_block'}
 REAL = {'callout_rig', 'cold_open_ab', 'fullbleed_rig', 'web_cam', 'real_video', 'stock_broll', 'reference_breakdown'}
 VERIFIED_OVERLAYS = {'spotlight_box','highlighter_sweep','hand_circle'}
 MOTION_OVERLAYS = {'stat_badge','strikethrough_list','verdict_stamp','corner_tag','prop_badge','reaction_cutout'} | VERIFIED_OVERLAYS
@@ -444,6 +445,32 @@ def explainer_density_gate(shots, project=None):
     return {'ok':not violations,'violations':violations}
 
 
+def onetake_craft_gate(shots, project):
+    checked, violations = [], []
+    project = Path(project)
+    for shot in shots:
+        if stage_mode(shot) != 'onetake_clip':
+            continue
+        key = shot['id']
+        checked.append(key)
+        files = primary_files(shot)
+        try:
+            if len(files) != 1:
+                raise ValueError('缺少 Onetake 视频')
+            clip = (project/files[0]).resolve()
+            if not clip.is_relative_to(project.resolve()) or not clip.is_file():
+                raise ValueError('Onetake 视频路径无效')
+            probe = json.loads(clip.with_suffix('.onetake-probe.json').read_text())
+            render = json.loads(clip.with_suffix('.render.json').read_text())
+            if probe['seek_errors'] or probe['page_errors']:
+                raise ValueError('Onetake 探针检测到页面或 seek 异常')
+            if type(render['shutter']) not in (int,float) or not 0 < render['shutter'] <= 360:
+                raise ValueError('Onetake 渲染未启用快门')
+        except (OSError,ValueError,TypeError,KeyError) as error:
+            violations.append(dict(shot=key,reason=str(error)))
+    return dict(ok=not violations,checked=checked,violations=violations)
+
+
 def video_gates(timeline, project, rendered, duration, errors):
     gates = {
         'v7_timeline_gate': timeline_gates(timeline,project,duration),
@@ -453,6 +480,7 @@ def video_gates(timeline, project, rendered, duration, errors):
         'first_half_motion_density_gate': first_half_motion_density_gate(timeline['shots'],duration),
         'breath_integrity_gate': breath_integrity_gate(project,timeline),
         'explainer_density_gate': explainer_density_gate(timeline['shots'],project),
+        'onetake_craft_gate': onetake_craft_gate(timeline['shots'],project),
     }
     for name,report in gates.items():
         if not report['ok']:

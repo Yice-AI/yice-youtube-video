@@ -1,9 +1,9 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.0。高清素材采集、多格式证据装配、分幕主题、短句字幕、原速配音、声学母带和封面导出。适用于旁白、真实录屏、分镜、成片和返修。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.1。Onetake 快门渲染、HyperFrames 原生子合成、3D 实录视窗、高密度实证、原速配音、短句字幕与声学母带。适用于旁白、真实录屏、分镜、成片和返修。
 ---
 
-# 一策 YouTube 视频制作 v8.0
+# 一策 YouTube 视频制作 v8.1
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。
 
@@ -18,9 +18,19 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.0�
    - 具象实物特写和人物抠像分别用 `find-media.sh`、`people-add.sh`。
    - 对原片内容或剪辑的具体评论可用 `reference_breakdown`，原片静音，明确频道署名和实测切点。
 3. **配音并验帧。** 执行 `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`。默认 `long_paragraph` 优先 65–115 字、最多 5 句，`natural_v7` 保留呼吸。`--pause-after 0-3=3.0` 可登记留白。Kaggle 异步每 2.5 秒轮询，默认总等待 900 秒，异步提交 HTTP 404 才回退。清单写好后运行 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify`，按首、中、尾帧逐镜核对台词及因果顺序。
-4. **装配与审片。** 规则、分步和片尾总结优先用 `t7_editorial_board` 正反对照或结构看板，数值关系用 `t3_finance_chart`。用 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 装片，输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 和分幕工程。输入一致的幕可复用，`--force-render` 强制刷新，`--build-only` 生成工程与母带。最后执行 `kit/scripts/audit-v3.sh --v7 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
+4. **装配与审片。** 黄金前 8 秒、机制高潮与片尾核心结论优先用 `onetake_clip`。多阶段机制用 `hyperframes_block`，数值关系可用 `t3_finance_chart`，实录用 `perspective_3d` 或 `studio_window`。用 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 装片，输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 和分幕工程。输入一致的幕可复用，`--force-render` 强制刷新，`--build-only` 生成工程与母带。最后执行 `kit/scripts/audit-v3.sh --v7 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
 
 5. **封面与打包。** 用 `kit/scripts/thumbnail.sh --project . --title "标题" --summary "内容摘要"` 走 `image2` 原生直出，默认生成 3 张候选。打开 `thumbnail-contact-sheet.png` 对照信息流尺寸和右下角时长警示。用同一入口加 `--select 1` 导出小于 2 MB 的高清 JPG，默认存入 `thumbnails/` 并登记账本。
+
+## 反简陋 PPT 铁律
+
+| 镜头任务 | 视觉路由 |
+| --- | --- |
+| 黄金前 8 秒的钩子、核心机制高潮、全片结论 | `onetake_clip` 用 OM 弹簧、运镜和跨拍变形，默认 180° 真实快门积分。三张纯文字方框逐页切换不能承担这些镜头。 |
+| 多阶段架构、3D 卡片阵列、交互状态推演 | `hyperframes_block` 按口播推进实体、光轨和状态，复用 HyperFrames Registry 组件和 Animation 蓝图。 |
+| 真实网页与录屏实证，目标至少占全片 50% | `perspective_3d` / `studio_window` 保持操作可读。需要时用前景实物或同步跨镜转场保留注意力。 |
+
+`t7_editorial_board` 保留旧项目兼容。合成契约、清单用法与离线验收见 [双擎高阶视觉路由](references/10-双擎高阶视觉路由.md)。
 
 ## episode-manifest.json
 

@@ -12,7 +12,7 @@ from pathlib import Path
 
 repo = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(repo / 'kit/scripts'))
-from workspace import (load_environment, ensure_voice_dependencies, load_voice_reference,
+from workspace import (load_environment, ensure_voice_dependencies, load_voice_reference, resolve_onetake,
                        resolve_gsap_runtime, resolve_hyperframes_command, valid_whisper_directory)
 
 parser = argparse.ArgumentParser(description='安装/检查 skill；自动补齐现有 ASR 环境的配音依赖，其余依赖仅检查。')
@@ -144,6 +144,7 @@ hints = {
 print(json.dumps({'repository': str(repo), 'links': links, 'backups': backups, 'config': str(config),
                   'workspace': str(workspace), 'toolkit': str(toolkit), 'dependencies': checks,
                   'voice_dependencies': voice_dependencies, 'check_only': args.check,
+                  'onetake_ready': resolve_onetake(env) is not None,
                   'missing': [name for name, exists in checks.items() if not exists],
                   'missing_hints': {name:hint for name,hint in hints.items() if not checks[name]},
                   'note': '仅自动补齐现有 asr-venv 的配音 Python 依赖；其余缺失依赖请自行准备，不下载模型。'}, ensure_ascii=False, indent=2))

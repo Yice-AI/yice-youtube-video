@@ -8,6 +8,33 @@ import subprocess
 import sys
 from pathlib import Path
 
+ONETAKE_FILES = ('lib/motion.js', 'scripts/probe.py', 'scripts/render.py')
+ONETAKE_FONTS = ('SourceHanSansCN-Bold.otf', 'SourceHanSerifCN-Heavy.otf', 'SourceCodePro-Regular.otf')
+
+
+def composition_files(entry):
+    if entry.is_symlink() or not entry.is_file() or entry.suffix.lower() != '.html':
+        raise ValueError(f'合成入口须为本地 HTML：{entry.name}')
+    files = []
+    for path in sorted(entry.parent.rglob('*')):
+        if path.is_symlink() or not (path.is_file() or path.is_dir()):
+            raise ValueError(f'合成目录只允许普通文件和目录：{path.name}')
+        if path.is_file():
+            files.append(path)
+    return files
+
+
+def resolve_onetake(environ=None):
+    environ = os.environ if environ is None else environ
+    home = Path(environ.get('HOME', str(Path.home())))
+    override = environ.get('YICE_ONETAKE_DIR')
+    candidates = [Path(override).expanduser()] if override else []
+    candidates.extend(home / path for path in (
+        '.codex/skills/onetake', '.gemini/config/skills/onetake', '.claude/skills/onetake',
+    ))
+    return next((path.resolve() for path in candidates
+                 if all((path / name).is_file() for name in ONETAKE_FILES)), None)
+
 
 def valid_whisper_directory(path):
     config = path / "config.json"
