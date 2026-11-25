@@ -10,6 +10,7 @@ from pathlib import Path
 
 ONETAKE_FILES = ('lib/motion.js', 'scripts/probe.py', 'scripts/render.py')
 ONETAKE_FONTS = ('SourceHanSansCN-Bold.otf', 'SourceHanSerifCN-Heavy.otf', 'SourceCodePro-Regular.otf')
+ONETAKE_COLORS = ('ground','deep','card','line','mute','ink','accent','accent2')
 
 
 def composition_files(entry):
@@ -34,6 +35,28 @@ def resolve_onetake(environ=None):
     ))
     return next((path.resolve() for path in candidates
                  if all((path / name).is_file() for name in ONETAKE_FILES)), None)
+
+
+def onetake_python():
+    return shlex.split(os.environ.get('YICE_ONETAKE_PYTHON','')) or [sys.executable]
+
+
+def onetake_looks(runtime):
+    return json.loads((runtime/'looks/looks.json').read_text())['looks']
+
+
+def onetake_look(runtime, look=None, *, shots=(), output=None):
+    presets = onetake_looks(runtime)
+    name = 'paper' if look is None else look
+    if not isinstance(name,str) or name not in presets:
+        raise ValueError('Onetake 色板须为 '+', '.join(presets))
+    if not shots:
+        return dict(presets[name],name=name)
+    if not 1 <= len(shots) <= 3 or not all(Path(shot).is_file() for shot in shots):
+        raise ValueError('产品吸色需要 1–3 张本地截图')
+    subprocess.run([*onetake_python(),str(runtime/'scripts/look.py'),'from-shot',*map(str,shots),
+                    '--faces',name,'--out',str(output)],check=True,capture_output=True,text=True)
+    return json.loads(Path(output).read_text())
 
 
 def valid_whisper_directory(path):
@@ -219,6 +242,8 @@ print(json.dumps(result))
 
 def main():
     runners = {"voice.py": ("YICE_ASR_PYTHON", "asr-venv"),
+               "visual-palette.py": ("YICE_VOICE_PYTHON", "asr-venv"),
+               "render-onetake-clip.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "voice-check.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "voice-post.py": ("YICE_VOICE_PYTHON", "asr-venv"),
                "voice-repair.py": ("YICE_VOICE_PYTHON", "asr-venv"),

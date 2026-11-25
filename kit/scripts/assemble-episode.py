@@ -362,6 +362,13 @@ def onetake(shot, root, folder, run, *, force_render=False):
         raise ValueError('找不到本机 Onetake')
     shutter = shot.get('shutter',180)
     allow_staccato = shot.get('allow_staccato',False)
+    look = shot.get('look')
+    screenshots = shot.get('look_from_shots',[])
+    if ((look is not None and not isinstance(look,str)) or not isinstance(screenshots,list)
+            or len(screenshots)>3 or any(not isinstance(item,str) or not item for item in screenshots)
+            or ('look_from_shots' in shot and not screenshots)):
+        raise ValueError('Onetake 色板或截图参数无效')
+    shots = [locate(root,item) for item in screenshots]
     if type(shutter) not in (int,float) or not 0 < shutter <= 360 or not isinstance(allow_staccato,bool):
         raise ValueError('Onetake 快门或 allow_staccato 参数无效')
     output = folder/'assets'/f"otk-{shot['id']}.mp4"
@@ -370,11 +377,17 @@ def onetake(shot, root, folder, run, *, force_render=False):
     render = output.with_suffix('.render.json')
     span = round(shot['end']-shot['start'],6)
     runtime_files = [*ONETAKE_FILES, 'lib/ui_kit.js']
+    if look is not None or shots:
+        runtime_files.append('looks/looks.json')
+    if shots:
+        runtime_files.append('scripts/look.py')
     inputs = dict(entry=entry.name,span=span,shutter=shutter,allow_staccato=allow_staccato,
                   composition={p.relative_to(entry.parent).as_posix():file_fingerprint(p) for p in composition_files(entry)},
                   runtime={name:file_fingerprint(runtime/name) for name in runtime_files if (runtime/name).is_file()},
                   fonts={name:file_fingerprint(KIT/'template/assets/fonts'/name) for name in ONETAKE_FONTS},
                   bridge=file_fingerprint(Path(__file__).with_name('render-onetake-clip.py')))
+    if look is not None or shots:
+        inputs['look'] = dict(preset=look,screenshots=[file_fingerprint(path) for path in shots])
     minimum_frames = ceil((span + .35)*FPS - 1e-6)
     if not force_render and all(path.is_file() for path in (output,stamp,probe,render)):
         try:
@@ -388,6 +401,10 @@ def onetake(shot, root, folder, run, *, force_render=False):
            '--out',str(output),'--span',str(span),'--shutter',str(shutter)]
     if allow_staccato:
         cmd.append('--allow-staccato')
+    if look is not None:
+        cmd.extend(('--look',look))
+    if shots:
+        cmd.extend(('--look-from-shots',*map(str,shots)))
     run(cmd,check=True)
     write(stamp,inputs)
     return output.relative_to(folder).as_posix(), read(probe)
@@ -561,7 +578,7 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None)
         elif mode == 'triptych_cards':
             cards = [dict(with_logo(card,f'card-{i}-logo'),source=asset)
                      for i,(card,asset) in enumerate(zip(shot['cards'],assets))]
-            stage.add_triptych_cards(a,b,heading=shot['heading'],cards=cards)
+            stage.add_triptych_cards(a,b,heading=shot['heading'],cards=cards,theme=theme)
         elif mode == 'evidence_spotlight':
             logo = with_logo(shot,'logo').get('logo')
             stage.add_evidence_spotlight(a,b,assets[0],heading=shot.get('heading') or text,

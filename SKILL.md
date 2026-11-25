@@ -1,9 +1,9 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.1。Onetake 快门渲染、HyperFrames 原生子合成、3D 实录视窗、高密度实证、原速配音、短句字幕与声学母带。适用于旁白、真实录屏、分镜、成片和返修。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.2。Onetake 多风格快门渲染、HyperFrames 原生子合成、3D 实录视窗、跨时窗遮挡校验、原速配音与声学母带。适用于旁白、真实录屏、分镜、成片和返修。
 ---
 
-# 一策 YouTube 视频制作 v8.1
+# 一策 YouTube 视频制作 v8.2
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。
 
@@ -24,6 +24,8 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.1�
 
 ## 反简陋 PPT 铁律
 
+风格以贴合内容和画面质量为准。同一套皮肤能服务叙事时可以继续用。跨题材先用 `kit/scripts/visual-palette.sh` 查看 Onetake 六套色板或从真实产品截图吸色，再按镜头任务选择 HyperFrames 蓝图、原子动效、转场和 Registry 组件。
+
 | 镜头任务 | 视觉路由 |
 | --- | --- |
 | 黄金前 8 秒的钩子、核心机制高潮、全片结论 | `onetake_clip` 用 OM 弹簧、运镜和跨拍变形，默认 180° 真实快门积分。三张纯文字方框逐页切换不能承担这些镜头。 |
@@ -31,6 +33,8 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.1�
 | 真实网页与录屏实证，目标至少占全片 50% | `perspective_3d` / `studio_window` 保持操作可读。需要时用前景实物或同步跨镜转场保留注意力。 |
 
 `t7_editorial_board` 保留旧项目兼容。合成契约、清单用法与离线验收见 [双擎高阶视觉路由](references/10-双擎高阶视觉路由.md)。
+
+抠图默认校验主体轮廓。清单核验会对前景抠图的首、中、尾帧检查底层文字，`overlay_text_collisions` 有命中时按报告时间回看，并调整贴图位置或存续时间。
 
 ## episode-manifest.json
 

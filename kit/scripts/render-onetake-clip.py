@@ -5,15 +5,13 @@ import argparse
 import json
 from math import ceil, isfinite
 from pathlib import Path
-import os
 import re
-import shlex
 import shutil
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
 
-from workspace import ONETAKE_FONTS, composition_files, resolve_onetake
+from workspace import ONETAKE_COLORS, ONETAKE_FONTS, composition_files, onetake_look, onetake_python, resolve_onetake
 
 FONT_ROOT = Path(__file__).resolve().parents[1] / 'template/assets/fonts'
 
@@ -51,7 +49,32 @@ print(json.dumps(asyncio.run(measure())))
 """
 
 
-def stage_composition(entry, folder, runtime):
+def write_look_assets(folder, look):
+    colors = {name:look['color'][name] for name in ONETAKE_COLORS}
+    if not all(re.fullmatch(r'#[0-9a-fA-F]{6}',color) for color in colors.values()):
+        raise ValueError('Onetake 色板须由八个十六进制颜色组成')
+    faces = {
+        'display':('"Source Han Serif CN",serif',900),
+        'text':('"Source Han Sans CN",sans-serif',700),
+        'mono':('"Source Code Pro",monospace',400),
+    }
+    types = {role:dict(stack=stack,weight=weight,tracking=float(look['type'][role]['tracking']))
+             for role,(stack,weight) in faces.items()}
+    styles = [f'--{key}:{value}' for key,value in colors.items()]
+    for role,face in types.items():
+        styles.extend((f"--{role}:{face['stack']}", f"--{role}-weight:{face['weight']}",
+                       f"--{role}-tracking:{face['tracking']}em"))
+    (folder/'look-tokens.css').write_text(':root{'+';'.join(styles)+'}\n')
+    meta = json.dumps(dict(name=look['name'],color=colors,type=types),ensure_ascii=False)
+    (folder/'look-tokens.js').write_text(
+        'window.LOOK='+meta+';\n'
+        'LOOK.font=(role,px,weight)=>`${weight || LOOK.type[role].weight} ${px}px ${LOOK.type[role].stack}`;\n'
+        'LOOK.track=(role,px)=>`${(LOOK.type[role].tracking*px).toFixed(2)}px`;\n'
+        'LOOK.ready=Promise.all(Object.keys(LOOK.type).map(role=>document.fonts.load(LOOK.font(role,32),"Aa 中文"))).then(()=>document.fonts.ready);\n'
+    )
+
+
+def stage_composition(entry, folder, runtime, *, look=None):
     for source in composition_files(entry):
         target = folder / source.relative_to(entry.parent)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -76,6 +99,9 @@ def stage_composition(entry, folder, runtime):
         shutil.copy2(FONT_ROOT / name, fonts / name)
         rules.append(f'@font-face{{font-family:"{family}";src:url("assets/fonts/{name}");font-weight:{weight}}}')
     additions.append('<style>' + ''.join(rules) + '</style>')
+    if look is not None:
+        write_look_assets(folder,look)
+        additions.append('<link rel="stylesheet" href="look-tokens.css"><script src="look-tokens.js"></script>')
     head = re.search(r'<head(?:\s[^>]*)?>', html, re.I)
     if head:
         html = html[:head.end()] + ''.join(additions) + html[head.end():]
@@ -107,7 +133,7 @@ def validate_probe(probe, allow_staccato):
         raise ValueError('Onetake __events() 须返回有效的镜头内 {t, kind, gain?} 列表')
 
 
-def render_clip(entry, output, *, shutter=180, workers=6, span=None, allow_staccato=False):
+def render_clip(entry, output, *, shutter=180, workers=6, span=None, allow_staccato=False, look=None, look_from_shots=()):
     runtime = resolve_onetake()
     if runtime is None:
         raise ValueError('找不到 Onetake，请设置 YICE_ONETAKE_DIR')
@@ -117,10 +143,11 @@ def render_clip(entry, output, *, shutter=180, workers=6, span=None, allow_stacc
         entry = entry / 'comp.html'
     entry, output = entry.absolute(), output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    python = shlex.split(os.environ.get('YICE_ONETAKE_PYTHON', '')) or [sys.executable]
+    python = onetake_python()
     with TemporaryDirectory(prefix='.onetake-', dir=output.parent) as temporary:
         work = Path(temporary)
-        staged = stage_composition(entry, work / 'composition', runtime)
+        palette = onetake_look(runtime,look,shots=look_from_shots,output=work/'product.json') if look is not None or look_from_shots else None
+        staged = stage_composition(entry, work / 'composition', runtime, look=palette)
         result = subprocess.run([*python, '-c', PROBE, str(runtime / 'scripts/probe.py'), staged.as_uri()],
                                 check=True, stdout=subprocess.PIPE, text=True)
         probe = json.loads(result.stdout)
@@ -140,6 +167,8 @@ def render_clip(entry, output, *, shutter=180, workers=6, span=None, allow_stacc
         if render['fps'] != 30 or render['size'] != [1920, 1080] or render['shutter'] != shutter:
             raise ValueError('Onetake 渲染分辨率、帧率或快门与请求不符')
         render['comp'] = entry.name
+        if palette is not None:
+            render['look'] = {key:palette[key] for key in ('name','color')}
         if span is not None:
             frames = ceil((span + .35) * 30 - 1e-6)
             if render['frames'] < frames:
@@ -163,10 +192,12 @@ def main():
     parser.add_argument('--workers', type=int, default=6)
     parser.add_argument('--span', type=float)
     parser.add_argument('--allow-staccato', action='store_true')
+    parser.add_argument('--look')
+    parser.add_argument('--look-from-shots', nargs='+', type=Path, default=())
     args = parser.parse_args()
     try:
         render_clip(args.composition, args.out, shutter=args.shutter, workers=args.workers,
-                    span=args.span, allow_staccato=args.allow_staccato)
+                    span=args.span, allow_staccato=args.allow_staccato,look=args.look,look_from_shots=args.look_from_shots)
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         parser.exit(1, f'{error}\n')
 

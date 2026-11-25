@@ -8,12 +8,15 @@ from math import isfinite
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from audit_v7 import VERIFIED_OVERLAYS, VIDEO_EXTENSIONS, difference_hash, probe_video
+sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+from kit.editorial.editorial import STUDIO_VIEW, cutout_overlay_box
 
 SIZE = (320, 180)
 SCALE = 'scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2'
@@ -229,13 +232,54 @@ def make_verification_rows(manifest):
             rows.append(dict(id=shot['id'],source=asset,media_start=start,play_span=span,
                              times=[round(at,5) for at in times],
                              spoken_topic=topic,anchor_text=anchor,spotlight_boxes=[box for box in boxes if box]))
+            overlays = [overlay for overlay in shot.get('overlays',[])
+                        if overlay['kind'] in {'prop_badge','reaction_cutout'}]
+            if overlays:
+                rows[-1]['overlays'] = overlays
+                rows[-1]['viewport'] = STUDIO_VIEW if shot.get('framing') in {'studio_window','perspective_3d'} else (0,0,1920,1080)
     return rows
+
+
+def overlay_ocr(source, at, viewport, binary):
+    x,y,w,h = viewport
+    with tempfile.TemporaryDirectory() as temp:
+        frame = Path(temp)/'frame.png'
+        transform = f'scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},pad=1920:1080:{x}:{y}'
+        subprocess.run(['ffmpeg','-v','error','-ss',str(at),'-i',str(source),'-frames:v','1',
+                        '-vf',transform,'-threads','1',str(frame)],check=True,capture_output=True,timeout=10)
+        result = subprocess.run([str(binary),str(frame)],check=True,capture_output=True,text=True,timeout=5)
+    return json.loads(result.stdout)['results']
+
+
+def overlay_text_check(row, source, binary=OCR):
+    collisions, unavailable = [], []
+    for overlay in row.get('overlays',[]):
+        start = float(overlay['at'])
+        stop = min(row['play_span'], start + float(overlay.get('duration',row['play_span']-start)))
+        if not 0 <= start < stop:
+            continue
+        x,y,w,h = cutout_overlay_box(overlay)
+        times = (start,(start+stop)/2,max(start,stop-min(1/30,(stop-start)/4)))
+        for stage,local in zip(('首','中','尾'),times):
+            at = round(row['media_start']+local,5)
+            context = dict(shot=row['id'],source=row['source'],overlay=overlay['kind'],sample=stage,
+                           media_time=at,overlay_box=[x,y,w,h])
+            try:
+                lines = overlay_ocr(source,at,row['viewport'],binary)
+            except (OSError,ValueError,KeyError,subprocess.SubprocessError):
+                unavailable.append(context)
+                continue
+            for line in lines:
+                a,b,c,d = line['box']
+                if a < x+w and a+c > x and b < y+h and b+d > y and any(char.isalnum() for char in line['text']):
+                    collisions.append(dict(context,text=line['text'],text_box=line['box'],severity='warning'))
+    return collisions, unavailable
 
 
 def write_verification(manifest, output):
     rows = make_verification_rows(manifest)
     font, small = contact_font(18),contact_font(15)
-    pages = []
+    pages,collisions,unavailable = [],[],[]
     row_height = 256
     for first in range(0,max(1,len(rows)),10):
         page = rows[first:first+10]
@@ -248,9 +292,13 @@ def write_verification(manifest, output):
             label = f"{row['id']} · {row['spoken_topic']} · {Path(row['source']).name}"
             fitted_line(draw,10,y,label,988,font)
             fitted_line(draw,10,y+25,row['anchor_text'],988,small,'#b5c9a9')
+            source = (manifest.parent/row['source']).resolve()
+            hits,missing = overlay_text_check(row,source)
+            collisions.extend(hits)
+            unavailable.extend(missing)
             for col,at in enumerate(row['times']):
                 x = 10+col*333
-                frame = frame_at((manifest.parent/row['source']).resolve(),at)
+                frame = frame_at(source,at)
                 marks = ImageDraw.Draw(frame)
                 for bx,by,bw,bh in row['spotlight_boxes']:
                     marks.rectangle((bx/6,by/6,(bx+bw)/6,(by+bh)/6),outline='#ff745a',width=2)
@@ -261,7 +309,8 @@ def write_verification(manifest, output):
         pages.append(name)
         for row in page:
             row['page'] = name
-    write_json(output/'manifest-visual-verify.json',dict(shots=rows,pages=pages,manual_review_required=True))
+    write_json(output/'manifest-visual-verify.json',dict(shots=rows,pages=pages,manual_review_required=True,
+               overlay_text_collisions=collisions,overlay_text_ocr_unavailable=unavailable))
     return len(rows)
 
 

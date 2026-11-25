@@ -90,6 +90,20 @@ def svg_image(x, y, w, h, source):
             'preserveAspectRatio="xMidYMid meet"/>')
 
 
+def cutout_overlay_box(overlay):
+    foreground = overlay.get('placement')=='foreground_hero' or overlay.get('depth')=='foreground'
+    side = overlay.get('side','right')
+    low,high = (340,460) if foreground else (140,260)
+    size = float(overlay.get('size',380 if foreground else 210))
+    if side not in {'left','right'} or not low<=size<=high:
+        raise ValueError(f'抠像挂件仅支持左右侧，尺寸须为 {low}–{high}')
+    margin = 42 if foreground else 80
+    label = bool(str(overlay.get('label','')))
+    x = margin if side=='left' else 1920-margin-size
+    y = (856 if foreground else 850)-size-(42 if label else 0)
+    return x,y,size,size+(42 if label else 0)
+
+
 def studio_source_point(x, y):
     """Project 1920×1080 source coordinates through the studio viewport's cover fit."""
     _,_,w,h = STUDIO_VIEW
@@ -639,15 +653,9 @@ class EditorialStage:
             elif style in {'prop_badge','reaction_cutout'}:
                 source, side = overlay.get('source'),overlay.get('side','right')
                 foreground = overlay.get('placement')=='foreground_hero' or overlay.get('depth')=='foreground'
-                low,high = (340,460) if foreground else (140,260)
-                size = float(overlay.get('size',380 if foreground else 210))
                 if not isinstance(source,str) or Path(source).suffix.lower() not in IMAGE_EXTENSIONS:
                     raise ValueError('抠像挂件需要 PNG、WebP 或 SVG 素材')
-                if side not in {'left','right'} or not low<=size<=high:
-                    raise ValueError(f'抠像挂件仅支持左右侧，尺寸须为 {low}–{high}')
-                margin = 42 if foreground else 80
-                x = margin if side=='left' else 1920-margin-size
-                y = (856 if foreground else 850)-size-(42 if label else 0)
+                x,y,size,_ = cutout_overlay_box(overlay)
                 image = svg_image(x,y,size,size,source)
                 if label:
                     image += rect(x,y+size+5,size,37,'#172322eb','rx="8"')
@@ -798,7 +806,7 @@ class EditorialStage:
             self.add_sound_mark('pop',start)
         return row['id']
 
-    def add_triptych_cards(self, start, end, *, heading, cards):
+    def add_triptych_cards(self, start, end, *, heading, cards, theme='pine'):
         if not 2 <= len(cards) <= 4:
             raise ValueError('多栏舞台需要两至四张卡片')
         span = end - start
@@ -807,6 +815,14 @@ class EditorialStage:
         top = 470 - height // 2
         size = min(74, 1670 // max(1,len(heading)))
         body = self.masked_heading(start,end,word(960,155,heading,size,anchor='middle'),90,67,1740,105)
+        modern = theme!='pine'
+        surfaces = []
+        if modern:
+            palette = PALETTES[theme]
+            key = f'glass-{round(start*self.fps)}'
+            surfaces.append(f'<defs><linearGradient id="{key}" x2="0" y2="1">'
+                            f'<stop stop-color="{palette["line"]}"/><stop offset="1" stop-color="{palette["panel"]}"/>'
+                            '</linearGradient></defs>')
         files, beats, reveals = [], [], []
         for index, card in enumerate(cards):
             at = float(card['reveal_at'])
@@ -815,11 +831,12 @@ class EditorialStage:
                 raise ValueError('卡片须在镜头内点亮且媒体不得循环')
             x = 96 + index * (width + 32)
             begin = start + at
+            media = (x+16,top+23,width-32,height-18) if modern else (x,top,width,height)
             suffix = Path(source).suffix.lower()
             if suffix in VIDEO_EXTENSIONS:
-                viewport = self.add_video(begin,end,source,x,top,width,height,media_start=card.get('media_start',0.),fit='contain')
+                viewport = self.add_video(begin,end,source,*media,media_start=card.get('media_start',0.),fit='contain')
             elif suffix in IMAGE_EXTENSIONS:
-                viewport = self.add_image(begin,end,source,x,top,width,height,zoom_to=1.,tone='natural',fit='contain')
+                viewport = self.add_image(begin,end,source,*media,zoom_to=1.,tone='natural',fit='contain')
             else:
                 raise ValueError('卡片素材格式不支持')
             label = card['label']
@@ -828,17 +845,44 @@ class EditorialStage:
             inset = 46 if logo else 0
             label_size = min(38,(width-inset)//max(1,len(label)))
             sublabel_size = min(27,(width-inset)//max(1,len(sublabel)))
-            body += (rect(x,top,width,height,'none',f'rx="9" stroke="{LINE}" stroke-width="1.5" '
-                          'stroke-dasharray="8 10"')+f'<g class="card-{index}" opacity="0">')
-            if logo:
-                body += svg_image(x,top+height+29,32,32,logo)
-            body += frame(x,top,width,height,CORAL) + txt(x+inset,top+height+58,label,label_size)
-            body += txt(x+inset,top+height+95,sublabel,sublabel_size,MUTED) + '</g>'
+            if modern:
+                panel_y,panel_h = top-56,height+198
+                mx,my,mw,mh = media
+                self.media_layers[-1] = self.media_layers[-1].replace('style="', 'style="border-radius:14px;',1)
+                for offset,opacity in ((22,.08),(16,.11),(10,.16)):
+                    surfaces.append(rect(x+offset/3,panel_y+offset,width,panel_h,'#080d18',f'rx="28" opacity="{opacity}"'))
+                surfaces.extend((
+                    rect(x,panel_y,width,panel_h,f'url(#{key})',f'rx="25" stroke="{palette["line"]}" stroke-width="1"'),
+                    rect(mx,my,mw,mh,palette['bg'],'rx="14"'),
+                    rect(x+24,panel_y+1,width-48,1,palette['sub'],'rx="1" opacity=".64"'),
+                    rect(x+19,panel_y+19,66,37,palette['panel'],f'rx="17" stroke="{palette["line"]}"'),
+                    mono(x+52,panel_y+45,f'{index+1:02}',24,palette['ink'],anchor='middle'),
+                ))
+                body += f'<g class="card-{index}" opacity="0">'
+                body += rect(mx,my,mw,mh,'none',f'class="card-glint" rx="14" stroke="{palette["accent2"]}" '
+                             'stroke-width="2" pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"')
+                if logo:
+                    body += svg_image(x+20,top+height+29,29,29,logo)
+                body += txt(x+20+inset,top+height+56,label,min(label_size,(width-40-inset)//max(1,len(label))),palette['ink'])
+                body += txt(x+20+inset,top+height+95,sublabel,
+                            min(sublabel_size,(width-40-inset)//max(1,len(sublabel))),palette['sub'])+'</g>'
+            else:
+                body += (rect(x,top,width,height,'none',f'rx="9" stroke="{LINE}" stroke-width="1.5" '
+                              'stroke-dasharray="8 10"')+f'<g class="card-{index}" opacity="0">')
+                if logo:
+                    body += svg_image(x,top+height+29,32,32,logo)
+                body += frame(x,top,width,height,CORAL) + txt(x+inset,top+height+58,label,label_size)
+                body += txt(x+inset,top+height+95,sublabel,sublabel_size,MUTED) + '</g>'
             files.append(source)
             beats.append(at)
             reveals.append((index,viewport,begin))
             self.sound_marks.append(('pop',begin))
         plate = self.add_plate(start,end,heading,body,bg=INK,kind='triptych_cards',files=files)
+        if modern:
+            self.glow_layers.append(f'<div id="{key}-surfaces" class="clip bg-fill" style="inset:0" '
+                                    f'data-start="{start:.5f}" data-duration="{span:.5f}" data-track-index="1" '
+                                    f'data-layout-allow-occlusion><svg viewBox="0 0 1920 1080">'
+                                    +''.join(surfaces)+'</svg></div>')
         self.shots[-1].update(stage_mode='triptych_cards',has_motion_overlay=True,beats=sorted(set(beats)),cards=cards)
         for index, viewport, begin in reveals:
             duration = min(.42,end-begin)
@@ -846,6 +890,9 @@ class EditorialStage:
                                 f"{{opacity:1,y:0,duration:{duration:.5f},ease:'back.out(1.22)',immediateRender:false}},{begin:.5f});")
             self.scripts.append(f"tl.fromTo('#{viewport} .vp-inner',{{opacity:0,scale:.96}},"
                                 f"{{opacity:1,scale:1,duration:{duration:.5f},ease:'back.out(1.22)',immediateRender:false}},{begin:.5f});")
+            if modern:
+                self.scripts.append(f"tl.to('#{plate} .card-{index} .card-glint',{{attr:{{'stroke-dashoffset':0}},"
+                                    f"duration:{duration:.5f},ease:'power2.out'}},{begin:.5f});")
         return self.shots[-1]['id']
 
     def perspective_plane(self, body, start, layer):

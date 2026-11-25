@@ -12,7 +12,19 @@ from pathlib import Path
 from PIL import Image, ImageFilter, ImageOps
 
 
-def paper_cutout(image, angle=2.0, border=12, seed=0):
+def validate_subject_mask(alpha):
+    mask = alpha.point(lambda pixel: 255 if pixel > 24 else 0)
+    bbox = mask.getbbox()
+    if bbox is None:
+        raise ValueError("抠图未产生有效透明背景，不能当作成功")
+    left,top,right,bottom = bbox
+    borders = sum((left==0,top==0,right==mask.width,bottom==mask.height))
+    coverage = mask.histogram()[255] / ((right-left)*(bottom-top))
+    if borders>=3 or (borders>=2 and coverage>.75):
+        raise ValueError("抠图未分离出独立主体（触碰多条画幅边界或含大面积背景底板）")
+
+
+def paper_cutout(image, angle=2.0, border=12, seed=0, *, allow_edge_bleed=False):
     if not math.isfinite(angle) or abs(angle) > 3:
         raise ValueError("剪报倾斜须在 −3° 到 +3° 之间")
     if not isinstance(border, int) or not 1 <= border <= 64:
@@ -21,6 +33,8 @@ def paper_cutout(image, angle=2.0, border=12, seed=0):
     alpha = image.getchannel("A")
     if alpha.getextrema()[0] >= 250 or alpha.getbbox() is None:
         raise ValueError("抠图未产生有效透明背景，不能当作成功")
+    if not allow_edge_bleed:
+        validate_subject_mask(alpha)
     image = image.crop(alpha.getbbox())
     pad = border * 4
     canvas = Image.new("RGBA", (image.width + pad * 2, image.height + pad * 2))
@@ -49,7 +63,8 @@ def vision_extract(source, target):
     return json.loads(result.stdout.strip().splitlines()[-1])
 
 
-def cutout(source, project, asset_id, provenance, *, scene="", angle=2.0, crop=None, backend=vision_extract):
+def cutout(source, project, asset_id, provenance, *, scene="", angle=2.0, crop=None,
+           allow_edge_bleed=False, backend=vision_extract):
     source, project = Path(source).resolve(), Path(project).resolve()
     if not asset_id or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_" for c in asset_id):
         raise ValueError("id 只支持字母、数字、短横线和下划线")
@@ -78,7 +93,8 @@ def cutout(source, project, asset_id, provenance, *, scene="", angle=2.0, crop=N
             info = backend(prepared, raw)
         with Image.open(raw) as opened:
             transparent = opened.convert("RGBA")
-        decorated = paper_cutout(transparent, angle=angle, seed=int(hashlib.sha256(asset_id.encode()).hexdigest()[:8], 16))
+        decorated = paper_cutout(transparent, angle=angle, seed=int(hashlib.sha256(asset_id.encode()).hexdigest()[:8], 16),
+                                 allow_edge_bleed=allow_edge_bleed)
         transparent.save(output / "transparent.png")
         decorated.save(output / "paper.png")
     files = [{"path": str((output / name).relative_to(project)), "sha256": hashlib.sha256((output / name).read_bytes()).hexdigest()} for name in ["transparent.png", "paper.png"]]
@@ -101,11 +117,13 @@ def main():
     parser.add_argument("--scene", default="")
     parser.add_argument("--angle", type=float, default=2.0)
     parser.add_argument("--crop", help="原图坐标 x,y,width,height")
+    parser.add_argument("--allow-edge-bleed", action="store_true", help="主体有意出画时允许保留画幅边缘")
     args = parser.parse_args()
     crop = tuple(map(int, args.crop.split(","))) if args.crop else None
     if crop and len(crop) != 4:
         parser.error("crop 需要四个整数")
-    result = cutout(args.input, args.project, args.id, json.loads(Path(args.source_json).read_text()), scene=args.scene, angle=args.angle, crop=crop)
+    result = cutout(args.input, args.project, args.id, json.loads(Path(args.source_json).read_text()),
+                    scene=args.scene, angle=args.angle, crop=crop, allow_edge_bleed=args.allow_edge_bleed)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
