@@ -1,40 +1,33 @@
-# v7.3 导演层与画面路由
+# v8.2 导演层与画面路由
 
-按旁白首字安排画面，先确定本句要证明的东西，再选择舞台。统一使用 1920×1080、30fps、深松墨绿与暖纸色、L 角取景框与珊瑚红重点标注。字幕保留 y ≥ 900 安全区。工具操作用自己的实录，公开网页用深色高倍录屏，抽象结论和规则使用解说动效或有明确语义的实证回扣。
+按旁白首字安排画面，先确定本句要证明的事实与叙事角色，再选色板与舞台。默认输出 `1920×1080`、`30fps`，支持五套主舞台主题（`obsidian`、`aurora_indigo`、`paper_cool`、`paper_warm`、`pine`）以及 `onetake` 六套电影色板（`paper`、`dusk`、`tabletop`、`ultramarine`、`riso`、`ember`）或产品截图自动吸色（`look_from_shots`），一切以贴合内容气质与视觉高级感为准。字幕统一保留 `y ≥ 900` 安全区。
 
-## 选材与因果核验
+## 选材、选型与因果核验
 
-六路素材分别使用本机 `rec-demo.sh`、公开网页 `record-web-cam.sh`、官方视频和标志 `collect-entity.sh`、往期长片 `scout-video-scenes.sh`、实物图库和人物抠像 `find-media.sh` / `people-add.sh`、静音原片评论拆解 `reference_breakdown`。长片选段优先保留高信息量画面，避开纯色字卡、近似画面和重复时间窗。
+1. **视觉选型**：开拍前可用 `kit/scripts/visual-palette.sh` 检索本机 6 套电影色板、产品吸色、22 套 HyperFrames 动态分镜蓝图、原子动效规则、39 种 Onetake 物理原语与近 400 个 Registry 组件，详情见 [10-双擎高阶视觉路由](10-双擎高阶视觉路由.md)。
+2. **六路实证素材**：分别使用本机 `rec-demo.sh`、公开网页 `record-web-cam.sh` / `capture-web.mjs`（`30fps` 高倍率净屏）、官方原生 `<video>` 与矢量标志 `collect-entity.sh`、往期长片 `scout-video-scenes.sh`（自动剔除纯色字卡、硬切与旧烧录字幕）、免版税高清横屏图库与人物/实物抠像 `find-media.sh` / `people-add.sh` / `cutout.py`、静音原片评论拆解 `reference_breakdown`。
+3. **装片前验帧**：渲染前运行 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify`，逐镜对照首、中、尾帧和台词因果顺序（如「改前/改后」「挡住/移开」），并自动执行贴图存续期首、中、尾三点 OCR 防撞字检查，确保贴图不遮挡底层画面文字。
 
-渲染前运行 `scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify`，逐镜对照首、中、尾帧和台词。顺序镜头按实际状态辨认，例如第一次鼠标挡字、第二次移动到留白处。看不清状态就换源或改切点。
+## 声明式分幕与十一类舞台
 
-## 声明式分幕
+在 `episode-manifest.json` 中填 `anchor_cue_id`、`spoken_topic`、`visual_subject`、`semantic_tags` 与 `semantic_binding`。首字锚点与真实切点相差至多 `0.22` 秒。每幕连排，连续覆盖成片时长。同幕第 2 镜起可声明 `transition_in`（`whip_push`、`zoom_through`、`iris_reveal`、`blur_crossfade`）做入退场同步耦合转场。
 
-在 `episode-manifest.json` 中填 `anchor_cue_id`、`spoken_topic`、`visual_subject`、`semantic_tags` 与 `semantic_binding`。首字锚点与真实切点相差至多 0.22 秒。每幕连排，连续覆盖成片时长。
-
-| 舞台 | 用途与字段 |
+| 舞台 | 用途与核心字段 |
 |---|---|
-| `cold_open_ab` | 两条真视频同窗对比，填 `sources`、`labels`、钩子与倒数。 |
-| `title_sequence` | 短片名或章标题，用一至两行标题和可选副标题。 |
-| `triptych_cards` | 两至四张图或静音短切片，填 `heading`、`cards` 与逐卡 `reveal_at`。可加 `card.logo`。引用卡写明对应频道。 |
-| `evidence_spotlight` | 单一原文、架构图或视频检视台。传 `capture_meta` 复用来源名和原文坐标，也可填写 `source_credit`、`highlight_box` 和 `highlight_at`。 |
-| `reference_breakdown` | 1152×648 静音原片检视窗，填 `channel` 署名、`claim`、实测 `cut_points` 与最多三项 `metrics`。 |
-| `studio_ui` | 剪辑台、代码编辑器、终端或音频工作台。排疑卡出现时干净替换剪辑台左侧媒体箱，退场恢复。 |
-| `callout_rig` | 满屏真实视频加一个或两个信息叠层，填 `source`、`media_start` 与 `motion`。 |
-| `explainer_clip` | 用内嵌或本地 `spec` 解释概念、数据及步骤。分步总结用 `t7_editorial_board`，数值关系用 `t3_finance_chart`。 |
+| `onetake_clip` | **黄金前 8 秒钩子、核心机制高潮、全片灵魂结论收束**。填 `comp`、`shutter`（默认 `180`），可选 `look` 或 `look_from_shots`。用 `OM` 物理弹簧/相机跟随/连续变形（Carry）与真实快门动态模糊替代多框文字堆砌。 |
+| `hyperframes_block` | **多阶段架构、3D 卡片阵列、数据流与交互状态推演**。填 `composition`，挂载独立子合成（Registry 组件或 Animation 22 套蓝图），自动离线注入 GSAP 与打包字体。 |
+| `callout_rig` / `fullbleed_rig` | **真实网页与实操录屏主力舞台**。填 `source`、`media_start`、`motion`（支持 `focus_push` / `spring_glide` 两段呼吸运镜），推荐搭配 `framing: "perspective_3d"` 或 `"studio_window"` 悬浮暗场精工窗。 |
+| `evidence_spotlight` | **原文、截图或架构图局部推近检视台**。传网页采集的 `capture_meta` 自动复用原文像素框与来源署名，或显式填 `highlight_box` 与 `highlight_at`。 |
+| `triptych_cards` | **两至四项多格式对照展台**（支持视频、GIF、WebP、PNG、安全 SVG）。现代主题下自动启用圆角毛玻璃立体展台卡与逐卡 `reveal_at` 弹性点亮。 |
+| `cold_open_ab` | **两条真视频同窗 A/B 对照**，填 `sources`、`labels`、`hook` 与 `countdown`。 |
+| `reference_breakdown` | **1152×648 静音原片拆解检视窗**，填 `channel` 署名、`claim`、实测 `cut_points` 与最多三项 `metrics`。 |
+| `studio_ui` | **剪辑台、代码编辑器、终端或音频工程台**，支持 `data.focus_lines` 聚光高亮当前核心代码/输出行。 |
+| `title_sequence` | **简洁章标题扉页**（`1.8–3.2` 秒），支持品牌 `logo` 与遮罩滑入。 |
+| `explainer_clip` | **数据图表与轻量参数化解说**（如 `t3_finance_chart`、`t4_blueprint_arch`）。`t7_editorial_board` 仅保留旧项目兼容，新片结论与高潮统一走 `onetake_clip` 或 `hyperframes_block`，禁止堆砌三框纯文字 PPT。 |
 
-单纯满屏实证可显式选 `fullbleed_rig`。视频源保留 0.2 秒尾部余量，媒体只在可用区间内播放。单窗或多窗对比都优先放与当前旁白直接相关的素材。
+## 叠层、破框贴图与运镜纪律
 
-## 叠层与运镜
-
-- `corner_tag` 是默认标注，放在左上安全区，可写副标题或设静音。
-- `stat_badge` 用高不透明底板显示实测数字和单位。排除错误方向用 `strikethrough_list`，短结论用 `verdict_stamp`。
-- `spotlight_box` 只标识实际核对过的局部像素目标，显式写 `box`、`target_verified: true` 和 `target_note`，最大 680×340。禁止盲贴、跨镜套用同坐标或压暗大片画面。非 `hold` 运镜中，取景框与底图围绕同一核验点连续推近，角落铭牌与数字角标保持固定。
-- `prop_badge`、`reaction_cutout` 将透明 PNG、WebP 或 SVG 放到镜头下方侧区。填写 `source` 和镜内 `at`，可选 `duration`、`label`、`side: left|right` 和 `size: 140..260`。`title_sequence`、`corner_tag` 和 `evidence_spotlight` 的 `logo` 位于铭牌左侧。
-- 默认 `push`、`pull`、`glide` 和 `punch` 按整镜时间推进。`hold` 仅用于内容本身有足够运动或需要静止检视的镜头。
-
-合理使用条件下的参考短切片用于具体评论或分析，原片音轨全程静音。署名、画面和拆解指标在同一段内互相可核。审核可辨识私人信息及受限会话时，先在素材层移除。
-
-`t7_editorial_board` 按 `title`、一至四个 `card`、可选 `footer` 建看板。卡片写明可执行结论，用 `sub` 补步骤、`data.bad` 和 `data.good` 做正反对照，`data.tag` 写实测指标。长文案优先 `data.layout: "rows"`，短项可并排。纯文字解说须有至少 26 字的有效信息，白板绘制须指定可识别的图标。
-
-主结论与步骤组合可用 `t7_editorial_board` 的 `data.layout: "featured"`。`t4_blueprint_arch` 用 `sub` 补节点说明，可用 `data.stage` 标识阶段。
+- `corner_tag` 位于左上安全区，支持嵌入官方矢量 `logo`、副标题或静音弹出。
+- `spotlight_box`、`highlighter_sweep`（通透荧光笔涂抹）与 `hand_circle`（双圈手绘椭圆）只标识已核对的局部像素目标，必须填写 `box`、`target_verified: true` 和 `target_note`，尺寸限 `64–680 × 48–340`，共用全片 `8%`（或至少 3 处）克制上限，严禁跨镜盲套同坐标。
+- `prop_badge`、`reaction_cutout` 支持常规侧下角标（`140–260px`）或 `placement: "foreground_hero"` 大尺寸前景视差破框贴图（`340–460px`，左/右侧避开中间字幕带）；素材须通过 `cutout.py` 主体完整性门禁，严禁把带大片桌面底板的残缺抠图贴上画面。
+- 合理使用（Fair Use）参考短切片全程静音并显式展示 `channel` 来源署名；任何私人路径、账号名、邮箱与受限会话必须在素材层先行脱敏清除。

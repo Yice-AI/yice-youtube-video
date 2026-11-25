@@ -1,40 +1,35 @@
-# 模型、五路素材采集与外部技能调用规范（v3）
+# 模型、五路素材采集与双擎调用规范（v8.2）
 
 ## 1. 五路真实素材工具链（按优先级选用）
 
-### 第一路：Playwright 虚拟摄影师（网页 / GitHub / 文档 / Web 工具交互录屏）
-- **脚本**：`$KIT/scripts/record-web-cam.sh`（底层 `record-web-cam.mjs`，复用本机已装 Chrome + `playwright-core`，匿名干净上下文，零个人登录态泄露）
-- **默认视口铁律（v3.1）**：默认开启 **`--theme dark --scale 1.5`**（即 `1280×720` CSS 视口按 `1.5x` Retina 渲染出原生 `1920×1080` 高清帧），自动触发 GitHub / 文档站深色模式并把正文字号放大 `150%`，彻底消除刺眼纯白留白边与蚂蚁小字。
-- **能力**：打开任意公开 URL 或本地 Web Demo，按动作脚本执行平滑滚动（`scroll`）、珊瑚红光标移动与点击波纹（`click`）、输入框打字（`type`）、关键文本定位与珊瑚红半透明高亮（`highlight`），导出：
-  - `video.mp4`（30fps H.264 `yuv420p`）
-  - `still.png`（关键帧高清静图）
-  - `cursor-track.json`（记录每次动作精确秒数 `t`、坐标 `x,y` 与目标元素 `rect`，供 HyperFrames 自动生成 Screen Studio 推近关键帧）
-  - 自动追加来源 URL、抓取时间与 SHA-256 至项目 `asset-ledger.jsonl`。
-- **兼容快速入口**：纯网页滚动与原文高亮也可继续调用 `$KIT/scripts/capture-web.mjs`。
+### 第一路：Playwright 虚拟摄影师（网页 / GitHub / 文档 / Web 工具后台高清录屏）
+- **交互录屏脚本**：`$KIT/scripts/record-web-cam.sh`（底层 `record-web-cam.mjs`，复用本机 Chrome + `playwright-core`，无头后台静默运行，零个人登录态泄露），默认 `--theme dark --scale 1.5` 输出原生 `1920×1080 30fps`，同时生成 `still.png` 与 `cursor-track.json`。
+- **净屏滚动与原文取证入口**：`$KIT/scripts/capture-web.mjs`（默认 `30fps`、`scale=1.25`、`-crf 17`），开拍前自动预滚动解码懒加载图片并隐藏 Cookie 横幅、客服悬浮窗与订阅弹窗，定位指定引文像素坐标写入 `capture.json`（直通 `evidence_spotlight` 自动推近高亮）。
 
-### 第二路：官方产品实体采集（官网 `<video>` 演示 + 矢量 Logo + GitHub 动图）
+### 第二路：官方产品实体深扒（原生 `<video>` 演示流 + 矢量 Logo + 发布动态）
 - **脚本**：`$KIT/scripts/collect-entity.sh --name '<名称>' --site <官网URL> [--github owner/repo] --out <目录>`
-- **能力**：自动抓取官网首屏 1080p 截图、平滑滚动视频、页面内嵌自动播放的高清产品演示 `<video>`（成片引用须 **静音、`≤ 5s`、右上/左上角标明官方来源域名**，仅限评论教学语境），以及通过 `npx hyperframes media-use resolve --type logo` 获取官方原始 SVG/高清标志（绝不手画变形山寨图标）。
+- **能力**：直接识别并下载官网或 GitHub README 内嵌原生 `<video>`（含 `user-attachments` MP4/WebM）归一化为静音 `1920×1080 30fps` 视频（杜绝网页逐帧截图导致的跳帧加速），优先提取官方 `.svg` 矢量标志并冻结入账。
 
-### 第三路：CLI / 代码真实运行高分回放
-- 在沙盒/工作目录真实执行命令，将实测输出、文件体积与真实耗时保存为结构化 JSON，在 HyperFrames 中用大字号（`≥ 26px` 等宽字体）高对比终端/代码视窗按真实节奏逐行上屏并推近高亮关键结果行，严禁直接录满屏芝麻小字且带私人路径的原始终端。
+### 第三路：CLI / 代码真实运行高分回放与本地实操录制
+- CLI / 代码输出优先采集真实运行结果 JSON，通过 `studio_ui`（支持 `data.focus_lines` 聚光高亮核心行，不硬截断长行）或 `hyperframes_block` 高对比渲染；需要连续窗口交互时使用 `$KIT/scripts/rec-demo.sh`。
 
-### 第四路：开放授权实景 B-Roll 与百科人物原生抠图
-- **实景视频与照片**：`$KIT/scripts/find-media.sh`（自动聚合本机 `~/.config/yice-video/stock.env` 中的 **Pexels + Pixabay** 双商业可用图库，以及 **Wikimedia Commons + NASA + Internet Archive Prelinger** 公有领域影像）。
-  - **检索铁律**：必须搜**具象物理特写英文词**（如 `'35mm film strip macro'`、`'cinema lens focus'`、`'server rack lights'`、`'caliper ruler'`），**严禁搜空泛词**（如 `'business'`、`'office team'`、`'artificial intelligence'` 导致出现廉价摆拍假人或丑陋 3D 脑图）。
-  - **预算守卫**：Pexels + Pixabay 单期合计 **`≤ 60` 次** API 请求（月上限 `1,500` 次，24h 自动缓存，可随时用 `$KIT/scripts/media-usage.sh` 核对）。
-- **人物抠图拼贴**：`$KIT/scripts/people-add.sh` 从 Wikimedia Commons 拉取 CC/PD 授权人物照，调用本机 Apple Vision（`vision-cutout.swift`）完成发丝级抠图与纸感白边，自动把作者与 CC 署名写入 `asset-ledger.jsonl`。
+### 第四路：开放授权高清横屏 B-Roll 与主体完整性抠像
+- **实景视频与照片**：`$KIT/scripts/find-media.sh`（聚合 **Pexels + Pixabay + Wikimedia Commons + Openverse**），视频强制筛选 **`width >= 1920` 且横屏（`16:9`）** 的高清源，直接剔除竖屏与低清素材；检索须用具象物理特写英文词，单期 API 请求 `≤ 60` 次。
+- **长片挑镜清洗**：`$KIT/scripts/scout-video-scenes.sh` 自动剔除纯色字卡、跨镜硬切与底部含旧烧录字幕的片段。
+- **人物与实物抠图**：`$KIT/scripts/people-add.sh` / `$KIT/scripts/cutout.py` 调用本机 Apple Vision 抠图，内置主体完整性门禁（自动拒绝触碰多条画幅边界或连带大片桌面底板的残次品）。
 
-### 第五路：登录态页面 / 原生桌面软件 / AI 生成兜底
-- **需登录网页**：调用本机 `ego-browser` 截取或录制后，必须先经本机 Apple Vision OCR 扫描并在像素层高斯模糊所有账号名、邮箱、路径后再拷入工程。
-- **原生独占 Mac 软件**：投递任务单至 `.scratch/youtube/dsh-inbox/` 由常驻 `Harness` 录制（**硬禁令：Claude 桌面端只准使用打码静态截图，绝不录屏**）。
-- **AI 生成画面（严格兜底，整片占比 `≤ 10%`）**：只有当现实世界确实不存在对应画面时，才通过 `$KIT/scripts/produce-asset.sh` 调用 `image2`（整期预算 **`≤ $5.00`**）或 Modal `ltx2`（严守 `spend_limit_usd = 0`），且严禁单放一张无信息量的空洞 AI 概念图。
+### 第五路：登录态页面 / 原生桌面软件 / AI 生成封面与兜底
+- **需登录/验证码页面**：无头采集遇到登录墙或真人验证会自动停手回报；可由用户在已登录 `ego-browser` 截取脱敏图，或用 `onetake` 的 `UIK` + `look.py from-shot` 1:1 重建高清可推近动态界面。
+- **原生独占 Mac 软件**：投递任务单至 `.scratch/youtube/dsh-inbox/` 由常驻 `Harness` 录制（Claude 桌面端仅用脱敏静态截图）。
+- **封面直出与极少量概念图**：YouTube 封面统一走 `$KIT/scripts/thumbnail.sh`（绑定 `tts-venv`，零额外劣化约束原生调用 `image2.py --role thumbnail --guard light --thumb-guard r_plus`，出 3 张候选 + `640/320/168px` 预览板 + 假时长角标警示 + `<2MB` JPG 入账）。正片内 AI 生图仅作无现实画面时的兜底（占比 `≤ 10%`）。
 
 ---
 
-## 2. 配音与渲染核心底座
+## 2. 配音、双擎视觉与母带底座
 
-- **GPU 克隆配音**用 `$KIT/scripts/voice.sh`。优先指定已授权 Kaggle 端点，以 `--backend kaggle --speed 1.0` 走 `/tts_async` 和任务轮询。克隆参考音频通过 HTTPS 直传内存。单句离线补录可显式使用 `--backend local --allow-slow-local`。Modal 仅在用户明确授权时显式指定 `--backend modal`。
-- **原生 HyperFrames 编排与渲染**：
-  - 统一使用开放式编辑部版式原语库 **`$KIT/editorial/editorial.py`**（深松墨绿主舞台 + 暖米纸扉页 + 四角 L 型取景框 + 20px 刻度尺 + 珊瑚红底线字幕）生成标准 HTML/SVG/GSAP 工程；
-  - 先查显式覆盖及 PATH 上的 HyperFrames CLI，再复用本机 npm 缓存中可执行的最高版本，最后尝试 `npx --offline hyperframes`。GSAP 默认从本机 toolkit、用户配置目录或 Node 模块发现。渲染输出 `1920×1080`、`30fps`、H.264 `yuv420p` MP4。
+- **原速克隆配音**：`$KIT/scripts/voice.sh`，正片默认 `--backend kaggle --speed 1.0`（异步轮询 + 自然呼吸保留 + 自动导出短句无句尾标点 `captions.json`）；单句离线补录可用 `--backend local --allow-slow-local`；严禁未授权调用 `--backend modal`。
+- **Onetake + HyperFrames 混合双擎舞台**：
+  - 主舞台 `$KIT/editorial/editorial.py` 支持五套主题、`perspective_3d` / `studio_window` 悬浮实录窗、环境呼吸光晕与胶片微噪点、现代立体 `triptych_cards` 及四类同步跨镜转场 `transition_in`；
+  - 高光钩子与片尾结论调用 `$KIT/scripts/render-onetake-clip.sh`（`stage_mode: "onetake_clip"`，`OM` 39 种物理运镜/弹簧/流体原语 + 6 套电影 `looks` / 截图吸色 + `probe.py` 连续变形门禁 + `180°` 真实快门动态模糊）；
+  - 多阶段机制与动态图表调用 `stage_mode: "hyperframes_block"`（直通 `hyperframes-registry` 近 400 组件与 `hyperframes-animation` 22 套蓝图，可用 `$KIT/scripts/visual-palette.sh` 一键检索）。
+- **声学母带**：`EpisodeAudioMixer` 采用 `2.5s` 等功率余弦无缝循环底乐、物理包络动作轻音效与动态人声闪避，统一校准至 `-14.5 ± 0.8 LUFS`、`≤ -1.0 dBTP`。
