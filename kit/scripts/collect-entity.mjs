@@ -35,19 +35,40 @@ export function harnessDraft(name,entries,out){
   ).join('\n')+(entries.length?'':'未发现可确认的在线交互入口；不凭空生成操作步骤。\n');
 }
 
-export async function downloadEntityFile(url,file,{fetchFn=fetch,maxBytes=40*1024*1024}={}){
+export async function downloadEntityFile(url,file,{fetchFn=fetch,maxBytes=40*1024*1024,allowVideo=false}={}){
   if(!publicUrl(url))throw new Error('媒体地址必须为公开 HTTP(S) URL');
   if(fetchFn===fetch&&process.env.YICE_MEDIA_OFFLINE==='1')throw new Error('离线测试不访问网络');
   const response=await fetchFn(url,{signal:AbortSignal.timeout(25000)});
   if(!response.ok)throw new Error(`http_${response.status}`);
-  const mime=(response.headers.get('content-type')||'').split(';')[0];
-  if(!mime.startsWith('image/'))throw new Error('来源未返回图片');
+  let mime=(response.headers.get('content-type')||'').split(';')[0].trim().toLowerCase();
+  const videoMime={'video/mp4':'.mp4','video/webm':'.webm','video/quicktime':'.mov'};
+  const probeVideo=allowVideo&&!videoMime[mime]&&(mime==='application/octet-stream'||mime.startsWith('video/'));
+  if(!mime.startsWith('image/')&&!(allowVideo&&(videoMime[mime]||probeVideo)))throw new Error(allowVideo?'来源未返回图片或视频':'来源未返回图片');
   if(Number(response.headers.get('content-length'))>maxBytes)throw new Error('素材超过下载上限');
   const chunks=[];let size=0;
   for await(const chunk of response.body){size+=chunk.length;if(size>maxBytes)throw new Error('素材超过下载上限');chunks.push(chunk);}
-  const bytes=Buffer.concat(chunks),ext=({'image/svg+xml':'.svg','image/png':'.png','image/gif':'.gif','image/webp':'.webp','image/jpeg':'.jpg','image/x-icon':'.ico'})[mime]||'.img';
+  const bytes=Buffer.concat(chunks);
+  if(probeVideo){
+    if(bytes.toString('ascii',4,8)==='ftyp')mime='video/mp4';
+    else if(bytes.subarray(0,4).equals(Buffer.from([0x1a,0x45,0xdf,0xa3]))&&bytes.subarray(0,256).includes('webm'))mime='video/webm';
+    else throw new Error('来源未返回可识别的视频');
+  }
+  const ext=videoMime[mime]||({'image/svg+xml':'.svg','image/png':'.png','image/gif':'.gif','image/webp':'.webp','image/jpeg':'.jpg','image/x-icon':'.ico'})[mime]||'.img';
   const target=file+ext;fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,bytes);
   return {file:target,mime,bytes:bytes.length,sha256:sha(bytes)};
+}
+
+export function normalizeDemoVideo(inputFile,targetMp4,{maxSeconds=6}={}){
+  const part=targetMp4+'.part.mp4';
+  try{
+    execFileSync('ffmpeg',['-v','error','-y','-i',inputFile,'-map','0:v:0','-t',String(maxSeconds),'-an',
+      '-vf','scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:0x172322,setsar=1,fps=30',
+      '-c:v','libx264','-preset','fast','-crf','17','-pix_fmt','yuv420p','-movflags','+faststart',part],{timeout:30000});
+    const seconds=Number(execFileSync('ffprobe',['-v','error','-show_entries','format=duration','-of','csv=p=0',part],{encoding:'utf8',timeout:5000}));
+    if(!Number.isFinite(seconds)||seconds<=0)throw new Error('演示视频没有有效画面');
+    fs.renameSync(part,targetMp4);
+    return {seconds,fps:30,width:1920,height:1080,audio:false};
+  }finally{fs.rmSync(part,{force:true});}
 }
 
 export async function resolveEntityLogo({project,name,source,site}){
@@ -100,7 +121,7 @@ export async function collectEntity(options,{capture=capturePage,download=downlo
     if(result.status!=='captured'){add({id:kind,type:kind,url,status:result.status||'failed',reason:result.reason});return result;}
     for(const file of result.files||[])add({id:kind+(file.path.endsWith('.mp4')?'-scroll':'-hero'),type:file.path.endsWith('.mp4')?'official_scroll':kind,url:result.finalUrl||url,path:file.path,status:'captured',title:result.title,width:1920,height:1080,...(file.path.endsWith('.mp4')?{seconds:8,audio:false}:{})});
     for(const [i,section]of (result.details?.sections||[]).entries())add({id:kind+'-section-'+(i+1),type:'official_section',url,path:section.path,status:'captured',title:section.title,focusBox:section.box,width:1920,height:1080});
-    for(const [i,demo]of (result.details?.demos||[]).entries())add({id:kind+'-demo-'+(i+1),type:'official_demo',url,mediaUrl:publicUrl(demo.url)||null,path:demo.path,status:demo.status,reason:demo.reason,seconds:6,audio:false,usage:'来源：官网；采集6秒供剪辑，成片引用≤5秒、静音，仅评论语境'});
+    for(const [i,demo]of (result.details?.demos||[]).entries())add({id:kind+'-demo-'+(i+1),type:'official_demo',url,mediaUrl:publicUrl(demo.url)||null,path:demo.path,status:demo.status,reason:demo.reason,seconds:demo.seconds??6,audio:false,usage:'来源：官网；采集至多6秒供剪辑，成片引用≤5秒、静音，仅评论语境'});
     if(result.details?.demoOmitted)manifest.warnings.push(`${kind}: ${result.details.demoOmitted} 个额外演示未录制，保留页面供后续选镜。`);
     const links=classifyLinks(result.details?.links||[],site||url);
     manifest.interactive.push(...links.interactive.map(l=>({url:l.url,label:l.text,sourcePage:url})),...(result.details?.embeds||[]).filter(e=>/hf\.space|huggingface.co\/spaces|demo|playground/i.test(e.url)).map(e=>({url:e.url,label:e.title,sourcePage:url})));
@@ -139,6 +160,19 @@ export async function collectEntity(options,{capture=capturePage,download=downlo
       catch(error){add({id,type:'github_readme_gif',status:'skipped',url,reason:error.message});}
     }
     if(!gifs.length)add({id:'github-gifs',type:'github_readme_gif',status:'skipped',url,reason:'README未发现演示GIF'});
+    const videos=[...new Set((repo.details?.readmeVideos||[]).map(src=>publicUrl(src,url)).filter(Boolean))].slice(0,4);
+    for(const [i,mediaUrl]of videos.entries()){
+      const id='github-video-'+(i+1),base=path.join(project,'downloads',id);
+      let original;
+      try{
+        original=await download(mediaUrl,base+'-source',{allowVideo:true});
+        if(!original.mime.startsWith('video/'))throw new Error('README来源未返回视频');
+        const file=base+'.mp4',video=normalizeDemoVideo(original.file,file);
+        add({id,type:'github_readme_video',status:'captured',url,mediaUrl,path:path.relative(project,file),...video,
+          license:'README演示的版权由原作者保留；代码仓库开源许可不自动覆盖所有媒体。'});
+      }catch(error){add({id,type:'github_readme_video',status:'skipped',url,mediaUrl,reason:error.message});}
+      finally{if(original?.file)fs.rmSync(original.file,{force:true});}
+    }
   }
   let announcement=site?latestAnnouncement(homeDetails.links||[],site):null;
   const index=homeLinks.announcements.find(l=>/^\/(?:blog|news|index|changelog|releases)\/?$/.test(new URL(l.url).pathname));

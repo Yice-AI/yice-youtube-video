@@ -1,6 +1,13 @@
 export const PEXELS_LICENSE='https://www.pexels.com/license/';
 export const PIXABAY_LICENSE='https://pixabay.com/service/license-summary/';
-const bestVideo=files=>files.filter(f=>f.url&&f.width&&f.height).sort((a,b)=>Math.abs(a.width-1920)+Math.abs(a.height-1080)-Math.abs(b.width-1920)-Math.abs(b.height-1080))[0];
+const landscapeHD=f=>f?.width>=1920&&f.width>f.height;
+function bestVideo(files){
+  const valid=files.filter(f=>f?.url&&f.width&&f.height);
+  const landscape=valid.filter(f=>f.width>f.height);
+  const hd=landscape.filter(landscapeHD);
+  const distance=f=>Math.abs(f.width-1920)+Math.abs(f.height-1080);
+  return (hd.length?hd:landscape.length?landscape:valid).sort((a,b)=>distance(a)-distance(b))[0];
+}
 
 export function stockSearchUrl(provider,query,type){
   if(provider==='pexels')return 'https://api.pexels.com/v1/'+(type==='video'?'videos/search':'search')+'?'+new URLSearchParams({query,per_page:'30',orientation:'landscape'});
@@ -9,8 +16,9 @@ export function stockSearchUrl(provider,query,type){
 }
 
 export function pexelsCandidates(data,type){
-  return (type==='photo'?data.photos||[]:data.videos||[]).map(row=>{
+  return (type==='photo'?data.photos||[]:data.videos||[]).flatMap(row=>{
     const file=type==='video'?bestVideo((row.video_files||[]).filter(f=>f.file_type==='video/mp4').map(f=>({...f,url:f.link}))):null;
+    if(type==='video'&&!landscapeHD(file))return [];
     return {provider:'pexels',providerId:row.id,title:row.alt||'Pexels '+row.id,creator:row.photographer||row.user?.name||'',sourceUrl:row.url,
       downloadUrl:type==='photo'?row.src?.original:file?.url,thumbnailUrl:type==='photo'?row.src?.medium:row.image,
       mime:type==='photo'?'image/jpeg':'video/mp4',width:type==='photo'?row.width:file?.width,height:type==='photo'?row.height:file?.height,duration:row.duration,
@@ -20,8 +28,9 @@ export function pexelsCandidates(data,type){
 }
 
 export function pixabayCandidates(data,type){
-  return (data.hits||[]).map(row=>{
+  return (data.hits||[]).flatMap(row=>{
     const file=type==='video'?bestVideo(Object.values(row.videos||{})):null;
+    if(type==='video'&&!landscapeHD(file))return [];
     return {provider:'pixabay',providerId:row.id,title:row.tags||'Pixabay '+row.id,creator:row.user||'',sourceUrl:row.pageURL,
       downloadUrl:type==='photo'?(row.imageURL||row.largeImageURL||row.webformatURL):file?.url,thumbnailUrl:type==='photo'?(row.webformatURL||row.previewURL):file?.thumbnail,
       mime:type==='photo'?'image/jpeg':'video/mp4',width:type==='video'?file?.width:row.imageURL?row.imageWidth:null,height:type==='video'?file?.height:row.imageURL?row.imageHeight:null,duration:row.duration,

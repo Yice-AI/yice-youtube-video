@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// 公开页面实拍：新建无登录浏览器上下文，逐帧真实滚动，不下载页面中的视频。
+// 公开页面实拍使用无登录浏览器上下文，逐帧推进滚动。
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 import {recordBrowserFrames} from './browser-frames.mjs';
 
 export function wallReason({ status = 200, title = '', text = '', password = false }) {
@@ -20,12 +21,54 @@ export {recordAsset};
 const DEFAULT_PLAYWRIGHT_MODULE = '/opt/homebrew/lib/node_modules/openclaw/node_modules/playwright-core';
 const DEFAULT_CHROME_EXECUTABLE = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
+async function preparePage(page) {
+  await page.evaluate(async () => {
+    const images = [...document.images];
+    images.filter(img => img.loading === 'lazy').forEach(img => { img.loading = 'eager'; });
+    function decodeVisible() {
+      return Promise.allSettled(images.filter(img => {
+        const box = img.getBoundingClientRect();
+        return box.bottom > 0 && box.top < innerHeight;
+      }).map(img => img.decode()));
+    }
+    const decoding = [decodeVisible()];
+    try {
+      for (const y of [800, 1600, 2400]) {
+        window.scrollTo({top:y,behavior:'instant'});
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        decoding.push(decodeVisible());
+      }
+      await Promise.race([Promise.all(decoding),new Promise(resolve => setTimeout(resolve,1200))]);
+    } finally {
+      window.scrollTo({top:0,behavior:'instant'});
+    }
+  });
+  await page.evaluate(() => {
+    const marketing = '#intercom-container,.crisp-client,[id*="cookie" i],[class*="newsletter" i],iframe[title*="chat" i]';
+    const dialog = '[role="dialog"],[aria-modal="true"],dialog[open]';
+    for (const element of document.body.querySelectorAll('*')) {
+      if (element.closest('header,nav') && !element.matches(dialog)) continue;
+      const fixed = getComputedStyle(element).position === 'fixed';
+      if (!fixed && !element.matches(dialog)) continue;
+      const box = element.getBoundingClientRect();
+      if (box.bottom <= 0 || box.top >= innerHeight || box.right <= 0 || box.left >= innerWidth) continue;
+      const bottom = box.bottom >= innerHeight * .9 && box.top >= innerHeight * .45;
+      const overlay = box.width >= innerWidth * .75 && box.height >= innerHeight * .45;
+      if (element.matches(dialog) || element.matches(marketing) || bottom || overlay) {
+        element.style.setProperty('visibility','hidden','important');
+      }
+    }
+  });
+}
+
 export async function capturePage({ project, url, id = 'web-page', seconds = 7, scene = '', sourceName, highlight,
-  license = '原页面权利人保留；短段引用，发布用途待核对', licenseUrl, details=false, scroll=true }) {
+  license = '原页面权利人保留；短段引用，发布用途待核对', licenseUrl, details=false, scroll=true, scale=1.25, theme='auto' }) {
   const target = new URL(url);
   if (!['https:','http:'].includes(target.protocol) || target.username || target.password) throw new Error('只采集无账号信息的公开 HTTP(S) 页面');
   if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('id 只用字母、数字、下划线和短横线');
   if (!Number.isFinite(seconds) || seconds < 6 || seconds > 8) throw new Error('滚动片段长度为 6–8 秒');
+  if (!Number.isFinite(scale) || scale < 1 || scale > 2.5) throw new Error('scale 范围为 1–2.5');
+  if (!['auto','dark','light'].includes(theme)) throw new Error('theme 只接受 auto、dark 或 light');
   project = path.resolve(project);
   const output = path.join(project, 'assets/web', id); fs.mkdirSync(output,{recursive:true});
   const require = createRequire(path.join(project, 'package.json'));
@@ -37,9 +80,11 @@ export async function capturePage({ project, url, id = 'web-page', seconds = 7, 
   else launch.channel = 'chrome';
   const browser = await chromium.launch(launch);
   const result = { id, url, sourceName:sourceName || target.hostname, capturedAt:new Date().toISOString(),
-    sourceType:'web_capture', scene, license, viewport:{width:1920,height:1080}, seconds, fps:15, status:'failed' };
+    sourceType:'web_capture', scene, license, viewport:{width:1920,height:1080}, scale, seconds, fps:30, status:'failed' };
   try {
-    const context = await browser.newContext({viewport:result.viewport,deviceScaleFactor:1,acceptDownloads:false});
+    const viewport = {width:Math.round(1920/scale),height:Math.round(1080/scale)};
+    const context = await browser.newContext({viewport,deviceScaleFactor:scale,acceptDownloads:false,
+      ...(theme==='auto'?{}:{colorScheme:theme})});
     const page = await context.newPage();
     page.setDefaultTimeout(5000);
     const response = await page.goto(url,{waitUntil:'domcontentloaded',timeout:30000});
@@ -59,7 +104,7 @@ export async function capturePage({ project, url, id = 'web-page', seconds = 7, 
     const reason = wallReason(state);
     if (reason) { result.status='skipped';result.reason=reason;return result; }
     await page.evaluate(()=>document.fonts.ready);
-    await page.evaluate(()=>window.scrollTo(0,0));
+    await preparePage(page).catch(()=>{});
     if (highlight) {
       const heading=page.getByRole('heading',{name:highlight,exact:true}).first();
       const locator=await heading.count()?heading:page.getByText(highlight,{exact:false}).first();
@@ -75,18 +120,24 @@ export async function capturePage({ project, url, id = 'web-page', seconds = 7, 
           }
           return null;
         },highlight);
-        result.highlight={text:highlight,box:textBox||await locator.boundingBox(),precision:textBox?'text_range':'element',status:'located'};
+        const box = textBox || await locator.boundingBox();
+        result.highlight={text:highlight,box:box && {x:box.x*1920/viewport.width,y:box.y*1080/viewport.height,
+          width:box.width*1920/viewport.width,height:box.height*1080/viewport.height},precision:textBox?'text_range':'element',status:'located'};
       } else result.highlight={text:highlight,status:'not_found'};
     }
     result.scrollStart=await page.evaluate(()=>window.scrollY);
-    await page.screenshot({path:path.join(output,'still.png')});
+    let still=await page.screenshot();
+    const size = still.readUInt32BE(16)===1920 && still.readUInt32BE(20)===1080 ? undefined : result.viewport;
+    if(size) still=execFileSync('ffmpeg',['-v','error','-f','image2pipe','-i','pipe:0','-vf','scale=1920:1080',
+      '-frames:v','1','-f','image2pipe','-c:v','png','pipe:1'],{input:still,maxBuffer:16*1024*1024});
+    fs.writeFileSync(path.join(output,'still.png'),still);
     result.scrollPixels = await page.evaluate(()=>Math.max(0,document.documentElement.scrollHeight-innerHeight-window.scrollY));
     // 只滚动一个短片段，不把整篇长文变成录像。
     result.scrollPixels = Math.min(result.scrollPixels,2160);
     result.motion = result.scrollPixels ? 'smooth_scroll' : 'short_page_hold_no_scroll_range';
-    if(scroll)await recordBrowserFrames(page,path.join(output,'scroll.mp4'),{seconds,fps:15,step:async p=>{
+    if(scroll)await recordBrowserFrames(page,path.join(output,'scroll.mp4'),{seconds,fps:result.fps,size,step:async p=>{
       const ease=p*p*(3-2*p);
-      await page.evaluate(y=>window.scrollTo(0,y),result.scrollStart+Math.round(result.scrollPixels*ease));
+      await page.evaluate(y=>window.scrollTo({top:y,behavior:'instant'}),result.scrollStart+Math.round(result.scrollPixels*ease));
       await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     }});
     if(details){const {inspectEntityPage}=await import('./entity-page.mjs');result.details=await inspectEntityPage(page,{project,output,record:typeof details==='object'?details.record!==false:true});}
@@ -99,11 +150,11 @@ export async function capturePage({ project, url, id = 'web-page', seconds = 7, 
   } finally {
     await browser.close();
     fs.writeFileSync(path.join(output,'capture.json'),JSON.stringify(result,null,2)+'\n');
-    if(result.status!=='captured') fs.rmSync(path.join(output,'scroll.part.mp4'),{force:true});
+    if(result.status!=='captured') fs.rmSync(path.join(output,'scroll.mp4.part.mp4'),{force:true});
   }
 }
 
-export async function captureNeeds({ project, needs, capture = capturePage }) {
+export async function captureNeeds({ project, needs, capture = capturePage, scale, theme }) {
   const report={schemaVersion:1,items:[]};
   const items=Array.isArray(needs)?needs:needs.items;
   if(!Array.isArray(items)) throw new Error('需求单需要 items 数组');
@@ -115,7 +166,8 @@ export async function captureNeeds({ project, needs, capture = capturePage }) {
     for(const url of item.candidateUrls) {
       let result;
       try { result=await capture({project,url,id:item.id,scene:item.scene,sourceName:item.sourceName,
-        seconds:item.capture?.seconds??7,highlight:item.capture?.highlight,license:item.license?.name,licenseUrl:item.license?.url}); }
+        seconds:item.capture?.seconds??7,highlight:item.capture?.highlight,license:item.license?.name,licenseUrl:item.license?.url,
+        scale:item.capture?.scale??scale,theme:item.capture?.theme??theme}); }
       catch(error) { result={id:item.id,url,status:'failed',reason:error.message}; }
       attempts.push(result);if(result.status==='captured')break;
     }
@@ -131,7 +183,8 @@ export async function captureNeeds({ project, needs, capture = capturePage }) {
 if (process.argv[1] && import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href) {
   const args=process.argv.slice(2), get=(key,fallback)=>{const i=args.indexOf(key);return i<0?fallback:args[i+1];};
   if (!get('--project') || (!get('--url')&&!get('--needs'))) throw new Error('用法：capture-web.mjs --project <每期目录> (--needs asset-needs.json | --url <公开URL>)');
-  const result=get('--needs') ? await captureNeeds({project:path.resolve(get('--project')),needs:JSON.parse(fs.readFileSync(get('--needs'),'utf8'))}) :
-    await capturePage({project:get('--project'),url:get('--url'),id:get('--id','web-page'),seconds:Number(get('--seconds','7')),scene:get('--scene',''),sourceName:get('--source'),highlight:get('--highlight'),license:get('--license')});
+  const scale=Number(get('--scale','1.25')), theme=get('--theme','auto');
+  const result=get('--needs') ? await captureNeeds({project:path.resolve(get('--project')),needs:JSON.parse(fs.readFileSync(get('--needs'),'utf8')),scale,theme}) :
+    await capturePage({project:get('--project'),url:get('--url'),id:get('--id','web-page'),seconds:Number(get('--seconds','7')),scene:get('--scene',''),sourceName:get('--source'),highlight:get('--highlight'),license:get('--license'),scale,theme});
   console.log(JSON.stringify(result,null,2));process.exitCode=result.status==='failed'||result.failed?1:0;
 }

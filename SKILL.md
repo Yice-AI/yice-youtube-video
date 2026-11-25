@@ -20,6 +20,8 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.3�
 3. **配音并验帧。** 执行 `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`。默认 `long_paragraph` 优先 65–115 字、最多 5 句，`natural_v7` 保留呼吸。`--pause-after 0-3=3.0` 可登记留白。Kaggle 异步每 2.5 秒轮询，默认总等待 900 秒，异步提交 HTTP 404 才回退。清单写好后运行 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify`，按首、中、尾帧逐镜核对台词及因果顺序。
 4. **装配与审片。** 规则、分步和片尾总结优先用 `t7_editorial_board` 正反对照或结构看板，数值关系用 `t3_finance_chart`。用 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 装片，输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 和分幕工程。输入一致的幕可复用，`--force-render` 强制刷新，`--build-only` 生成工程与母带。最后执行 `kit/scripts/audit-v3.sh --v7 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
 
+5. **封面与打包。** 用 `kit/scripts/thumbnail.sh --project . --title "标题" --summary "内容摘要"` 走 `image2` 原生直出，默认生成 3 张候选。打开 `thumbnail-contact-sheet.png` 对照信息流尺寸和右下角时长警示。用同一入口加 `--select 1` 导出小于 2 MB 的高清 JPG，默认存入 `thumbnails/` 并登记账本。
+
 ## episode-manifest.json
 
 所有时间用秒。镜头 `start`、`end`、旁白 `at` 和 `firstCharTime` 以全片起点为零。`overlays[].at` 是镜内相对时间。素材路径相对清单解析。

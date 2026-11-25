@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-KINDS = {"web-cam", "metaphor-image", "prop-cutout", "motion-video", "web-capture", "stock-footage", "rec-task"}
+KINDS = {"web-cam", "metaphor-image", "prop-cutout", "motion-video", "web-capture", "stock-footage", "rec-task", "thumbnail"}
 
 
 def now():
@@ -80,8 +80,9 @@ def tool_python():
     else:
         from workspace import load_environment
     _, toolkit = load_environment()
-    candidate = Path(os.environ.get("YICE_TOOLKIT_PYTHON", toolkit / ".venv/bin/python"))
-    return str(candidate if candidate.exists() else sys.executable), toolkit
+    candidates = (os.environ.get("YICE_IMAGE_PYTHON"), os.environ.get("YICE_TOOLKIT_PYTHON"),
+                  toolkit / "local/tts-venv/bin/python", toolkit / ".venv/bin/python")
+    return next((str(candidate) for candidate in candidates if candidate and os.access(candidate, os.X_OK)), sys.executable), toolkit
 
 
 def run_command(command, *, timeout=900):
@@ -106,6 +107,14 @@ def output_file(project, kind, requested=None, suffix=".mp4"):
 
 
 def produce(args, project, rows):
+    if args.kind == "thumbnail":
+        python, _ = tool_python()
+        command = [python, str(Path(__file__).with_name("thumbnail.py")), "--project", str(project), "--json"]
+        for key in ("title", "summary", "content_file", "candidates", "select", "batch", "output", "image2_script"):
+            value = getattr(args, key)
+            if value is not None:
+                command.extend(["--"+key.replace("_","-"), str(value)])
+        return json.loads(run_command(command))
     if args.kind == "web-cam":
         command = ["node", str(Path(__file__).with_name("record-web-cam.mjs")),
                    "--project", str(project), "--id", args.id, "--seconds", str(args.seconds if args.seconds is not None else args.duration)]
@@ -222,6 +231,14 @@ def main(argv=None):
     parser.add_argument("--reserve-image", type=float, default=.20)
     parser.add_argument("--cost", type=float, default=0.0)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--title")
+    brief = parser.add_mutually_exclusive_group()
+    brief.add_argument("--summary")
+    brief.add_argument("--content-file")
+    parser.add_argument("--candidates", type=int)
+    parser.add_argument("--select", type=int)
+    parser.add_argument("--batch")
+    parser.add_argument("--image2-script")
     args = parser.parse_args(argv)
     if args.duration is None:
         args.duration = 6 if args.kind == "web-cam" else 5

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """从长视频挑选高信息量片段，并为分幕清单生成渲染前核验图。"""
 import argparse
+from bisect import bisect_left
 from io import BytesIO
 import json
 from math import isfinite
+import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -15,6 +18,7 @@ from audit_v7 import VIDEO_EXTENSIONS, difference_hash, probe_video
 SIZE = (320, 180)
 SCALE = 'scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2'
 VIDEO_STAGES = {'callout_rig','fullbleed_rig','cold_open_ab','triptych_cards','reference_breakdown','studio_ui'}
+OCR = Path(__file__).resolve().parents[1] / 'tools/ocr/ocr'
 
 
 def read_json(path):
@@ -57,27 +61,65 @@ def frame_scores(frame):
     grey = np.asarray(frame.convert('L'),dtype=np.float32)
     edge = float((np.abs(np.diff(grey,axis=0)).mean()+np.abs(np.diff(grey,axis=1)).mean())/510)
     is_flat = flat>=.72
+    band = grey[148:176,40:280]
+    # 字幕的浅色笔画旁会紧贴深色描边，并在数个相邻行横向分布。
+    bright = band[1:-1,1:-1]
+    dark = np.minimum.reduce([band[:-2,1:-1],band[2:,1:-1],band[1:-1,:-2],band[1:-1,2:]])
+    outlines = (bright >= 200) & (bright-dark >= 100)
+    text_rows = outlines.sum(axis=1) >= 12
+    subtitle_edge = bool(np.count_nonzero(text_rows)>=3 and np.count_nonzero(outlines.any(axis=0))>=30)
     return dict(dhash=f'{difference_hash(frame):016x}',flat_bg_ratio=round(flat,4),is_flat_slide=is_flat,
-                richness_score=round(edge*(.35 if is_flat else 1.),4))
+                richness_score=round(edge*(.35 if is_flat else 1.),4),has_burned_subtitle=subtitle_edge)
 
 
-def scene_candidates(sources, window, step, top, include_flat):
+def subtitle_ocr(row, binary):
+    try:
+        with tempfile.TemporaryDirectory() as temp:
+            frame = Path(temp) / 'frame.png'
+            subprocess.run(['ffmpeg','-v','error','-ss',str(row['at']),'-i',row['source'],
+                            '-frames:v','1','-threads','1',str(frame)],check=True,capture_output=True,timeout=10)
+            with Image.open(frame) as image:
+                width,height = image.size
+            region = ','.join(str(int(value)) for value in (.12*width,.82*height,.76*width,.16*height))
+            result = subprocess.run([str(binary),str(frame),'--region',region],check=True,
+                                    capture_output=True,text=True,timeout=5)
+            return any(sum(char.isalnum() for char in text['text'])>=3
+                       and .28*width <= text['box'][0]+text['box'][2]/2 <= .72*width
+                       for text in json.loads(result.stdout)['results'])
+    except (OSError,ValueError,KeyError,subprocess.SubprocessError):
+        return None
+
+
+def scene_candidates(sources, window, step, top, include_flat, allow_burned_subtitles=False):
     candidates = []
     for source in dict.fromkeys(Path(item).resolve() for item in sources):
         last_start = probe_video(source)-window-.25
         if last_start<0:
             continue
-        for at,frame in sample_frames(source,step):
+        samples = [(at,frame_scores(frame)) for at,frame in sample_frames(source,min(step,window/2))]
+        times = [at for at,_ in samples]
+        for at,metrics in samples:
             start = min(last_start,max(0.,at-window/2))
-            if at>start+window:
+            if at>=start+window:
                 continue
-            metrics = frame_scores(frame)
-            if include_flat or not metrics['is_flat_slide']:
-                candidates.append(dict(source=str(source),start=round(start,5),end=round(start+window,5),
-                                       duration=window,at=at,**metrics))
+            inside = [scores for _,scores in samples[bisect_left(times,start):bisect_left(times,start+window)]]
+            if not include_flat and any(scores['is_flat_slide'] for scores in inside):
+                continue
+            hashes = [int(scores['dhash'],16) for scores in inside]
+            if any((left^right).bit_count()>24 for left,right in zip(hashes,hashes[1:])):
+                continue
+            candidates.append(dict(source=str(source),start=round(start,5),end=round(start+window,5),
+                                   duration=window,at=at,**metrics))
     candidates.sort(key=lambda row:(row['is_flat_slide'],-row['richness_score'],row['source'],row['at']))
+    if os.access(OCR,os.X_OK):
+        for row in candidates[:top*2]:
+            burned = subtitle_ocr(row,OCR)
+            if burned is not None:
+                row['has_burned_subtitle'] = burned
     representatives, selected = [], []
     for row in candidates:
+        if row['has_burned_subtitle'] and not allow_burned_subtitles:
+            continue
         value = int(row['dhash'],16)
         if any((value^other).bit_count()<=6 for other in representatives):
             continue
@@ -220,6 +262,7 @@ def main(argv=None):
     parser.add_argument('--step',type=float,default=2.)
     parser.add_argument('--top',type=int,default=16)
     parser.add_argument('--include-flat',action='store_true')
+    parser.add_argument('--allow-burned-subtitles',action='store_true')
     args = parser.parse_args(argv)
     if bool(args.videos)==bool(args.verify_manifest):
         parser.error('请选择视频选段或清单核验模式')
@@ -230,7 +273,7 @@ def main(argv=None):
         if args.verify_manifest:
             count = write_verification(args.verify_manifest.resolve(),args.output)
         else:
-            rows = scene_candidates(args.videos,args.window,args.step,args.top,args.include_flat)
+            rows = scene_candidates(args.videos,args.window,args.step,args.top,args.include_flat,args.allow_burned_subtitles)
             write_scene_contact(rows,args.output)
             write_json(args.output/'scene-candidates.json',rows)
             count = len(rows)

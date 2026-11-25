@@ -17,6 +17,7 @@ import urllib.request
 from pathlib import Path
 
 from workspace import load_environment
+from produce_asset import append_ledger
 
 BLOCKED_CREATOR_DOMAINS = (
     "youtube.com",
@@ -70,7 +71,8 @@ def fetch_pexels_1080p(queries, out_dir: Path, api_key: str):
                 continue
             files = [
                 f for f in vid.get("video_files", [])
-                if f.get("file_type") == "video/mp4" and 1280 <= (f.get("width") or 0) <= 2560
+                if f.get("file_type") == "video/mp4" and f.get("link")
+                and (f.get("width") or 0) >= 1920 and f["width"] > (f.get("height") or 0)
             ]
             files.sort(key=lambda f: abs((f.get("width") or 0) - 1920) + abs((f.get("height") or 0) - 1080))
             if files:
@@ -82,27 +84,35 @@ def fetch_pexels_1080p(queries, out_dir: Path, api_key: str):
         vid, fobj = chosen
         dl = urllib.request.Request(fobj["link"], headers={"User-Agent": "yice-youtube-video/6.0"})
         tmp = dest.with_suffix(".raw.mp4")
-        with urllib.request.urlopen(dl, timeout=45) as r:
-            tmp.write_bytes(r.read())
-        subprocess.run(
-            [
-                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                "-i", str(tmp), "-t", "14",
-                "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30",
-                "-an", "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p",
-                str(dest),
-            ],
-            check=True,
-        )
-        tmp.unlink(missing_ok=True)
-        records.append({
+        part = dest.with_suffix(".part.mp4")
+        try:
+            with urllib.request.urlopen(dl, timeout=45) as r:
+                tmp.write_bytes(r.read())
+            subprocess.run(
+                [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-i", str(tmp), "-t", "14",
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,fps=30",
+                    "-an", "-c:v", "libx264", "-preset", "fast", "-crf", "17", "-pix_fmt", "yuv420p",
+                    str(part),
+                ],
+                check=True,
+            )
+            part.replace(dest)
+        finally:
+            tmp.unlink(missing_ok=True)
+            part.unlink(missing_ok=True)
+        record = {
             "slug": slug,
             "path": str(dest),
             "sha256": sha256_file(dest),
             "provider": "pexels",
             "provider_id": vid["id"],
             "license": "Pexels License",
-        })
+        }
+        append_ledger(out_dir, {**record, "id": slug, "path": dest.name, "sourceType": "stock-footage",
+                                "sourceUrl": vid.get("url"), "licenseUrl": "https://www.pexels.com/license/"})
+        records.append(record)
     return records
 
 

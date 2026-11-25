@@ -201,6 +201,8 @@ def main():
                "props.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
                "cutout.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
                "people_add.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
+               "thumbnail.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
+               "produce_asset.py": ("YICE_IMAGE_PYTHON", "tts-venv"),
                "audit-v3.py": ("YICE_REVIEW_PYTHON", "asr-venv"),
                "review.py": ("YICE_REVIEW_PYTHON", "tts-venv")}
     if len(sys.argv) < 2 or sys.argv[1] not in runners:

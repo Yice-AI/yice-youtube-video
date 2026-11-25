@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import {recordBrowserFrames} from './browser-frames.mjs';
 
 export function publicUrl(value,base){
@@ -35,10 +36,16 @@ export function latestAnnouncement(links,site){
 export async function inspectEntityPage(page,{project,output,record=true}){
   const info=await page.evaluate(()=>{
     const visible=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none';};
+    const absolute=src=>{try{return new URL(src,document.baseURI).href;}catch{return null;}};
     return {
       text:document.body.innerText.slice(0,35000),
       links:[...document.querySelectorAll('a[href]')].map(a=>({url:a.href,text:(a.innerText||a.getAttribute('aria-label')||'').trim().slice(0,220),date:a.closest('article,li')?.querySelector('time')?.dateTime||null})).slice(0,350),
       images:[...document.images].map(i=>({url:i.currentSrc||i.src,canonicalUrl:i.getAttribute('data-canonical-src'),alt:i.alt,width:i.naturalWidth,height:i.naturalHeight,inReadme:!!i.closest('.markdown-body,article[itemprop="text"]')})).filter(i=>i.url).slice(0,100),
+      readmeVideos:[...new Set([
+        ...[...document.querySelectorAll('.markdown-body video,article video')].map(v=>
+          v.currentSrc||v.getAttribute('src')||v.querySelector('source[src]')?.src||v.getAttribute('data-canonical-src')),
+        ...[...document.querySelectorAll('.markdown-body a[href*="user-attachments/assets/"]')].map(a=>a.href),
+      ].filter(Boolean).map(absolute).filter(Boolean))],
       logos:[...document.querySelectorAll('header img,nav img,img[alt*="logo" i],img[src*="logo" i],link[rel~="icon"]')].map(i=>({url:i.currentSrc||i.src||i.href,label:i.alt||'site icon'})).filter(i=>i.url),
       inlineLogos:[...document.querySelectorAll('header a[href="/"] svg,nav a[href="/"] svg,header svg[aria-label*="logo" i]')].slice(0,2).map(e=>({label:e.getAttribute('aria-label')||e.closest('a')?.getAttribute('aria-label')||'official header brand',svg:e.outerHTML})),
       inputs:[...document.querySelectorAll('textarea,input:not([type=hidden]):not([type=checkbox]):not([type=radio])')].filter(visible).map(e=>({type:e.type||e.tagName.toLowerCase(),placeholder:e.placeholder||e.getAttribute('aria-label')||'',formAction:e.form?.action||null})).slice(0,10),
@@ -64,13 +71,31 @@ export async function inspectEntityPage(page,{project,output,record=true}){
     try{
       const b=await el.boundingBox();if(!b||b.width<160||b.height<90){entry.reason='small_or_hidden_media';continue;}
       await el.scrollIntoViewIfNeeded();
-      const state=await el.evaluate(async e=>{
-        if(e.tagName==='VIDEO'){e.muted=true;await e.play().catch(()=>{});return {url:e.currentSrc||e.src,kind:'video',playing:!e.paused};}
-        return {url:e.currentSrc||e.src,kind:'gif',playing:true};
-      });Object.assign(entry,state);
-      if(!state.playing){entry.reason='page_player_requires_interaction';continue;}
+      const state=await el.evaluate(e=>({url:e.currentSrc||e.getAttribute('src')||e.querySelector('source[src]')?.src||e.getAttribute('data-canonical-src'),
+        kind:e.tagName==='VIDEO'?'video':'gif'}));
+      Object.assign(entry,state);
       const file=path.join(output,`demo-${i+1}.mp4`);
-      Object.assign(entry,await recordBrowserFrames(page,file,{seconds:6,fps:15,realtime:true}),{status:'captured',path:path.relative(project,file),box:await el.boundingBox()});
+      const source=state.url&&publicUrl(state.url,page.url());
+      if(state.kind==='video'&&source&&process.env.YICE_MEDIA_OFFLINE!=='1'){
+        const {downloadEntityFile,normalizeDemoVideo}=await import('./collect-entity.mjs');
+        let original;
+        try{
+          original=await downloadEntityFile(source,file+'-source',{allowVideo:true});
+          if(!original.mime.startsWith('video/'))throw new Error('来源未返回视频');
+          Object.assign(entry,normalizeDemoVideo(original.file,file),{status:'captured',path:path.relative(project,file),method:'direct_download'});
+          continue;
+        }catch(error){entry.directDownloadError=error.message;}
+        finally{if(original?.file)fs.rmSync(original.file,{force:true});}
+      }
+      if(state.kind==='video'){
+        entry.playing=await el.evaluate(async e=>{
+          e.muted=true;
+          await Promise.race([e.play().catch(()=>{}),new Promise(resolve=>setTimeout(resolve,1500))]);
+          return !e.paused;
+        });
+        if(!entry.playing){entry.reason='page_player_requires_interaction';continue;}
+      }
+      Object.assign(entry,await recordBrowserFrames(page,file,{seconds:6,fps:30,realtime:true}),{status:'captured',path:path.relative(project,file),box:await el.boundingBox(),method:'browser_frames'});
     }catch(error){entry.reason=error.message;}
   }
   if(total>6)info.demoOmitted=total-6;

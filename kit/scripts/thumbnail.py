@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""通过 image2 的标题模式生成并核对 YouTube 封面。"""
+import argparse
+from datetime import datetime
+from hashlib import sha256
+from io import BytesIO
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+
+from produce_asset import append_ledger, now, project_path, run_command, tool_python
+
+OCR = Path(__file__).resolve().parents[1] / "tools/ocr/ocr"
+TIMESTAMP = re.compile(r"\b(?:\d{1,2}:\d{2}(?::\d{2})?|XX:XX)\b", re.IGNORECASE)
+PREVIEWS = ((640, 360), (320, 180), (168, 94))
+
+
+def watermark_result(file, size):
+    if not os.access(OCR, os.X_OK):
+        return {"watermark_warning": False, "watermark_check": "unavailable"}
+    width, height = size
+    x, y = int(width * .76), int(height * .80)
+    region = f"{x},{y},{width-x},{height-y}"
+    try:
+        result = subprocess.run([str(OCR), str(file), "--region", region], capture_output=True,
+                                text=True, check=True, timeout=5)
+        texts = [row["text"] for row in json.loads(result.stdout)["results"]]
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+        return {"watermark_warning": False, "watermark_check": "unavailable"}
+    matches = [text for text in texts if TIMESTAMP.search(text)]
+    return {"watermark_warning": bool(matches), "watermark_check": "checked", "watermark_text": matches}
+
+
+def contact_sheet(batch, rows):
+    sheet = Image.new("RGB", (1224, 76 + 448 * len(rows)), "#111820")
+    draw = ImageDraw.Draw(sheet)
+    title = ImageFont.load_default(size=25)
+    label = ImageFont.load_default(size=16)
+    draw.text((28, 23), "YOUTUBE THUMBNAIL CANDIDATES", font=title, fill="#f4f6fa")
+    for index, row in enumerate(rows, 1):
+        top = 65 + 448 * (index - 1)
+        draw.rounded_rectangle((16, top, 1208, top + 432), radius=14, fill="#1b2632")
+        draw.text((28, top + 10), f"#{index}", font=title, fill="#f4f6fa")
+        with Image.open(batch / row["file"]) as source:
+            source = source.convert("RGB")
+            for x, size, name in zip((28, 686, 1024), PREVIEWS, ("Main preview", "Desktop feed", "Mobile feed")):
+                draw.text((x+50 if x==28 else x, top+17), f"{name}  {size[0]} px", font=label, fill="#bac7d4")
+                sheet.paste(ImageOps.pad(source, size, method=Image.Resampling.LANCZOS), (x, top+47))
+        checked = row["watermark_check"] == "checked"
+        status = "No timestamp detected" if checked else "OCR unavailable"
+        if row["watermark_warning"]:
+            draw.rounded_rectangle((686, top + 245, 1192, top + 283), radius=6, fill="#f6b853")
+            draw.text((698, top + 253), "Check timestamp in lower-right corner", font=label, fill="#23190e")
+        else:
+            draw.text((686, top+250), status, font=label, fill="#bac7d4")
+    target = batch / "thumbnail-contact-sheet.png"
+    sheet.save(target)
+    return target
+
+
+def generate(args, project, root):
+    summary = args.content_file.read_text(encoding="utf-8") if args.content_file else args.summary
+    if not (args.title and args.title.strip() and summary and summary.strip()):
+        raise ValueError("生成需要 --title 和 --summary 或 --content-file")
+    name = args.batch or datetime.now().strftime("batch-%Y%m%d-%H%M%S")
+    if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", name):
+        raise ValueError("生成批次需要单个目录名")
+    batch = root / name
+    try:
+        batch.mkdir(parents=True)
+    except FileExistsError:
+        raise ValueError(f"拒绝覆盖已有封面批次：{batch}") from None
+    python, toolkit = tool_python()
+    script = args.image2_script or toolkit / "local/tools/image2.py"
+    output = run_command([python, str(script), "--title", args.title, "--summary", summary, "--role", "thumbnail",
+                          "--guard", "light", "--thumb-guard", "r_plus", "--candidates", str(args.candidates),
+                          "-o", str(batch / "candidate.png"), "--json"])
+    generated = json.loads(output)
+    if len(generated["outputs"]) != args.candidates:
+        raise ValueError("image2 返回的候选数量不符")
+    rows = []
+    for index, item in enumerate(generated["outputs"], 1):
+        file = batch / f"candidate-{index}.png"
+        if Path(item["output"]).resolve() != file.resolve():
+            raise ValueError(f"image2 返回了非预期的候选路径：{index}")
+        with Image.open(file) as image:
+            size = image.size
+            image.load()
+        rows.append({**item, "file": file.name, "width": size[0], "height": size[1],
+                     **watermark_result(file, size)})
+    sheet = contact_sheet(batch, rows)
+    result = {"batch": str(batch), "path": str(sheet), "candidates": len(rows),
+              "attempts": generated.get("attempts"), "outputs": rows}
+    (batch / "batch-manifest.json").write_text(json.dumps(result, ensure_ascii=False, indent=2)+"\n", encoding="utf-8")
+    append_ledger(project, {"id": f"thumbnail-{name}", "sourceType": "image2", "tool": "image2", "kind": "thumbnail",
+                            "path": str(sheet.relative_to(project)), "candidates": len(rows), "created_at": now()})
+    return result
+
+
+def select(args, project, root):
+    if args.batch:
+        requested = Path(args.batch).expanduser()
+        batch = (requested if requested.is_absolute() else root / requested).resolve()
+        if batch.parent != root.resolve():
+            raise ValueError("批次必须位于项目的 thumbnails 目录")
+    else:
+        complete = (path.parent for path in root.glob("*/batch-manifest.json"))
+        batch = max(complete, key=lambda path: ((path/"batch-manifest.json").stat().st_mtime_ns, path.name), default=None)
+        if batch is None:
+            raise ValueError("项目没有已完成的封面批次")
+    file = batch / f"candidate-{args.select}.png"
+    if not file.is_file():
+        raise ValueError(f"未找到封面候选 #{args.select}")
+    target = Path(args.output).expanduser() if args.output else root / "thumbnail-selected.jpg"
+    if not target.is_absolute():
+        target = project / target
+    if target.suffix.lower() not in {".jpg", ".jpeg"}:
+        raise ValueError("导出路径需以 .jpg 或 .jpeg 结尾")
+    with Image.open(file) as source:
+        image = source.convert("RGB")
+    for quality in range(94, 0, -1):
+        buffer = BytesIO()
+        image.save(buffer, format="JPEG", quality=quality, optimize=True)
+        data = buffer.getvalue()
+        if len(data) <= args.max_bytes:
+            break
+    else:
+        raise ValueError(f"封面无法压缩至 {args.max_bytes} 字节")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    for size in PREVIEWS[1:]:
+        ImageOps.pad(image, size, method=Image.Resampling.LANCZOS).save(target.with_name(f"{target.stem}-{size[0]}p.png"))
+    result = {"path": str(target), "batch": str(batch), "selected": args.select, "bytes": len(data),
+              "sha256": sha256(data).hexdigest(), "quality": quality}
+    append_ledger(project, {**result, "id": "thumbnail-selected", "kind": "thumbnail", "tool": "thumbnail",
+                            "sourceType": "image2", "created_at": now()})
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--project")
+    parser.add_argument("--title")
+    brief = parser.add_mutually_exclusive_group()
+    brief.add_argument("--summary")
+    brief.add_argument("--content-file", type=Path)
+    parser.add_argument("--candidates", type=int, default=3)
+    parser.add_argument("--batch")
+    parser.add_argument("--image2-script", type=Path)
+    parser.add_argument("--select", type=int)
+    parser.add_argument("--output")
+    parser.add_argument("--max-bytes", type=int, default=1_950_000)
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+    if args.candidates < 1 or (args.select is not None and args.select < 1):
+        parser.error("候选数量与选择编号须为正整数")
+    if not 0 < args.max_bytes < 2_000_000:
+        parser.error("max-bytes 须小于 2000000 且大于 0")
+    if args.select is not None and any((args.title, args.summary, args.content_file)):
+        parser.error("生成候选和选定导出请分别执行")
+    try:
+        project = project_path(args.project)
+        root = project / "thumbnails"
+        result = select(args, project, root) if args.select is not None else generate(args, project, root)
+    except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as exc:
+        parser.error(str(exc))
+    print(json.dumps(result, ensure_ascii=False) if args.json else result["path"])
+
+
+if __name__ == "__main__":
+    main()
