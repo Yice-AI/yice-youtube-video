@@ -44,7 +44,8 @@ class Phase3Tests(unittest.TestCase):
         for i,(theme,palette) in enumerate(PALETTES.items()):
             self.assertIn(palette['ink'],stage.plates[i])
             self.assertIn(palette['bg'] if theme=='pine' else palette['gradient'],stage.bg_layers[i])
-        self.assertEqual(stage.light_zones,[(4.,6.),(6.,8.)])
+        self.assertEqual(stage.light_zones,[(i*2.,(i+1)*2.) for i,palette in enumerate(PALETTES.values())
+                                           if palette['is_light']])
         self.assertIn('原始颜色 #172322',stage.plates[1])
         self.assertIn('#172322fa',PALETTES['pine']['panel'])
         self.assertIn('<clipPath',stage.plates[0])
@@ -103,6 +104,49 @@ class Phase3Tests(unittest.TestCase):
         self.assertIn('data-duration="0.40000"',stage.captions[0])
         self.assertIn('cap caption-on-light',stage.captions[1])
         self.assertIn('data-start="2.00000"',stage.captions[1])
+
+    def test_studio_window_keeps_footage_mark_and_caption_separate(self):
+        stage = EditorialStage('暗场实录',4)
+        before = (0,0)
+        stage.add_callout_rig(0,4,'capture.mp4',framing='studio_window',window_title='真实网页',
+            motion='focus_push',overlays=[
+                dict(kind='highlighter_sweep',at=.5,box=[240,300,300,70],
+                     target_verified=True,target_note='核对标题'),
+                dict(kind='corner_tag',at=.6,label='官网',sublabel='网页实录'),
+            ])
+        stage.apply_palette('aurora_indigo',0,4,before)
+        self.assertIn('#1F1D42',stage.bg_layers[0])
+        self.assertIn('x="144" y="122" width="1648" height="760"',stage.bg_layers[1])
+        self.assertIn('left:136px;top:142px;width:1648px;height:726px',stage.media_layers[0])
+        chrome,mark,corner = stage.plates
+        self.assertIn('stroke-width="1.5"',chrome)
+        self.assertIn('真实网页',chrome)
+        self.assertNotIn('drop-shadow',chrome)
+        self.assertIn('class="studio-mark-plane"',mark)
+        self.assertIn('x="136" y="34"',corner)
+        camera = [s for s in stage.scripts if "transformOrigin:'334.8px 187.0px'" in s]
+        self.assertEqual(len(camera),4)
+        self.assertEqual(camera[0].split(',{scale:',1)[1],camera[2].split(',{scale:',1)[1])
+        stage.light_zones.append((0,4))
+        stage.add_captions([dict(start=.5,end=2,text='字幕在视窗下方')])
+        stage.write_project(self.root)
+        html = (self.root/'index.html').read_text()
+        self.assertIn('background:rgba(13,18,26,.90)',html)
+        self.assertIn('color:#f8fafc',html)
+        self.assertNotIn('rgba(255,250,240,.94)',html)
+        self.assertIn('cap caption-on-light',stage.captions[0])
+
+    def test_light_theme_preserves_dark_studio_panels(self):
+        shot = dict(fixture_head(0,'paper_cool',0,3),stage_mode='studio_ui',
+                    studio_style='terminal_pipeline',data=dict(command='git status',lines=['已核对']))
+        rows,_ = assemble.prepare_shots({'shots':[shot]},self.root,{'0':{'firstCharTime':0}})
+        stage = assemble.build_act(rows,self.root,self.root,'深色终端',subprocess.run)
+        self.assertIn('#0F1419',PALETTES['obsidian']['bg'])
+        self.assertIn('#18222E',PALETTES['obsidian']['panel'])
+        self.assertIn('#252e33',stage.plates[0])
+        self.assertIn('#e7e9df',stage.plates[0])
+        self.assertNotIn('#FFFFFFf5',stage.plates[0])
+        self.assertEqual(stage.light_zones,[])
 
     def test_timed_short_subtitles_and_manifest_priority(self):
         text='先看画面的颜色和排版然后顺手标出需要反向核对的几个相关位置，第二句话。'
@@ -176,12 +220,14 @@ class Phase3Tests(unittest.TestCase):
                          '需要本机离线 Playwright 与 Chrome')
     def test_featured_board_and_architecture_audit(self):
         samples=[
-            dict(grammar='t7_editorial_board',theme='snow',data=dict(title='先确定证据的用途',layout='featured',eyebrow='编辑部看板'),
+            dict(grammar='t7_editorial_board',theme='bauhaus',data=dict(title='先确定证据的用途',layout='featured',eyebrow='编辑部看板'),
                  cues=[dict(at=.1,kind='card',text='原文和实录配对',sub='同一时间窗内保留对象',data=dict(badge='01',bad='孤立截图',good='展示上下文',tag='核心')),
-                       dict(at=.6,kind='card',text='确认引用来源',sub='记录页面与采集日期'),
-                       dict(at=1.1,kind='card',text='核对音画',sub='首字切点与字幕入点逐一对应'),
+                       dict(at=.6,kind='card',text='确认引用来源',sub='记录页面与采集日期',
+                            data=dict(bad='只存缩略图',good='保留页面原址',tag='来源')),
+                       dict(at=1.1,kind='card',text='核对音画',sub='首字切点与字幕入点逐一对应',
+                            data=dict(bad='靠感觉切换',good='按首字核对',tag='对齐')),
                        dict(at=1.6,kind='footer',text='为编辑和复核保留同一份材料')]),
-            dict(grammar='t4_blueprint_arch',theme='ink',data=dict(title='架构信号流',eyebrow='输入到输出'),
+            dict(grammar='t4_blueprint_arch',theme='navy',data=dict(title='架构信号流',eyebrow='输入到输出'),
                  cues=[dict(at=.08,kind='step',text='网页采集',sub='源页与坐标',data=dict(stage='01 采集')),
                        dict(at=.6,kind='point',text='规格归一',sub='格式与时长',data=dict(stage='02 转换')),
                        dict(at=1.1,kind='step',text='镜头编排',sub='时间轴依赖',data=dict(stage='03 装配')),

@@ -37,12 +37,24 @@ if not a.out and not a.audit: ap.error('--out 必填（除非 --audit）')
 
 root = Path(__file__).parent
 spec, ALLOWED = None, set()
+package_fonts = []
 if a.spec:
     sp = Path(a.spec).resolve(); spec = json.loads(sp.read_text())
     try: spec_assets.localize(spec, sp.parent, ALLOWED)   # image / frames / data.character 里的本地路径 → /__file__/<绝对路径>（只服务 spec 里点名的文件）
     except FileNotFoundError as e: raise SystemExit(str(e))
     if a.alpha: spec['alpha'] = True
     if a.width or a.height: spec['width'], spec['height'] = a.width or spec.get('width', 1920), a.height or spec.get('height', 1080)
+    if spec.get('grammar') == 't7_editorial_board':
+        directory = root.parent/'template/assets/fonts'
+        for family,name,weight in (
+            ('Yice Song','SourceHanSerifCN-Heavy.otf','700 900'),
+            ('Yice Sans','SourceHanSansCN-Regular.otf','100 500'),
+            ('Yice Sans','SourceHanSansCN-Bold.otf','501 900'),
+        ):
+            font = (directory/name).resolve()
+            if font.is_file():
+                ALLOWED.add(str(font))
+                package_fonts.append(dict(family=family,url='/__file__/'+urllib.parse.quote(str(font)),desc={'weight':weight}))
 # 单个参数化片段撑太久会读成一页 PPT（一个版式到底、要点越堆越长）。只警告不报错：管线里有合法的长片段。
 LONG_CLIP = None
 if spec and float(spec.get('duration', 0)) > 8:
@@ -105,6 +117,8 @@ with sync_playwright() as p:
     if spec:
         pg.set_viewport_size({'width': spec.get('width', 1920), 'height': spec.get('height', 1080)})
         pg.add_init_script('window.CLIP_SPEC = ' + json.dumps(spec, ensure_ascii=False) + ';')
+        if package_fonts:
+            pg.add_init_script('window.PACKAGED_FONT_FACES = ' + json.dumps(package_fonts) + ';')
         if a.audit: pg.add_init_script(AUDIT_JS)
         pg.goto(f'http://127.0.0.1:{port}/clip.html?render=1')
     else:

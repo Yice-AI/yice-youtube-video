@@ -1,9 +1,9 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.3。六路选材、渲染前核验实际画面、原速配音、结构化看板、分幕装配与成片审计。适用于旁白、真实录屏、分镜、成片和返修。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.0。高清素材采集、多格式证据装配、分幕主题、短句字幕、原速配音、声学母带和封面导出。适用于旁白、真实录屏、分镜、成片和返修。
 ---
 
-# 一策 YouTube 视频制作 v7.3
+# 一策 YouTube 视频制作 v8.0
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。
 
@@ -26,7 +26,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.3�
 
 所有时间用秒。镜头 `start`、`end`、旁白 `at` 和 `firstCharTime` 以全片起点为零。`overlays[].at` 是镜内相对时间。素材路径相对清单解析。
 
-用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 从首字时间生成 30 fps 分镜草稿，再用核对过的画面替换占位镜头。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`paper_cool` 或 `paper_warm`。
+用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 从首字时间生成 30 fps 分镜草稿，再用核对过的画面替换占位镜头。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`aurora_indigo`、`paper_cool` 或 `paper_warm`。
 
 `gsap` 是可选覆盖项。省略时自动发现本机 GSAP，包括 toolkit 的 `local/vendor/gsap.min.js`。
 
@@ -93,8 +93,8 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.3�
 - `title_sequence` 和 `corner_tag` 可填 `logo`。在 `callout_rig`、`studio_ui` 或 `evidence_spotlight` 中，可用 `prop_badge`、`reaction_cutout` 加入透明素材。叠层填 `source`、`at`，可选 `label`、`duration`、`side` 和 140–260 像素的 `size`。
 - `reference_breakdown` 将一条 `source` 放入 1152×648 静音检视窗，填 `channel` 署名和 `claim` 拆解主张。可设 `media_start`、严格升序的镜内 `cut_points` 及最多三项 `metrics`（`{label,value}`）。每处切点自动更新镜头计数并登记轻音量 `tick`。
 - `explainer_clip` 使用内嵌 `spec` 或本地 spec 路径，支持 Vox 文档、白板推导、图表、蓝图、数据尺与瑞士网格等语法。
-- `focus_push` 和 `spring_glide` 提供两段式运镜。`highlighter_sweep`、`hand_circle` 与 `spotlight_box` 共用像素核验和使用上限。代码或终端可用从 1 起算的 `data.focus_lines` 标出当前行。
-- 配音目录的 `captions.json` 优先用于短句字幕，清单可显式覆盖。浅色舞台和亮底实录自动切换深色字幕。自定义审计词表可填 `custom_entities` 名称数组或名称到别名的字典。
+- `focus_push` 和 `spring_glide` 提供两段式运镜。实录可用 `framing: "studio_window"` 和 `window_title` 装入暗场圆角窗，保留独立字幕区。`highlighter_sweep`、`hand_circle` 与 `spotlight_box` 共用像素核验和使用上限。代码或终端可用从 1 起算的 `data.focus_lines` 标出当前行。
+- 配音目录的 `captions.json` 优先用于短句字幕，清单可显式覆盖。浅色舞台和亮底实录自动切换为深底白字胶囊。自定义审计词表可填 `custom_entities` 名称数组或名称到别名的字典。
 - `audio.bgm` 支持一至三首，可设 `bgm_cuts` 指定切换点。`audio.sound_marks` 支持 `{kind,at,gain}`，类型有 `tick`、`whoosh`、`pop`、`marker`、`stamp`、`riser`。片头、倒数和贴图会自行登记事件。需要单独混音时执行 `python3 kit/scripts/workspace.py mix-episode-audio.py audio.json --output out`，音频清单顶层带 `duration`。
 
 ## 应用与审计

@@ -69,7 +69,11 @@ async function boot() {
   try { await Promise.all([...urls].map(u => new Promise((res, rej) => { const im = new Image(); im.onload = () => { IMG[u] = im; res(); }; im.onerror = () => rej(u); im.src = u; }))); }
   catch (u) { return fail('图片加载失败：' + u); }
   // 字体＋字形检查（spec 里的字缺字形只警告：回退系统字体照样能渲，但换台机器会变样）
-  for (const f of (window.FONT_FACES || [])) { const ff = new FontFace(f.family, `url(${f.url})`, f.desc || {}); await ff.load(); document.fonts.add(ff); }
+  for (const f of [...(window.FONT_FACES || []), ...(window.PACKAGED_FONT_FACES || [])]) {
+    const ff = new FontFace(f.family, `url(${f.url})`, f.desc || {});
+    await ff.load();
+    document.fonts.add(ff);
+  }
   await document.fonts.ready; await U.loadCmaps();
   const cues0 = (spec.cues || []).map((q, i) => ({ ...q, i, at: +q.at || 0 })).sort((a, b) => a.at - b.at || a.i - b.i);
   for (const q of cues0) if (q.at > spec.duration + 1e-9) console.warn(`cue ${q.kind} at=${q.at} 超出片段时长 ${spec.duration}s，看不到，已丢掉（不占版面）`);

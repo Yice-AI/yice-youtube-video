@@ -30,14 +30,18 @@ PALETTES = {
                  sub=GREEN_MONO, line=LINE, edge='#7aaba0', accent=CORAL, accent2='#7aaba0', is_light=False),
     'obsidian': dict(bg='#0F1419', gradient='radial-gradient(ellipse at 28% 22%,#1E2B3A 0%,#121922 52%,#0B0F14 100%)',
                      panel='#18222Efa', ink='#F4F6FA', sub='#9DB0C4', line='#33465A', accent='#FF6B4A', accent2='#38BDF8', is_light=False),
-    'paper_cool': dict(bg='#F2F5F8', gradient='radial-gradient(ellipse at 24% 18%,#FFFFFF 0%,#F2F5F8 58%,#E3E9F0 100%)',
-                       panel='#FFFFFFf5', ink='#141B24', sub='#526173', line='#CBD5E1', accent='#2563EB', accent2='#D93829', is_light=True),
+    'aurora_indigo': dict(bg='#0B0D18', gradient='radial-gradient(ellipse at 72% 20%,#1F1D42 0%,#111324 54%,#090A12 100%)',
+                          panel='#171A30fa', ink='#F5F7FF', sub='#A5B4FC', line='#313762', accent='#818CF8', accent2='#34D399', is_light=False),
+    'paper_cool': dict(bg='#F6F3EC', gradient='radial-gradient(ellipse at 24% 18%,#FFFCF5 0%,#F6F3EC 58%,#EFE9DD 100%)',
+                       panel='#FFFFFFf5', ink='#141821', sub='#49525F', line='#C8C1B3', accent='#D62828', accent2='#1D4E89', is_light=True),
     'paper_warm': dict(bg='#F3ECE0', gradient='radial-gradient(ellipse at 24% 18%,#FAF6EE 0%,#F1E9DA 58%,#E2D6C1 100%)',
                        panel='#FCF9F2f5', ink='#1F1A14', sub='#695D4F', line='#D0C3AE', accent='#C93B2B', accent2='#2B5B84', is_light=True),
 }
-EXPLAINER_THEMES = {'obsidian':'ink','paper_cool':'snow','paper_warm':'paper'}
+EXPLAINER_THEMES = {'obsidian':'ink','aurora_indigo':'navy','paper_cool':'bauhaus','paper_warm':'paper'}
 BREATHING_MOTIONS = {'focus_push','spring_glide'}
 VERIFIED_OVERLAYS = {'spotlight_box','highlighter_sweep','hand_circle'}
+STUDIO_VIEW = (136,142,1648,726)
+STUDIO_GLOW = 'radial-gradient(ellipse at 54% 29%,#253653 0%,#162234 47%,#0B0F17 100%)'
 FONT_FILES = ('SourceHanSerifCN-Heavy.otf','SourceHanSansCN-Regular.otf',
               'SourceHanSansCN-Bold.otf','SourceCodePro-Regular.otf')
 FONT_CSS = """
@@ -84,6 +88,13 @@ def group(cls: str, body: str) -> str:
 def svg_image(x, y, w, h, source):
     return (f'<image x="{x}" y="{y}" width="{w}" height="{h}" href="{html.escape(source)}" '
             'preserveAspectRatio="xMidYMid meet"/>')
+
+
+def studio_source_point(x, y):
+    """Project 1920×1080 source coordinates through the studio viewport's cover fit."""
+    _,_,w,h = STUDIO_VIEW
+    scale = max(w/1920,h/1080)
+    return x*scale+(w-1920*scale)/2, y*scale+(h-1080*scale)/2
 
 
 def evidence_box(value):
@@ -221,10 +232,15 @@ class EditorialStage:
         self._camera_move_history: list[str] = []
         self.font_assets = False
 
-    def apply_palette(self, theme, start, end, before):
+    def apply_palette(self, theme, start, end, before, *, keep_studio_panels=False):
         if theme=='pine':
             return
         palette = PALETTES[theme]
+        if keep_studio_panels:
+            dark = PALETTES['obsidian'] if palette['is_light'] else palette
+            for index in range(before[0],len(self.bg_layers)):
+                self.bg_layers[index] = self.bg_layers[index].replace('background:#151c20',f'background:{dark["gradient"]}')
+            return
         colors = {
             INK:palette['bg'], PAPER:palette['bg'], IVORY:palette['ink'], '#e7e9df':palette['ink'],
             GREEN_MONO:palette['sub'], MUTED:palette['sub'], '#a5b7b6':palette['sub'],
@@ -235,15 +251,20 @@ class EditorialStage:
             '#151c20':palette['bg'], '#252e33':palette['panel'], '#1d2529':palette['line'],
         }
         pattern = re.compile(r'((?:fill|stroke)="|background:)(#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?)(?![0-9A-Fa-f])')
+        studio_window = any('data-studio-backdrop' in row for row in self.bg_layers[before[0]:])
         for group_layers, first in zip((self.bg_layers,self.plates),before):
             for index in range(first,len(group_layers)):
+                if 'data-studio-backdrop' in group_layers[index]:
+                    if not palette['is_light']:
+                        group_layers[index] = group_layers[index].replace(STUDIO_GLOW,palette['gradient'])
+                    continue
                 group_layers[index] = pattern.sub(lambda token:token[1]+colors.get(token[2],token[2]),group_layers[index])
                 group_layers[index] = group_layers[index].replace(f'inset:0;background:{palette["bg"]}',
                                                                  f'inset:0;background:{palette["gradient"]}')
         if len(self.bg_layers)==before[0]:
             self.bg_layers.append(f'<div class="clip bg-fill" data-start="{start:.5f}" data-duration="{end-start:.5f}" '
                                   f'data-track-index="1" style="inset:0;background:{palette["gradient"]}"></div>')
-        if palette['is_light']:
+        if palette['is_light'] and not studio_window:
             self.light_zones.append((start,end))
 
     def masked_heading(self, start, end, body, x, y, w, h):
@@ -382,16 +403,18 @@ class EditorialStage:
                 event['gain'] = self.sound_gains[index]
             yield event
 
-    def add_callout_rig(self, start, end, src, *, overlays, media_start=0., motion='glide'):
+    def add_callout_rig(self, start, end, src, *, overlays, media_start=0., motion='glide',
+                        framing='fullbleed', window_title=''):
         focus = None
         if motion!='hold':
             target = next((overlay for overlay in overlays if overlay.get('kind') in VERIFIED_OVERLAYS),None)
             if target is not None:
                 x,y,w,h = verified_spotlight_box(target)
                 focus = (x+w/2,y+h/2)
-        sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion,focus=focus)
+        sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion,focus=focus,
+                                    framing=framing,window_title=window_title)
         self.shots[-1].update(stage_mode='callout_rig',media_start=media_start)
-        self.add_overlays(start,end,overlays,focus=focus,motion=motion)
+        self.add_overlays(start,end,overlays,focus=focus,motion=motion,framing=framing)
         return sid
 
     def _camera_tween(self, selector, start, span, *, scale, shift=(0.,0.), focus=None, ease='none'):
@@ -411,13 +434,26 @@ class EditorialStage:
         self._camera_tween(selector,start,.65,scale=(scale[0],scale_mid),shift=(shift[0],shift_mid),focus=focus,ease='power3.out')
         self._camera_tween(selector,start+.65,span-.65,scale=(scale_mid,scale[1]),shift=(shift_mid,shift[1]),focus=focus,ease='sine.out')
 
-    def add_overlays(self, start, end, overlays, *, nle_plate=None, focus=None, motion=None):
+    def add_overlays(self, start, end, overlays, *, nle_plate=None, focus=None, motion=None, framing='fullbleed'):
         if not 1 <= len(overlays) <= 2:
             raise ValueError('叠层镜头需要一至两个明确的贴图动作')
         shot = self.shots[-1]
         shot['has_motion_overlay'] = True
         beats = shot.setdefault('beats', [])
         nle_windows = []
+        studio = framing=='studio_window'
+        def projected_box(overlay):
+            x,y,w,h = verified_spotlight_box(overlay)
+            if min(x,y)<64 or x+w>1856 or y+h>890:
+                raise ValueError('高亮框超出可用视窗')
+            if studio:
+                end_x,end_y = studio_source_point(x+w,y+h)
+                x,y = studio_source_point(x,y)
+                w,h = end_x-x,end_y-y
+                if x<0 or y<0 or end_x>STUDIO_VIEW[2] or end_y>STUDIO_VIEW[3]:
+                    raise ValueError('核验框超出圆角视窗的可见画面')
+            return x,y,w,h
+
         for index, overlay in enumerate(overlays):
             at = float(overlay['at'])
             hold = float(overlay.get('duration',end-start-at))
@@ -427,9 +463,7 @@ class EditorialStage:
             style = overlay['kind']
             label = str(overlay.get('label',''))
             if style in {'highlighter_sweep','hand_circle'}:
-                x,y,w,h = verified_spotlight_box(overlay)
-                if min(x,y)<64 or x+w>1856 or y+h>890:
-                    raise ValueError('核验标注超出可用视窗')
+                x,y,w,h = projected_box(overlay)
                 if style=='highlighter_sweep':
                     shape = rect(x,y,w,h,'rgba(255,212,59,0.26)','rx="8"')
                     shape += rect(x,y+h-4,w,4,'#FFD43B','rx="2"')
@@ -445,14 +479,13 @@ class EditorialStage:
                                    for dx,dy,width,opacity in ((0,0,5,.96),(4,3,2,.66)))
                 audio = 'marker'
             elif style == 'spotlight_box':
-                x,y,w,h = verified_spotlight_box(overlay)
-                if min(x,y) < 64 or x+w > 1856 or y+h > 890:
-                    raise ValueError('高亮框超出可用视窗')
+                x,y,w,h = projected_box(overlay)
                 shape = f'M{x} {y}h{w}v{h}h{-w}z'
-                body = f'<path fill="#101b1b42" fill-rule="evenodd" d="M0 0H1920V1080H0Z {shape}"/>'
+                outer_w,outer_h = STUDIO_VIEW[2:] if studio else (1920,1080)
+                body = f'<path fill="#101b1b42" fill-rule="evenodd" d="M0 0H{outer_w}V{outer_h}H0Z {shape}"/>'
                 body += rect(x,y,w,h,'none',f'rx="10" stroke="{CORAL}" stroke-width="3"')
                 label_y = y+h+8 if y<125 else y-49
-                label_width = min(700,85+len(label)*28,1856-x)
+                label_width = min(700,85+len(label)*28,outer_w-64-x)
                 fit = f'textLength="{label_width-24}" lengthAdjust="spacingAndGlyphs"' if len(label)*28>label_width-24 else ''
                 body += ('<g class="rise" data-layout-allow-overlap>'+rect(x,label_y,label_width,44,INK,'rx="8"')
                          +txt(x+12,label_y+31,label,28,attrs=fit)+'</g>')
@@ -464,16 +497,17 @@ class EditorialStage:
                 logo = overlay.get('logo')
                 inset = 44 if logo else 0
                 width = min(760,max(190,57+inset+max(len(label)*28,len(sublabel)*22)))
-                height = 80 if sublabel else 56
+                x,y = (136,34) if studio else (80,82)
+                height = (68 if studio else 80) if sublabel else 56
                 text_width = width-48-inset
                 main_fit = f'textLength="{text_width}" lengthAdjust="spacingAndGlyphs"' if len(label)*28>text_width else ''
-                body = rect(80,82,width,height,'#172322eb','rx="10"') + rect(80,82,5,height,CORAL)
+                body = rect(x,y,width,height,'#172322eb','rx="10"') + rect(x,y,5,height,CORAL)
                 if logo:
-                    body += svg_image(102,82+(height-32)//2,32,32,logo)
-                body += txt(104+inset,118,label,28,attrs=main_fit)
+                    body += svg_image(x+22,y+(height-32)//2,32,32,logo)
+                body += txt(x+24+inset,y+36,label,28,attrs=main_fit)
                 if sublabel:
                     sub_fit = f' textLength="{text_width}" lengthAdjust="spacingAndGlyphs"' if len(sublabel)*22>text_width else ''
-                    body += txt(104+inset,147,sublabel,22,MUTED,attrs='data-layout-ignore'+sub_fit)
+                    body += txt(x+24+inset,y+65,sublabel,22,MUTED,attrs='data-layout-ignore'+sub_fit)
                 body = group('rise',body)
                 audio = 'pop'
             elif style == 'stat_badge':
@@ -527,13 +561,24 @@ class EditorialStage:
                 raise ValueError(f'未知动态贴图类型：{style}')
             if style != 'spotlight_box':
                 body = '<g data-layout-allow-overlap>'+body+'</g>'
-            plate = self.add_plate(begin,begin+hold,style,body,track=11+index)
-            self.shots.pop()  # The overlay belongs to the underlying shot.
+            if studio and style in VERIFIED_OVERLAYS:
+                plate = f's{len(self.plates)}'
+                x,y,w,h = STUDIO_VIEW
+                self.plates.append(f'<div id="{plate}" class="clip studio-window-mark" data-start="{begin:.5f}" '
+                                   f'data-duration="{hold:.5f}" data-track-index="{11+index}" data-layout-allow-occlusion '
+                                   f'style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">'
+                                   f'<div class="studio-mark-plane" data-layout-allow-overflow>'
+                                   f'<svg viewBox="0 0 {w} {h}">{body}</svg></div></div>')
+            else:
+                plate = self.add_plate(begin,begin+hold,style,body,track=11+index)
+                self.shots.pop()  # The overlay belongs to the underlying shot.
             if style in VERIFIED_OVERLAYS and focus:
+                selector = f'#{plate} .studio-mark-plane' if studio else f'#{plate}'
+                origin = studio_source_point(*focus) if studio else focus
                 if motion in BREATHING_MOTIONS:
-                    self._breathing_tween(f'#{plate}',start,end-start,motion,focus=focus)
+                    self._breathing_tween(selector,start,end-start,motion,focus=origin)
                 else:
-                    self._camera_tween(f'#{plate}',start,end-start,scale=(1.,1.12),focus=focus)
+                    self._camera_tween(selector,start,end-start,scale=(1.,1.12),focus=origin)
             if style=='highlighter_sweep':
                 self.scripts.append(f"tl.fromTo('#{plate} .verified-sweep',{{scaleX:0}},"
                                     f"{{scaleX:1,duration:{min(.32,hold):.5f},transformOrigin:'left center',"
@@ -700,6 +745,23 @@ class EditorialStage:
                                 f"{{opacity:1,scale:1,duration:{duration:.5f},ease:'back.out(1.22)',immediateRender:false}},{begin:.5f});")
         return self.shots[-1]['id']
 
+    def studio_window_chrome(self, start, end, title):
+        timing = f'data-start="{start:.5f}" data-duration="{end-start:.5f}"'
+        self.bg_layers.append(f'<div class="clip bg-fill" {timing} data-track-index="1" data-studio-backdrop '
+                              f'style="inset:0;background:{STUDIO_GLOW}"><div class="studio-grid"></div></div>')
+        shadow = rect(144,122,1648,760,'rgba(0,0,0,.42)','rx="18"')
+        shadow += rect(136,114,1648,760,'rgba(0,0,0,.22)','rx="18"')
+        self.bg_layers.append(f'<div class="clip studio-window-shadow" {timing} data-track-index="1" '
+                              f'data-layout-allow-occlusion><svg viewBox="0 0 1920 1080">{shadow}</svg></div>')
+        body = '<path fill="#161D27" d="M136 142V124Q136 108 152 108H1768Q1784 108 1784 124V142Z"/>'
+        body += ''.join(f'<circle cx="{x}" cy="125" r="5.5" fill="{color}"/>'
+                        for x,color in zip((157,178,199),('#E06C65','#E5C07B','#7EC699')))
+        if title:
+            body += mono(960,132,title,min(21,1360//max(1,len(title))),'#D9E1EC',anchor='middle')
+        body += rect(136,108,1648,760,'none','rx="18" stroke="rgba(255,255,255,.16)" stroke-width="1.5"')
+        self.plates.append(f'<div class="clip plate studio-window-chrome" {timing} data-track-index="8" '
+                           f'data-layout-allow-occlusion><svg viewBox="0 0 1920 1080">{body}</svg></div>')
+
     def add_fullbleed_rig(
         self,
         start: float,
@@ -715,6 +777,8 @@ class EditorialStage:
         checklist: list[tuple[float, str]] | None = None,
         callouts: list[dict] | None = None,
         sfx: bool = False,
+        framing: str = "fullbleed",
+        window_title: str = "",
     ) -> str:
         """铺满 1920×1080 的连续跟焦镜头，并登记可审计的视觉 beats。
 
@@ -723,14 +787,26 @@ class EditorialStage:
         """
         if motion not in {"push", "glide", "pull", "hold", "punch"} | BREATHING_MOTIONS:
             raise ValueError("未知运镜方式")
+        if framing not in {'fullbleed','studio_window'} or not isinstance(window_title,str):
+            raise ValueError('framing 须为 fullbleed 或 studio_window，window_title 须为文本')
         if motion == "push" and len(self._camera_move_history) >= 2 and self._camera_move_history[-2:] == ["push", "push"]:
             raise ValueError("禁止连续三镜使用 push，请改用 glide、pull、hold 或 punch")
         self._camera_move_history.append(motion)
         idx = len(self.media_layers)
         vid = f"vp{idx}"
         tone_cls = f" tone-{tone}" if tone != "natural" else ""
+        studio = framing=='studio_window'
+        x,y,w,h = STUDIO_VIEW if studio else (0,0,1920,1080)
+        cls = 'studio-window-media' if studio else 'fullbleed'
+        if studio:
+            self.studio_window_chrome(start,end,window_title)
+            if focus:
+                focus = studio_source_point(*focus)
         self.media_layers.append(
-            f'<div id="{vid}" class="viewport fullbleed{tone_cls}" style="left:0;top:0;width:1920px;height:1080px">'
+            f'<div id="{vid}" class="viewport {cls}{tone_cls}" '
+            + (f'style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">' if studio else
+               'style="left:0;top:0;width:1920px;height:1080px">')
+            +
             f'<video id="film{idx}" class="clip vp-inner" src="{html.escape(src)}" muted playsinline preload="auto" '
             f'data-start="{start:.5f}" data-duration="{end - start:.5f}" data-media-start="{media_start:.3f}" '
             f'data-track-index="2" style="object-fit:cover;transform-origin:50% 50%"></video></div>'
@@ -823,7 +899,10 @@ class EditorialStage:
                 f'<div class="clip rig-overlay" id="{overlay_id}" data-start="{start:.5f}" data-duration="{end - start:.5f}" data-track-index="8" data-layout-ignore>'
                 + "".join(overlay) + '</div>'
             )
-        return self._shot("满屏连续跟焦", "web_cam", start, end, [src], layout="fullbleed", beats=beats)
+        sid = self._shot("悬浮视窗跟焦" if studio else "满屏连续跟焦","web_cam",start,end,[src],layout=framing,beats=beats)
+        if studio:
+            self.shots[-1].update(framing=framing,window_title=window_title)
+        return sid
 
     def add_print_desk(
         self,
@@ -1040,6 +1119,11 @@ html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-
 .bg-fill{z-index:1}
 .viewport{position:absolute;z-index:2;overflow:hidden;pointer-events:none}
 .fullbleed{z-index:2}
+.studio-grid{position:absolute;inset:0;z-index:1;opacity:.45;background-image:linear-gradient(rgba(173,192,221,.065) 1px,transparent 1px),linear-gradient(90deg,rgba(173,192,221,.065) 1px,transparent 1px);background-size:64px 64px}
+.studio-window-media,.studio-window-mark{border-radius:0 0 17px 17px;overflow:hidden}
+.studio-window-mark{z-index:7;pointer-events:none}
+.studio-mark-plane,.studio-mark-plane svg{position:absolute;inset:0;width:100%;height:100%}
+.studio-window-shadow{position:absolute;inset:0;z-index:1;pointer-events:none}
 .clip.viewport{background:#121b19}
 .vp-inner{display:block;width:100%;height:100%;background:#121b19;will-change:transform}
 .evidence-window{border-radius:14px}
@@ -1054,7 +1138,7 @@ html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-
 .cap{width:100%;left:0;bottom:44px;text-align:center;z-index:12}
 .cap span{display:inline-block;color:#fffaf0;padding:9px 27px 13px;font-weight:750;font-size:44px;line-height:1.28;-webkit-text-stroke:1.5px rgba(12,18,17,.88);text-shadow:0 2px 6px rgba(0,0,0,.85),0 6px 22px rgba(0,0,0,.65);border-bottom:3px solid #ff745a}
 .cap[data-caption-style="editorial_box"] span{background:rgba(17,26,25,.94);box-shadow:0 8px 24px rgba(0,0,0,.34)}
-.cap.caption-on-light span{color:#172322;border:0;-webkit-text-stroke:0;text-shadow:none;background:rgba(255,250,240,.94);border-radius:8px;padding:4px 16px}
+.cap.caption-on-light span{color:#f8fafc;border:1.5px solid rgba(255,255,255,.18);border-bottom:3px solid #ff6b4a;-webkit-text-stroke:0;text-shadow:0 2px 8px rgba(0,0,0,.45);background:rgba(13,18,26,.90);border-radius:14px;padding:9px 26px 12px}
 .caption-on-light{bottom:44px}
 .chapter-pill{position:absolute;left:72px;top:54px;padding:10px 18px;border:1px solid rgba(255,250,240,.42);border-radius:22px;color:#fffaf0;background:rgba(20,29,27,.54);backdrop-filter:blur(10px);font:600 22px/1.1 system-ui,sans-serif}
 .rig-checklist{position:absolute;right:72px;top:54px;display:grid;gap:10px;padding:14px 18px;border-radius:14px;background:rgba(20,29,27,.88);backdrop-filter:blur(10px);color:#fffaf0;font:600 20px/1.2 system-ui,sans-serif}

@@ -365,6 +365,9 @@ def explainer(shot, root, folder, run, *, force_render=False):
                                if path.is_file() and path.suffix in {'.py','.js','.mjs','.css','.html'})]
     inputs = dict(spec=spec,media={name:file_fingerprint(Path(name)) for name in sorted(local_files)},
                   engine={path.relative_to(KIT).as_posix():file_fingerprint(path) for path in sorted(engine_files)})
+    if spec.get('grammar')=='t7_editorial_board':
+        directory = KIT/'template/assets/fonts'
+        inputs['fonts'] = {name:file_fingerprint(directory/name) for name in FONT_FILES[:3] if (directory/name).is_file()}
     write(config,spec)
     if force_render or not matching_render(target,stamp,inputs,span+.35):
         pending = target.with_suffix('.pending.mp4')
@@ -432,9 +435,11 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
                                      highlight=shot.get('highlight',''),brand=shot.get('brand','一策'),
                                      paper=theme=='pine' and shot.get('paper',False),logo=logo)
         elif mode == 'callout_rig':
-            stage.add_callout_rig(a,b,assets[0],overlays=overlays,media_start=start,motion=shot.get('motion','glide'))
+            stage.add_callout_rig(a,b,assets[0],overlays=overlays,media_start=start,motion=shot.get('motion','glide'),
+                                  framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''))
         elif mode == 'fullbleed_rig':
-            stage.add_fullbleed_rig(a,b,assets[0],media_start=start,motion=shot.get('motion','glide'))
+            stage.add_fullbleed_rig(a,b,assets[0],media_start=start,motion=shot.get('motion','glide'),
+                                    framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''))
         elif mode == 'studio_ui':
             data = dict(shot['data'])
             data['evidence'] = assets
@@ -465,9 +470,11 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
             stage._shot(text,'explainer_graphic',a,b,[clip],beats=[r['at'] for r in spec['cues']])
             stage.shots[-1]['grammar'] = spec['grammar']
             stage.shots[-1]['explainer_spec'] = str(Path(clip).with_suffix('.json'))
-            if spec.get('theme') in {'snow','paper'} or (not spec.get('theme') and spec['grammar']=='t6_swiss_card'):
+            clip_theme = spec.get('theme')
+            theme_name = clip_theme.get('name') if isinstance(clip_theme,dict) else clip_theme
+            if theme_name in {'snow','paper','bauhaus'} or (not clip_theme and spec['grammar']=='t6_swiss_card'):
                 stage.light_zones.append((a,b))
-        stage.apply_palette(theme,a,b,palette_start)
+        stage.apply_palette(theme,a,b,palette_start,keep_studio_panels=mode=='studio_ui')
         if mode in {'fullbleed_rig','callout_rig'} and bright_caption_band(folder/assets[0],start+span/2):
             stage.light_zones.append((a,b))
         fields = ('anchor_cue_id','anchor_cue_start','anchor_text','spoken_topic','visual_subject',
