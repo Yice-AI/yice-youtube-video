@@ -22,7 +22,7 @@ sys.path.insert(0,str(KIT.parent))
 from audit_v7 import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, probe_video, semantic_binding_gate
 from workspace import resolve_gsap_runtime, resolve_hyperframes_command
 from kit.editorial.audio_mix import mix_episode_audio
-from kit.editorial.editorial import EditorialStage, evidence_box
+from kit.editorial.editorial import EditorialStage, EXPLAINER_THEMES, FONT_FILES, PALETTES, evidence_box
 from kit.studio_ui import add_workbench
 
 FPS = 30
@@ -104,6 +104,7 @@ def evidence_metadata(shot, root):
 def prepare_document(raw, root):
     audio = dict(raw.get('audio',{}))
     timing = raw.get('cues',raw.get('voice_timing'))
+    captions_default = None
     if isinstance(timing,str):
         timing = read(locate(root,timing))
     if 'voice_manifest' in raw:
@@ -113,6 +114,8 @@ def prepare_document(raw, root):
                     at=row['start']) for row in voice['chapters']])
         audio.setdefault('voice_processing_logs',[str(item) for item in sorted((path.parent/'analysis').glob('post-alignment-*.json'))])
         timing = timing or voice.get('scene_timing')
+        if (path.parent/'captions.json').is_file():
+            captions_default = str(path.parent/'captions.json')
     if not isinstance(timing,list) or not timing:
         raise ValueError('清单需要已有音轨的首字时间 cues')
     cues = {row['id']:dict(row,firstCharTime=float(row['firstCharTime'])) for row in timing}
@@ -122,7 +125,7 @@ def prepare_document(raw, root):
         raise ValueError('清单需要实际人声音轨 voice_tracks 或 voice_manifest')
     for row in audio['voice_tracks']:
         row['path'] = str(locate(root,row['path']))
-    captions = raw.get('captions',timing)
+    captions = raw.get('captions',captions_default or timing)
     if isinstance(captions,str):
         captions = read(locate(root,captions))
     cues_list = []
@@ -141,6 +144,9 @@ def prepare_shots(raw, root, cues):
     previous = 0.
     result = []
     known, seen_acts, durations = set(),set(),{}
+    default_theme = raw.get('theme','pine')
+    if default_theme not in PALETTES:
+        raise ValueError(f'未知舞台主题：{default_theme}')
     for src in raw['shots']:
         key,act = identifier(src['id']),identifier(src.get('act','act-1'))
         a,b = float(src['start']),float(src['end'])
@@ -160,6 +166,9 @@ def prepare_shots(raw, root, cues):
         mode = src['stage_mode']
         if mode not in MODES or src.get('loop'):
             raise ValueError(f'镜头 {key} 的舞台模式或循环方式无效')
+        theme = src.get('theme',default_theme)
+        if theme not in PALETTES:
+            raise ValueError(f'未知舞台主题：{theme}')
         files = src.get('sources')
         if files is None:
             one = src.get('source',src.get('asset'))
@@ -180,7 +189,7 @@ def prepare_shots(raw, root, cues):
                 validate_media(path,media_start+end-start,durations,allow_image=mode=='evidence_spotlight')
         if mode=='evidence_spotlight':
             src = evidence_metadata(src,root)
-        result.append(dict(src,id=key,act=act,start=start,end=end,media=media,media_start=media_start,
+        result.append(dict(src,id=key,act=act,start=start,end=end,media=media,media_start=media_start,theme=theme,
                            anchor_text=cue.get('text',''),anchor_cue_start=cue['firstCharTime'],
                            has_motion_overlay=(mode in {'callout_rig','studio_ui'} and bool(src.get('overlays'))
                                                or mode in {'cold_open_ab','title_sequence','triptych_cards','reference_breakdown','evidence_spotlight'})))
@@ -188,7 +197,7 @@ def prepare_shots(raw, root, cues):
         raise ValueError('清单至少需要一个镜头')
     if 'duration' in raw and abs(float(raw['duration'])-previous)>1/FPS:
         raise ValueError('声明片长与最后一个镜头不吻合')
-    semantic = semantic_binding_gate(result)
+    semantic = semantic_binding_gate(result,raw.get('custom_entities'))
     if not semantic['ok']:
         raise ValueError('语义绑定不符：'+json.dumps(semantic['violations'],ensure_ascii=False))
     return result,previous
@@ -277,6 +286,27 @@ def gsap_runtime(raw, root):
     return runtime
 
 
+def install_fonts(folder):
+    source = KIT/'template/assets/fonts'
+    if not source.is_dir():
+        return False
+    for name in FONT_FILES:
+        install_asset(source/name,folder/'assets/fonts'/name)
+    return True
+
+
+def bright_caption_band(source, second):
+    filters = ('scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,'
+               'crop=1920:160:0:900,scale=1:1:flags=area,format=gray')
+    try:
+        result = subprocess.run(['ffmpeg','-nostdin','-v','error','-ss',f'{second:.5f}','-i',str(source),
+                                 '-an','-vf',filters,'-frames:v','1','-f','rawvideo','pipe:1'],
+                                check=True,capture_output=True,timeout=8)
+        return bool(result.stdout and result.stdout[0]>=170)
+    except (OSError,subprocess.SubprocessError):
+        return False
+
+
 def restore_file_paths(value):
     """Keep rebased paths local until the explainer opens its own file server."""
     if isinstance(value,dict):
@@ -316,6 +346,9 @@ def explainer(shot, root, folder, run, *, force_render=False):
     loader.loader.exec_module(assets)
     local_files = set()
     spec = restore_file_paths(assets.localize(spec,base,allowed=local_files))
+    spec.setdefault('safe',{'top':56,'bottom':172})
+    if shot.get('theme') in EXPLAINER_THEMES:
+        spec.setdefault('theme',EXPLAINER_THEMES[shot['theme']])
     span = shot['end']-shot['start']
     cues = spec['cues']
     latest = max((float(row['at']) for row in cues),default=0.)
@@ -355,6 +388,8 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
         text = shot['spoken_topic']
         start = shot['media_start']
         span = b-a
+        theme = shot.get('theme','pine')
+        palette_start = (len(stage.bg_layers),len(stage.plates))
         assets, auxiliary, gif_hashes = [],[],{}
         for i,path in enumerate(shot['media']):
             length = start+span
@@ -395,7 +430,7 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
             logo = with_logo(shot,'logo').get('logo')
             stage.add_title_sequence(a,b,shot.get('title',text),subtitle=shot.get('subtitle',''),
                                      highlight=shot.get('highlight',''),brand=shot.get('brand','一策'),
-                                     paper=shot.get('paper',False),logo=logo)
+                                     paper=theme=='pine' and shot.get('paper',False),logo=logo)
         elif mode == 'callout_rig':
             stage.add_callout_rig(a,b,assets[0],overlays=overlays,media_start=start,motion=shot.get('motion','glide'))
         elif mode == 'fullbleed_rig':
@@ -430,10 +465,13 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
             stage._shot(text,'explainer_graphic',a,b,[clip],beats=[r['at'] for r in spec['cues']])
             stage.shots[-1]['grammar'] = spec['grammar']
             stage.shots[-1]['explainer_spec'] = str(Path(clip).with_suffix('.json'))
-            if spec['grammar']=='t6_swiss_card':
+            if spec.get('theme') in {'snow','paper'} or (not spec.get('theme') and spec['grammar']=='t6_swiss_card'):
                 stage.light_zones.append((a,b))
+        stage.apply_palette(theme,a,b,palette_start)
+        if mode in {'fullbleed_rig','callout_rig'} and bright_caption_band(folder/assets[0],start+span/2):
+            stage.light_zones.append((a,b))
         fields = ('anchor_cue_id','anchor_cue_start','anchor_text','spoken_topic','visual_subject',
-                  'semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of')
+                  'semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme')
         row = stage.shots[-1]
         row.update({field:shot[field] for field in fields if field in shot},id=key,stage_mode=mode)
         if 'overlays' in shot:
@@ -493,6 +531,8 @@ def render_act(folder, stage, command, env, run, *, force_render=False):
     inputs = dict(duration=round(stage.duration,6),command=command,arguments=arguments,
                   html=file_fingerprint(folder/'index.html'),
                   media={name:file_fingerprint(folder/name) for name in sorted(media)})
+    if getattr(stage,'font_assets',False):
+        inputs['fonts'] = {name:file_fingerprint(folder/'assets/fonts'/name) for name in FONT_FILES}
     output,stamp = folder/'render.mp4',folder/'.render-stamp.json'
     if not force_render and matching_render(output,stamp,inputs,stage.duration):
         return 'reused'
@@ -569,6 +609,8 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
                   for i,path in enumerate(audio.get('voice_processing_logs',[]))]
     timeline = dict(end=duration,shots=global_shots,cues=list(cues.values()),voice_tracks=voice_files,
                     voice_processing_logs=voice_logs,sound_marks=mix['sound_marks'],music_drops=audio.get('music_drops',[]))
+    if 'custom_entities' in raw:
+        timeline['custom_entities'] = raw['custom_entities']
     timeline['music_drops'] = [[row['start'],row['end']] if isinstance(row,dict) else row for row in timeline['music_drops']]
     write(output/'shot-timeline.json',timeline)
     (output/f'{name}.srt').write_text('\n'.join(f"{i}\n{clock(c['start'])} --> {clock(c['end'])}\n{c['text']}\n"
@@ -583,6 +625,7 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
                  for row in captions if max(offset,row['start'])<min(stop,row['end'])]
         stage.add_captions(local)
         install_asset(gsap,folder/'vendor/gsap.min.js')
+        stage.font_assets = install_fonts(folder)
         stage.write_project(folder,timeline_out=folder/'shot-timeline.json')
         (folder/'assets').mkdir(exist_ok=True)
         sf.write(folder/'assets/mix.wav',wave[round(offset*rate):round(stop*rate)],rate,subtype='PCM_24')

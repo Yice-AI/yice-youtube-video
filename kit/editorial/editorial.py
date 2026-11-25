@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import html
 import json
+import re
 from math import cos, isfinite, pi, sin
 from pathlib import Path
 
@@ -23,6 +24,31 @@ LINE = "#465750"
 PAPER = "#e7ddc5"
 IMAGE_EXTENSIONS = {'.png','.jpg','.jpeg','.webp','.svg'}
 VIDEO_EXTENSIONS = {'.mp4','.m4v','.mov','.webm'}
+PALETTES = {
+    'pine': dict(bg=INK, gradient='radial-gradient(ellipse at 65% 37%,#243531 0%,#172322 53%,#111a19 100%)',
+                 panel='#172322fa', panel_soft='#172322eb', panel_dense='#172322f5', ink=IVORY,
+                 sub=GREEN_MONO, line=LINE, edge='#7aaba0', accent=CORAL, accent2='#7aaba0', is_light=False),
+    'obsidian': dict(bg='#0F1419', gradient='radial-gradient(ellipse at 28% 22%,#1E2B3A 0%,#121922 52%,#0B0F14 100%)',
+                     panel='#18222Efa', ink='#F4F6FA', sub='#9DB0C4', line='#33465A', accent='#FF6B4A', accent2='#38BDF8', is_light=False),
+    'paper_cool': dict(bg='#F2F5F8', gradient='radial-gradient(ellipse at 24% 18%,#FFFFFF 0%,#F2F5F8 58%,#E3E9F0 100%)',
+                       panel='#FFFFFFf5', ink='#141B24', sub='#526173', line='#CBD5E1', accent='#2563EB', accent2='#D93829', is_light=True),
+    'paper_warm': dict(bg='#F3ECE0', gradient='radial-gradient(ellipse at 24% 18%,#FAF6EE 0%,#F1E9DA 58%,#E2D6C1 100%)',
+                       panel='#FCF9F2f5', ink='#1F1A14', sub='#695D4F', line='#D0C3AE', accent='#C93B2B', accent2='#2B5B84', is_light=True),
+}
+EXPLAINER_THEMES = {'obsidian':'ink','paper_cool':'snow','paper_warm':'paper'}
+BREATHING_MOTIONS = {'focus_push','spring_glide'}
+VERIFIED_OVERLAYS = {'spotlight_box','highlighter_sweep','hand_circle'}
+FONT_FILES = ('SourceHanSerifCN-Heavy.otf','SourceHanSansCN-Regular.otf',
+              'SourceHanSansCN-Bold.otf','SourceCodePro-Regular.otf')
+FONT_CSS = """
+@font-face{font-family:'Yice Song';src:url('assets/fonts/SourceHanSerifCN-Heavy.otf') format('opentype');font-weight:700 900;font-display:block;unicode-range:U+0000-024F,U+2000-206F,U+2E80-9FFF,U+F900-FAFF,U+FF00-FFEF}
+@font-face{font-family:'Yice Sans';src:url('assets/fonts/SourceHanSansCN-Regular.otf') format('opentype');font-weight:100 500;font-display:block;unicode-range:U+0000-024F,U+2000-206F,U+2E80-9FFF,U+F900-FAFF,U+FF00-FFEF}
+@font-face{font-family:'Yice Sans';src:url('assets/fonts/SourceHanSansCN-Bold.otf') format('opentype');font-weight:501 900;font-display:block;unicode-range:U+0000-024F,U+2000-206F,U+2E80-9FFF,U+F900-FAFF,U+FF00-FFEF}
+@font-face{font-family:'Yice Mono';src:url('assets/fonts/SourceCodePro-Regular.otf') format('opentype');font-display:block;unicode-range:U+0000-024F,U+2000-206F,U+2190-21FF,U+2500-259F}
+body,svg text[font-family="sans-serif"]{font-family:'Yice Sans',system-ui,sans-serif}
+svg text[font-family="serif"]{font-family:'Yice Song','Yice Sans',serif}
+svg text[font-family="monospace"],svg text[font-family^="Menlo"]{font-family:'Yice Mono','Yice Sans',monospace}
+"""
 
 
 def txt(x: float, y: float, value: object, size: int = 38, color: str = IVORY,
@@ -193,6 +219,40 @@ class EditorialStage:
         self.music_drops: list[tuple[float, float]] = []
         self.light_zones: list[tuple[float, float]] = []
         self._camera_move_history: list[str] = []
+        self.font_assets = False
+
+    def apply_palette(self, theme, start, end, before):
+        if theme=='pine':
+            return
+        palette = PALETTES[theme]
+        colors = {
+            INK:palette['bg'], PAPER:palette['bg'], IVORY:palette['ink'], '#e7e9df':palette['ink'],
+            GREEN_MONO:palette['sub'], MUTED:palette['sub'], '#a5b7b6':palette['sub'],
+            LINE:palette['line'], '#263833':palette['line'], '#7aaba0':palette['accent2'],
+            CORAL:palette['accent'], CRIMSON:palette['accent'], '#ff8369':palette['accent'],
+            '#b6d5a8':palette['accent2'], '#f2a491':palette['accent'], '#b9d5bf':palette['sub'],
+            '#172322eb':palette['panel'], '#172322fa':palette['panel'], '#172322f5':palette['panel'],
+            '#151c20':palette['bg'], '#252e33':palette['panel'], '#1d2529':palette['line'],
+        }
+        pattern = re.compile(r'((?:fill|stroke)="|background:)(#[0-9A-Fa-f]{6}(?:[0-9A-Fa-f]{2})?)(?![0-9A-Fa-f])')
+        for group_layers, first in zip((self.bg_layers,self.plates),before):
+            for index in range(first,len(group_layers)):
+                group_layers[index] = pattern.sub(lambda token:token[1]+colors.get(token[2],token[2]),group_layers[index])
+                group_layers[index] = group_layers[index].replace(f'inset:0;background:{palette["bg"]}',
+                                                                 f'inset:0;background:{palette["gradient"]}')
+        if len(self.bg_layers)==before[0]:
+            self.bg_layers.append(f'<div class="clip bg-fill" data-start="{start:.5f}" data-duration="{end-start:.5f}" '
+                                  f'data-track-index="1" style="inset:0;background:{palette["gradient"]}"></div>')
+        if palette['is_light']:
+            self.light_zones.append((start,end))
+
+    def masked_heading(self, start, end, body, x, y, w, h):
+        mask = f'heading-mask-{len(self.plates)}'
+        self.scripts.append(f"tl.fromTo('#{mask}-text',{{y:{h},opacity:0}},"
+                            f"{{y:0,opacity:1,duration:{min(.66,end-start):.5f},ease:'expo.out',"
+                            f"immediateRender:false}},{start:.5f});")
+        return (f'<defs><clipPath id="{mask}">{rect(x,y,w,h,"white")}</clipPath></defs>'
+                f'<g clip-path="url(#{mask})"><g id="{mask}-text">{body}</g></g>')
 
     def _shot(self, name: str, kind: str, start: float, end: float, files: list[str],
               *, layout: str = "fullbleed", beats: list[float] | None = None) -> str:
@@ -245,8 +305,8 @@ class EditorialStage:
         if logo:
             body += svg_image(100,182,32,32,logo)
         body += mono(148 if logo else 100,208,brand,31,color)
-        body += group('rise',''.join(word(96,423+133*i,text,min(120,1660//max(1,len(text))),
-                                          accent if text==highlight else color) for i,text in enumerate(lines)))
+        body += self.masked_heading(start,end,''.join(word(96,423+133*i,text,min(120,1660//max(1,len(text))),
+                                    accent if text==highlight else color) for i,text in enumerate(lines)),90,285,1740,310)
         if subtitle:
             body += txt(100,683,subtitle,39,color)
         body += group('title-ruler',rule(100,755,1660,accent))
@@ -325,22 +385,33 @@ class EditorialStage:
     def add_callout_rig(self, start, end, src, *, overlays, media_start=0., motion='glide'):
         focus = None
         if motion!='hold':
-            target = next((overlay for overlay in overlays if overlay.get('kind')=='spotlight_box'),None)
+            target = next((overlay for overlay in overlays if overlay.get('kind') in VERIFIED_OVERLAYS),None)
             if target is not None:
                 x,y,w,h = verified_spotlight_box(target)
                 focus = (x+w/2,y+h/2)
         sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion,focus=focus)
         self.shots[-1].update(stage_mode='callout_rig',media_start=media_start)
-        self.add_overlays(start,end,overlays,focus=focus)
+        self.add_overlays(start,end,overlays,focus=focus,motion=motion)
         return sid
 
-    def _camera_tween(self, selector, start, span, *, scale, shift=(0.,0.), focus=None):
+    def _camera_tween(self, selector, start, span, *, scale, shift=(0.,0.), focus=None, ease='none'):
         origin = f",transformOrigin:'{focus[0]:.1f}px {focus[1]:.1f}px'" if focus else ''
         self.scripts.append(f"tl.fromTo('{selector}',{{scale:{scale[0]:.3f},x:{shift[0]:.1f}{origin}}},"
                             f"{{scale:{scale[1]:.3f},x:{shift[1]:.1f},duration:{span:.5f},"
-                            f"ease:'none',immediateRender:false}},{start:.5f});")
+                            f"ease:'{ease}',immediateRender:false}},{start:.5f});")
 
-    def add_overlays(self, start, end, overlays, *, nle_plate=None, focus=None):
+    def _breathing_tween(self, selector, start, span, motion, focus=None):
+        scale = (1.,1.27) if motion=='focus_push' or focus else (1.06,1.20)
+        shift = (0.,0.) if motion=='focus_push' or focus else (-27.,72.)
+        if span < 1.4:
+            self._camera_tween(selector,start,span,scale=scale,shift=shift,focus=focus,ease='power2.out')
+            return
+        scale_mid = scale[0]+.7*(scale[1]-scale[0])
+        shift_mid = shift[0]+.7*(shift[1]-shift[0])
+        self._camera_tween(selector,start,.65,scale=(scale[0],scale_mid),shift=(shift[0],shift_mid),focus=focus,ease='power3.out')
+        self._camera_tween(selector,start+.65,span-.65,scale=(scale_mid,scale[1]),shift=(shift_mid,shift[1]),focus=focus,ease='sine.out')
+
+    def add_overlays(self, start, end, overlays, *, nle_plate=None, focus=None, motion=None):
         if not 1 <= len(overlays) <= 2:
             raise ValueError('叠层镜头需要一至两个明确的贴图动作')
         shot = self.shots[-1]
@@ -355,7 +426,25 @@ class EditorialStage:
             begin = start+at
             style = overlay['kind']
             label = str(overlay.get('label',''))
-            if style == 'spotlight_box':
+            if style in {'highlighter_sweep','hand_circle'}:
+                x,y,w,h = verified_spotlight_box(overlay)
+                if min(x,y)<64 or x+w>1856 or y+h>890:
+                    raise ValueError('核验标注超出可用视窗')
+                if style=='highlighter_sweep':
+                    shape = rect(x,y,w,h,'rgba(255,212,59,0.26)','rx="8"')
+                    shape += rect(x,y+h-4,w,4,'#FFD43B','rx="2"')
+                    body = group('verified-sweep',shape)
+                else:
+                    def oval(dx,dy):
+                        left,top = x+dx,y+dy
+                        return (f'M{left+w*.52} {top} C{left+w*1.18} {top-6} {left+w*1.15} {top+h} {left+w*.53} {top+h} '
+                                f'S{left-w*.12} {top+h*.03} {left+w*.52} {top}')
+                    body = ''.join(f'<path class="verified-circle" d="{oval(dx,dy)}" fill="none" '
+                                   f'stroke="#FFD43B" stroke-width="{width}" opacity="{opacity}" stroke-linecap="round" '
+                                   'pathLength="1" stroke-dasharray="1" stroke-dashoffset="1"/>'
+                                   for dx,dy,width,opacity in ((0,0,5,.96),(4,3,2,.66)))
+                audio = 'marker'
+            elif style == 'spotlight_box':
                 x,y,w,h = verified_spotlight_box(overlay)
                 if min(x,y) < 64 or x+w > 1856 or y+h > 890:
                     raise ValueError('高亮框超出可用视窗')
@@ -440,8 +529,19 @@ class EditorialStage:
                 body = '<g data-layout-allow-overlap>'+body+'</g>'
             plate = self.add_plate(begin,begin+hold,style,body,track=11+index)
             self.shots.pop()  # The overlay belongs to the underlying shot.
-            if style=='spotlight_box' and focus:
-                self._camera_tween(f'#{plate}',start,end-start,scale=(1.,1.12),focus=focus)
+            if style in VERIFIED_OVERLAYS and focus:
+                if motion in BREATHING_MOTIONS:
+                    self._breathing_tween(f'#{plate}',start,end-start,motion,focus=focus)
+                else:
+                    self._camera_tween(f'#{plate}',start,end-start,scale=(1.,1.12),focus=focus)
+            if style=='highlighter_sweep':
+                self.scripts.append(f"tl.fromTo('#{plate} .verified-sweep',{{scaleX:0}},"
+                                    f"{{scaleX:1,duration:{min(.32,hold):.5f},transformOrigin:'left center',"
+                                    f"transformBox:'fill-box',ease:'power2.out',immediateRender:false}},{begin:.5f});")
+            if style=='hand_circle':
+                self.scripts.append(f"tl.fromTo('#{plate} .verified-circle',{{attr:{{'stroke-dashoffset':1}}}},"
+                                    f"{{attr:{{'stroke-dashoffset':0}},duration:{min(.38,hold):.5f},"
+                                    f"ease:'power2.inOut',immediateRender:false}},{begin:.5f});")
             if style == 'stat_badge':
                 decimals = min(3,len(str(overlay['value']).partition('.')[2]))
                 suffix = json.dumps(unit,ensure_ascii=False).replace('<','\\u003c')
@@ -558,7 +658,7 @@ class EditorialStage:
         height = min(420, round(width * 9 / 16))
         top = 470 - height // 2
         size = min(74, 1670 // max(1,len(heading)))
-        body = group('rise', word(960,155,heading,size,anchor='middle'))
+        body = self.masked_heading(start,end,word(960,155,heading,size,anchor='middle'),90,67,1740,105)
         files, beats, reveals = [], [], []
         for index, card in enumerate(cards):
             at = float(card['reveal_at'])
@@ -580,7 +680,8 @@ class EditorialStage:
             inset = 46 if logo else 0
             label_size = min(38,(width-inset)//max(1,len(label)))
             sublabel_size = min(27,(width-inset)//max(1,len(sublabel)))
-            body += f'<g class="card-{index}" opacity=".35">'
+            body += (rect(x,top,width,height,'none',f'rx="9" stroke="{LINE}" stroke-width="1.5" '
+                          'stroke-dasharray="8 10"')+f'<g class="card-{index}" opacity="0">')
             if logo:
                 body += svg_image(x,top+height+29,32,32,logo)
             body += frame(x,top,width,height,CORAL) + txt(x+inset,top+height+58,label,label_size)
@@ -592,11 +693,11 @@ class EditorialStage:
         plate = self.add_plate(start,end,heading,body,bg=INK,kind='triptych_cards',files=files)
         self.shots[-1].update(stage_mode='triptych_cards',has_motion_overlay=True,beats=sorted(set(beats)),cards=cards)
         for index, viewport, begin in reveals:
-            duration = min(.32,end-begin)
-            self.scripts.append(f"tl.fromTo('#{plate} .card-{index}',{{opacity:.35,y:10}},"
-                                f"{{opacity:1,y:0,duration:{duration:.5f},immediateRender:false}},{begin:.5f});")
+            duration = min(.42,end-begin)
+            self.scripts.append(f"tl.fromTo('#{plate} .card-{index}',{{opacity:0,y:10}},"
+                                f"{{opacity:1,y:0,duration:{duration:.5f},ease:'back.out(1.22)',immediateRender:false}},{begin:.5f});")
             self.scripts.append(f"tl.fromTo('#{viewport} .vp-inner',{{opacity:0,scale:.96}},"
-                                f"{{opacity:1,scale:1,duration:{duration:.5f},immediateRender:false}},{begin:.5f});")
+                                f"{{opacity:1,scale:1,duration:{duration:.5f},ease:'back.out(1.22)',immediateRender:false}},{begin:.5f});")
         return self.shots[-1]['id']
 
     def add_fullbleed_rig(
@@ -620,8 +721,8 @@ class EditorialStage:
         ``motion`` 支持 push、glide、pull、hold、punch。旧版四元组相机关键帧仍可用，
         也可在关键帧末尾加动作名覆盖整段默认动作。
         """
-        if motion not in {"push", "glide", "pull", "hold", "punch"}:
-            raise ValueError("motion 必须是 push、glide、pull、hold 或 punch")
+        if motion not in {"push", "glide", "pull", "hold", "punch"} | BREATHING_MOTIONS:
+            raise ValueError("未知运镜方式")
         if motion == "push" and len(self._camera_move_history) >= 2 and self._camera_move_history[-2:] == ["push", "push"]:
             raise ValueError("禁止连续三镜使用 push，请改用 glide、pull、hold 或 punch")
         self._camera_move_history.append(motion)
@@ -639,7 +740,9 @@ class EditorialStage:
         if camera_moves is None:
             span = end-start
             selector = f'#{vid} .vp-inner'
-            if focus or motion=="push":
+            if motion in BREATHING_MOTIONS:
+                self._breathing_tween(selector,start,span,motion,focus=focus)
+            elif focus or motion=="push":
                 self._camera_tween(selector,start,span,scale=(1.,1.12),focus=focus)
             elif motion=="pull":
                 self._camera_tween(selector,start,span,scale=(1.12,1.))
@@ -915,12 +1018,18 @@ class EditorialStage:
             raise ValueError("字幕样式必须是 clean_cinema 或 editorial_box")
         for cue in cues:
             st, en, text = cue["start"], cue["end"], cue["text"]
-            on_light = any(a <= (st + en) / 2 <= b for a, b in self.light_zones)
-            cls = "cap caption-on-light" if on_light else "cap"
-            self.captions.append(
-                f'<div class="clip {cls}" data-start="{st:.5f}" data-duration="{en - st:.5f}" '
-                f'data-track-index="15" data-caption-style="{style}" data-layout-allow-caption-zone><span>{html.escape(text)}</span></div>'
-            )
+            switches = sorted({t for zone in self.light_zones for t in zone if st+.08 <= t <= en-.08})
+            on_light = lambda t:any(a <= t < b for a,b in self.light_zones)
+            bounds = [st]
+            for point in switches:
+                if point-bounds[-1]>=.08-1e-8 and on_light(point-1e-7)!=on_light(point+1e-7):
+                    bounds.append(point)
+            for start,end in zip(bounds,[*bounds[1:],en]):
+                cls = "cap caption-on-light" if on_light((start+end)/2) else "cap"
+                self.captions.append(
+                    f'<div class="clip {cls}" data-start="{start:.5f}" data-duration="{end-start:.5f}" '
+                    f'data-track-index="15" data-caption-style="{style}" data-layout-allow-caption-zone><span>{html.escape(text)}</span></div>'
+                )
 
     def write_project(self, project_dir: Path, audio_src: str = "assets/mix.wav",
                       timeline_out: Path | None = None) -> None:
@@ -936,7 +1045,7 @@ html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-
 .evidence-window{border-radius:14px}
 .evidence-plane,.evidence-media,.evidence-mark{position:absolute;inset:0;width:100%;height:100%}
 .evidence-media{object-fit:contain;background:#121b19}
-.evidence-mark{pointer-events:none;mix-blend-mode:multiply}
+.evidence-mark{pointer-events:none}
 .tone-paper-tint.clip.viewport,.tone-paper-tint .vp-inner{background:#ebe3d2}
 .tone-paper-tint .vp-inner{filter:sepia(.08) brightness(.94) contrast(1.04)}
 .tone-dark-soft .vp-inner{filter:brightness(.93) contrast(1.05)}
@@ -945,7 +1054,7 @@ html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-
 .cap{width:100%;left:0;bottom:44px;text-align:center;z-index:12}
 .cap span{display:inline-block;color:#fffaf0;padding:9px 27px 13px;font-weight:750;font-size:44px;line-height:1.28;-webkit-text-stroke:1.5px rgba(12,18,17,.88);text-shadow:0 2px 6px rgba(0,0,0,.85),0 6px 22px rgba(0,0,0,.65);border-bottom:3px solid #ff745a}
 .cap[data-caption-style="editorial_box"] span{background:rgba(17,26,25,.94);box-shadow:0 8px 24px rgba(0,0,0,.34)}
-.caption-on-light span{color:#172322;border:0;-webkit-text-stroke:0;text-shadow:none;background:rgba(255,250,240,.86);border-radius:8px;padding:4px 16px}
+.cap.caption-on-light span{color:#172322;border:0;-webkit-text-stroke:0;text-shadow:none;background:rgba(255,250,240,.94);border-radius:8px;padding:4px 16px}
 .caption-on-light{bottom:44px}
 .chapter-pill{position:absolute;left:72px;top:54px;padding:10px 18px;border:1px solid rgba(255,250,240,.42);border-radius:22px;color:#fffaf0;background:rgba(20,29,27,.54);backdrop-filter:blur(10px);font:600 22px/1.1 system-ui,sans-serif}
 .rig-checklist{position:absolute;right:72px;top:54px;display:grid;gap:10px;padding:14px 18px;border-radius:14px;background:rgba(20,29,27,.88);backdrop-filter:blur(10px);color:#fffaf0;font:600 20px/1.2 system-ui,sans-serif}
@@ -953,6 +1062,8 @@ html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-
 .rig-callout{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.writeon{fill:none;stroke:#ff5b52;stroke-width:8;stroke-linecap:round;stroke-dasharray:1200;stroke-dashoffset:1200;filter:drop-shadow(0 2px 2px rgba(0,0,0,.42))}.spotlight{position:absolute;border:2px solid rgba(255,250,240,.9);box-shadow:0 0 0 9999px rgba(0,0,0,.46),0 0 22px rgba(255,250,240,.28);border-radius:8px}
 .print-desk{z-index:6}.print-item{transform-box:fill-box;transform-origin:center;filter:drop-shadow(0 18px 16px rgba(0,0,0,.34))}
 svg{display:block}"""
+        if self.font_assets:
+            css += FONT_CSS
         html_doc = (
             f'<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=1920,height=1080">'

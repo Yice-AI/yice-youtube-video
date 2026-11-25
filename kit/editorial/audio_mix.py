@@ -93,11 +93,34 @@ class EpisodeAudioMixer:
 
     def _default_music(self, frames):
         import numpy as np
+        from scipy.signal import butter, sosfilt
 
         t = np.arange(frames) / self.rate
-        chord = (np.sin(2*np.pi*110*t+.7) + .48*np.sin(2*np.pi*164.81*t+1.4)
-                 + .24*np.sin(2*np.pi*220*t+.2))
-        return chord * (.75+.25*np.cos(2*np.pi*t/4))
+        chord = sum(gain*np.sin(2*np.pi*(freq*t+depth*np.sin(2*np.pi*.09*t))+phase)
+                    for freq,gain,depth,phase in ((82.41,.72,.009,.7),(110.,.41,.014,1.4),
+                                                  (164.81,.31,.011,.2),(220.,.14,.012,2.)))
+        pad = chord*(.84+.16*np.cos(2*np.pi*t/11))
+        return sosfilt(butter(2,min(520,self.rate*.45),fs=self.rate,output='sos'),pad)
+
+    def _loop_music(self, source, frames):
+        import numpy as np
+
+        if frames<=len(source):
+            return source[:frames].copy()
+        overlap = min(round(2.5*self.rate),(len(source)-1)//2)
+        phase = np.linspace(0,np.pi/2,overlap)
+        fade_out,fade_in = np.cos(phase),np.sin(phase)
+        result = np.empty(frames,dtype=source.dtype)
+        result[:len(source)] = source
+        written = len(source)
+        while written<frames:
+            if overlap:
+                seam = result[written-overlap:written]
+                seam[:] = seam*fade_out+source[:overlap]*fade_in
+            count = min(frames-written,len(source)-overlap)
+            result[written:written+count] = source[overlap:overlap+count]
+            written += count
+        return result
 
     def _music(self, paths, frames, cuts, crossfade):
         import numpy as np
@@ -121,7 +144,7 @@ class EpisodeAudioMixer:
                 raise ValueError('底乐曲目没有可用信号')
             a = edges[i] - (width if i else 0)
             b = edges[i+1] + (width if i+1 < len(paths) else 0)
-            segment = np.resize(source, b-a) * (.25/rms)
+            segment = self._loop_music(source,b-a) * (.25/rms)
             if i:
                 segment[:2*width] *= .5-.5*np.cos(np.linspace(0,np.pi,2*width))
             if i+1 < len(paths):
@@ -154,15 +177,30 @@ class EpisodeAudioMixer:
         seconds = {'tick':.09,'pop':.16,'marker':.30,'stamp':.30,'whoosh':.48,'riser':.80}[kind]
         t = np.arange(round(seconds*self.rate))/self.rate
         u = t/seconds
-        if kind in ('tick','pop','stamp'):
-            hz = {'tick':1800,'pop':390,'stamp':86}[kind]
-            phase = 2*np.pi*hz*(t-.23*t*u)
-            tone = (np.sin(phase)+.18*np.sin(2.1*phase))*(1-u)**4
+        noise = np.random.default_rng(17).normal(size=len(t))
+        def filtered(low, high):
+            high = min(high,self.rate*.47)
+            return sosfilt(butter(2,(min(low,high*.8),high),fs=self.rate,btype='bandpass',output='sos'),noise)
+
+        if kind=='tick':
+            resonances = sum(gain*np.sin(2*np.pi*hz*t)*np.exp(-t/decay)
+                             for hz,gain,decay in ((810,1.,.012),(1370,.48,.008),(2180,.24,.005)))
+            tone = resonances+.24*filtered(1350,4500)*np.exp(-t/.007)
+        elif kind=='pop':
+            phase = 2*np.pi*(440*t+58*seconds*(1-np.exp(-t/.038)))
+            tone = (np.sin(phase)+.29*np.sin(2*phase)+.10*np.sin(4*phase))*u**.4*np.exp(-t/.034)
+        elif kind=='stamp':
+            pulse = np.sin(2*np.pi*(75*t-52*t*u))*(1-np.exp(-t/.008))*np.exp(-t/.058)
+            paper = .21*filtered(350,2700)*np.exp(-t/.042)
+            tone = sosfilt(butter(2,min(35,self.rate*.2),fs=self.rate,btype='highpass',output='sos'),pulse+paper)
+        elif kind=='marker':
+            pressure = (.66+.24*np.sin(2*np.pi*9*t)**2)*np.sin(np.pi*u)**1.6
+            tone = (.72*filtered(550,3000)+.28*filtered(1500,6100))*pressure
         else:
-            noise = np.random.default_rng(17).normal(size=len(t))
-            band = (420, min(4200,self.rate*.47)) if kind != 'marker' else (800,min(5600,self.rate*.47))
-            tone = sosfilt(butter(2,band,fs=self.rate,btype='bandpass',output='sos'),noise)
-            tone *= np.sin(np.pi*u)**2 * (u if kind == 'riser' else 1)
+            bands = ((290,1100),(510,1900),(880,3300),(1260,4800))
+            tone = sum(filtered(low,high)*np.exp(-((u-(.15+.22*i))/.23)**2)
+                       for i,(low,high) in enumerate(bands))
+            tone *= np.sin(np.pi*u)**1.7*(u if kind=='riser' else 1)
         edge = min(len(t)//2,max(1,round(.005*self.rate)))
         tone[:edge] *= np.linspace(0,1,edge)
         tone[-edge:] *= np.linspace(1,0,edge)

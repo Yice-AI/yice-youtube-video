@@ -36,3 +36,5 @@
 合理使用条件下的参考短切片用于具体评论或分析，原片音轨全程静音。署名、画面和拆解指标在同一段内互相可核。审核可辨识私人信息及受限会话时，先在素材层移除。
 
 `t7_editorial_board` 按 `title`、一至四个 `card`、可选 `footer` 建看板。卡片写明可执行结论，用 `sub` 补步骤、`data.bad` 和 `data.good` 做正反对照，`data.tag` 写实测指标。长文案优先 `data.layout: "rows"`，短项可并排。纯文字解说须有至少 26 字的有效信息，白板绘制须指定可识别的图标。
+
+主结论与步骤组合可用 `t7_editorial_board` 的 `data.layout: "featured"`。`t4_blueprint_arch` 用 `sub` 补节点说明，可用 `data.stage` 标识阶段。

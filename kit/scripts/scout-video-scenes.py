@@ -13,7 +13,7 @@ import tempfile
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from audit_v7 import VIDEO_EXTENSIONS, difference_hash, probe_video
+from audit_v7 import VERIFIED_OVERLAYS, VIDEO_EXTENSIONS, difference_hash, probe_video
 
 SIZE = (320, 180)
 SCALE = 'scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2'
@@ -207,7 +207,7 @@ def make_verification_rows(manifest):
             continue
         topic = shot.get('spoken_topic','')
         anchor = shot.get('anchor_text') or anchors.get(shot.get('anchor_cue_id'),'')
-        boxes = [overlay.get('box') for overlay in shot.get('overlays',[]) if overlay.get('kind')=='spotlight_box']
+        boxes = [overlay.get('box') for overlay in shot.get('overlays',[]) if overlay.get('kind') in VERIFIED_OVERLAYS]
         if shot.get('highlight_box'):
             boxes.append(shot['highlight_box'])
         elif shot.get('capture_meta'):

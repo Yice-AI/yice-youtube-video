@@ -7,7 +7,7 @@
     "finish": ["clean", "soft", "film", "punch"]
   },
   "grammars": {
-    "t4_blueprint_arch": { "kinds": ["title","point","step","bar"], "specData": ["title","series","unit"], "cueData": ["value","label"], "needs": {} },
+    "t4_blueprint_arch": { "kinds": ["title","point","step","bar"], "specData": ["title","eyebrow","series","unit"], "cueData": ["value","label","stage"], "needs": {} },
     "t5_data_ruler": { "kinds": ["title","point","step","bar"], "specData": ["title","series","unit"], "cueData": ["value","label"], "needs": {} },
     "t6_swiss_card": { "kinds": ["title","point","step","bar"], "specData": ["title","series","unit"], "cueData": ["value","label"], "needs": {} },
     "t7_editorial_board": { "kinds": ["title","card","footer"], "specData": ["eyebrow","title","layout"], "cueData": ["badge","bad","good","tag"], "needs": { "title": ["text"], "card": ["text"], "footer": ["text"] } },

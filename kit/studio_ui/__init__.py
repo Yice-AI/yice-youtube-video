@@ -1,12 +1,15 @@
 """将真实项目的媒体、片段、代码、日志和采样波形排到可寻址的工程台上。"""
 from html import escape
 import json
+import unicodedata
 
 INK, PANEL, PAPER, MUTED, CORAL = "#151c20", "#252e33", "#e7e9df", "#a5b7b6", "#ff8369"
 
 
-def label(x, y, value, size=32, color=PAPER, *, decorative=False):
+def label(x, y, value, size=32, color=PAPER, *, decorative=False, fit=None):
     layout = ' data-layout-ignore' if decorative else ''
+    if fit is not None:
+        layout += f' textLength="{fit}" lengthAdjust="spacingAndGlyphs"'
     return f'<text x="{x}" y="{y}" fill="{color}" font-size="{size}" font-family="Menlo,PingFang SC,sans-serif"{layout}>{escape(str(value))}</text>'
 
 
@@ -55,17 +58,32 @@ def _code(data):
     for i, file in enumerate(data['tree'][:11]):
         body+=label(95,205+48*i,file,25,MUTED)
     body+=label(555,211,data['file'],31)
-    for i,line in enumerate(data['lines'][:12]):
+    lines,size = fitted_lines(data['lines'][:12],1180)
+    focus = set(data.get('focus_lines',[]))
+    for i,(line,fit) in enumerate(lines):
         color = "#b6d5a8" if line.startswith("+") else "#f2a491" if line.startswith("-") else PAPER
-        body+=f'<g class="entry">'+label(550,279+i*41,f'{i+1:02}',23,MUTED)+label(625,279+i*41,line[:64],25,color)+'</g>'
+        y = 279+i*41
+        strip = box(542,y-27,1259,36,'#82aac0','rx="6" opacity=".17"') if i+1 in focus else ''
+        body+=f'<g class="entry">'+strip+label(550,y,f'{i+1:02}',23,MUTED)+label(625,y,line,size,color,fit=fit)+'</g>'
     return body+label(550,831,data['status'],24,MUTED)
 
 
 def _terminal(data):
     body=box(76,165,1760,689)+label(110,226,data['command'],32,"#b9d5bf")
-    for i,line in enumerate(data['lines'][:11]):
-        body+='<g class="entry">'+label(111,301+i*46,line[:83],28)+'</g>'
+    lines,size = fitted_lines(data['lines'][:11],1676)
+    focus = set(data.get('focus_lines',[]))
+    for i,(line,fit) in enumerate(lines):
+        y = 301+i*46
+        strip = box(100,y-30,1700,41,'#82aac0','rx="6" opacity=".17"') if i+1 in focus else ''
+        body+='<g class="entry">'+strip+label(111,y,line,size,fit=fit)+'</g>'
     return body
+
+
+def fitted_lines(lines, width):
+    display = [line if len(line)<=110 else line[:109]+'…' for line in lines]
+    units = [sum(1 if unicodedata.east_asian_width(char) in 'FW' else .62 for char in line) for line in display]
+    size = max(20,min(28,int(width/max([1,*units]))))
+    return [(line,width if unit*size>width else None) for line,unit in zip(display,units)],size
 
 
 def _daw(data):

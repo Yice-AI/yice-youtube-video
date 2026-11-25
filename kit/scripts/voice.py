@@ -687,6 +687,38 @@ def ranges(text, pattern):
     return [(m.start(), m.end(), m.group().strip()) for m in re.finditer(pattern, text) if chars(m.group())]
 
 
+def short_captions(chapter, mapped, offset):
+    captions = []
+    clauses = r'[^，,。！？!?；;：:、]+[，,。！？!?；;：:、]*'
+    for scene, first, end in scene_text_spans(chapter):
+        for a,b,_ in ranges(scene['text'],clauses):
+            text = chapter['text']
+            letters = [m for m in mapped if first+a <= m['charStart'] < min(end,first+b)]
+            while letters:
+                count = min(22,len(letters))
+                if count<len(letters):
+                    for cut in range(count,max(12,count-8),-1):
+                        i,j = letters[cut-1]['charEnd'],letters[cut]['charStart']
+                        if text[i:j] or any(text[j:].startswith(word) for word in ('所以','因为','然后','接着','这样','以及','但是','同时')):
+                            count = cut
+                            break
+                    else:
+                        def ascii_letter(index):
+                            char = text[letters[index]['charStart']]
+                            return char.isascii() and char.isalnum()
+                        while count>12 and ascii_letter(count-1) and ascii_letter(count):
+                            count -= 1
+                        if count==12 and ascii_letter(count-1) and ascii_letter(count):
+                            count = 22
+                window,letters = letters[:count],letters[count:]
+                label = text[window[0]['charStart']:window[-1]['charEnd']].strip()
+                start = round((offset+window[0]['s'])*1000)
+                end_ms = round((offset+window[-1]['e'])*1000)
+                if label and end_ms>start:
+                    captions.append(dict(text=label,startMs=start,endMs=end_ms))
+    return captions
+
+
 def prepare_chapter(chapter, raw_path, output, transcription, normalizations, silence, offset, anchors, aligned=None):
     with wave.open(str(raw_path), "rb") as source:
         params, pcm = source.getparams(), source.readframes(source.getnframes())
@@ -976,7 +1008,7 @@ def main():
             job.update(chunks=sections, pauses=gaps)
     generate(jobs)
     flow = load_voice_tool("voice-repair")
-    records, timings, scenes, subtitles, offset = [], [], [], [], 0
+    records, timings, scenes, subtitles, compact_subtitles, offset = [], [], [], [], [], 0
     failed = []
     for chapter in chapters:
         result = flow.process_chapter(chapter, [job for job in jobs if job["chapter"] == chapter["id"]],
@@ -1002,6 +1034,7 @@ def main():
         write_json(output / f"voice-timing-{chapter['id']}.json", result["timing"])
         records.append(record)
         timings.extend(result["timing"]); scenes.extend(result["scenes"]); subtitles.extend(result["captions"])
+        compact_subtitles.extend(short_captions(chapter,result["analysis"]["output_mapped"],offset))
         offset = record["end"]
     if failed:
         write_json(output / "analysis/failures.json", dict(chapters=failed, max_repair_rounds=args.max_repair_rounds))
@@ -1009,6 +1042,7 @@ def main():
     sys.path.insert(0, str(TOOLKIT / "tools"))
     from captions import export_subtitles
     (output / "voice.srt").write_text(export_subtitles(subtitles, max_words=1))
+    write_json(output / "captions.json", compact_subtitles)
     write_json(output / "voice-timing.json", timings)
     manifest = {"version": 1, "backend": args.backend, "stage": args.stage, "speed": args.speed, "time_unit": "seconds", "time_origin": "whole_episode",
                 "total_duration": offset, "chapters": records, "scene_timing": scenes,

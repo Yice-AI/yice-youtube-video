@@ -28,13 +28,25 @@ TOOLS = {
     'qwen3tts': ('qwen3-tts', 'qwen3 tts'),
     'johnnyharris': ('johnny harris', 'johnny'),
     'fireship': ('fireship',),
+    'openai': ('openai','chatgpt'),
+    'gemini': ('gemini','谷歌双子座'),
+    'deepseek': ('deepseek','深度求索'),
+    'qwen': ('qwen','通义千问'),
+    'ollama': ('ollama',),
+    'vllm': ('vllm',),
+    'docker': ('docker',),
+    'nextjs': ('next.js','nextjs','next js'),
+    'supabase': ('supabase',),
+    'cloudflare': ('cloudflare',),
+    'youtube': ('youtube','油管'),
 }
 CREATORS = {'johnnyharris','fireship'}
 ABSTRACT = ('规则', '清单', '优先级', '总结', '原则', '三句话', '步骤', 'rules', 'checklist', 'summary', 'priority')
 BINDINGS = {'exact_tool_capture', 'conceptual_explainer', 'physical_prop', 'callback_cut'}
 MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards', 'reference_breakdown', 'evidence_spotlight'}
 REAL = {'callout_rig', 'cold_open_ab', 'fullbleed_rig', 'web_cam', 'real_video', 'stock_broll', 'reference_breakdown'}
-MOTION_OVERLAYS = {'stat_badge','strikethrough_list','verdict_stamp','spotlight_box','corner_tag','prop_badge','reaction_cutout'}
+VERIFIED_OVERLAYS = {'spotlight_box','highlighter_sweep','hand_circle'}
+MOTION_OVERLAYS = {'stat_badge','strikethrough_list','verdict_stamp','corner_tag','prop_badge','reaction_cutout'} | VERIFIED_OVERLAYS
 SFX = {'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser', 'slap'}
 VIDEO_EXTENSIONS = {'.mp4','.m4v','.mov','.webm'}
 IMAGE_EXTENSIONS = {'.png','.jpg','.jpeg','.webp','.svg'}
@@ -68,10 +80,30 @@ def normalized(value):
     return ''.join(c for c in unicodedata.normalize('NFKC', value).casefold() if c.isalnum())
 
 
-def entities(value):
+def entity_vocabulary(custom=None):
+    if custom is None:
+        return TOOLS
+    if isinstance(custom,list):
+        if any(not isinstance(name,str) for name in custom):
+            raise ValueError('custom_entities 列表须包含实体名称')
+        custom = {name:[] for name in custom}
+    if not isinstance(custom,dict):
+        raise ValueError('custom_entities 须为字典或名称列表')
+    vocabulary = dict(TOOLS)
+    for name, aliases in custom.items():
+        aliases = [aliases] if isinstance(aliases,str) else aliases
+        if not isinstance(name,str) or not name.strip() or not isinstance(aliases,list) or any(
+                not isinstance(alias,str) or not alias.strip() for alias in aliases):
+            raise ValueError('custom_entities 的名称和别名须为非空文本')
+        key = unicodedata.normalize('NFKC',name.strip()).casefold()
+        vocabulary[key] = (*vocabulary.get(key,()),key,*(unicodedata.normalize('NFKC',alias.strip()).casefold() for alias in aliases))
+    return vocabulary
+
+
+def entities(value, vocabulary=TOOLS):
     text = unicodedata.normalize('NFKC', value).casefold()
     result = set()
-    for tool, aliases in TOOLS.items():
+    for tool, aliases in vocabulary.items():
         for alias in aliases:
             pattern = re.escape(alias)
             if alias.isascii():
@@ -101,8 +133,9 @@ def is_real_shot(shot):
     return False
 
 
-def semantic_binding_gate(shots):
+def semantic_binding_gate(shots, custom_entities=None):
     violations = []
+    vocabulary = entity_vocabulary(custom_entities)
     for shot in shots:
         mode = stage_mode(shot)
         topic = shot.get('spoken_topic')
@@ -115,12 +148,12 @@ def semantic_binding_gate(shots):
             violations.append({'shot':shot.get('id'),'reason':'缺少台词主题、画面主体、语义标签或绑定类别'})
             continue
         spoken = topic+' '+str(shot.get('anchor_text',''))
-        mentioned = entities(spoken)
-        labeled = entities(' '.join(tags))
-        shown = entities(visual)
+        mentioned = entities(spoken,vocabulary)
+        labeled = entities(' '.join(tags),vocabulary)
+        shown = entities(visual,vocabulary)
         explicit = shot.get('spoken_entity')
         if isinstance(explicit,str) and explicit.strip():
-            named = entities(explicit)
+            named = entities(explicit,vocabulary)
             if not named and not (normalized(explicit) in {normalized(tag) for tag in tags}
                                   and normalized(explicit) in normalized(visual)):
                 violations.append({'shot':shot.get('id'),'reason':'声明的工具实体未同时出现在主体和素材标签'})
@@ -163,7 +196,7 @@ def spotlight_restraint_gate(shots):
                 not isinstance(shot.get(field),str) or not shot[field].strip() for field in ('channel','claim')):
             violations.append({'shot':key,'reason':'原片拆解缺少频道署名或拆解主张'})
         for overlay in shot.get('overlays',[]):
-            if overlay.get('kind')!='spotlight_box':
+            if overlay.get('kind') not in VERIFIED_OVERLAYS:
                 continue
             count += 1
             box = overlay.get('box')
@@ -414,7 +447,7 @@ def explainer_density_gate(shots, project=None):
 def video_gates(timeline, project, rendered, duration, errors):
     gates = {
         'v7_timeline_gate': timeline_gates(timeline,project,duration),
-        'semantic_binding_gate': semantic_binding_gate(timeline['shots']),
+        'semantic_binding_gate': semantic_binding_gate(timeline['shots'],timeline.get('custom_entities')),
         'spotlight_restraint_gate': spotlight_restraint_gate(timeline['shots']),
         'opener_bgm_and_sfx_gate': opener_bgm_and_sfx_gate(Path(rendered).parent/'bed-only.wav',timeline.get('sound_marks',[]),duration),
         'first_half_motion_density_gate': first_half_motion_density_gate(timeline['shots'],duration),
