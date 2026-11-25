@@ -17,7 +17,7 @@ from audit_v7 import VIDEO_EXTENSIONS, difference_hash, probe_video
 
 SIZE = (320, 180)
 SCALE = 'scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2'
-VIDEO_STAGES = {'callout_rig','fullbleed_rig','cold_open_ab','triptych_cards','reference_breakdown','studio_ui'}
+VIDEO_STAGES = {'callout_rig','fullbleed_rig','cold_open_ab','triptych_cards','reference_breakdown','studio_ui','evidence_spotlight'}
 OCR = Path(__file__).resolve().parents[1] / 'tools/ocr/ocr'
 
 
@@ -208,14 +208,26 @@ def make_verification_rows(manifest):
         topic = shot.get('spoken_topic','')
         anchor = shot.get('anchor_text') or anchors.get(shot.get('anchor_cue_id'),'')
         boxes = [overlay.get('box') for overlay in shot.get('overlays',[]) if overlay.get('kind')=='spotlight_box']
+        if shot.get('highlight_box'):
+            boxes.append(shot['highlight_box'])
+        elif shot.get('capture_meta'):
+            highlight = read_json(root/shot['capture_meta']).get('highlight') or {}
+            bounds = highlight.get('box')
+            if highlight.get('status')=='located' and isinstance(bounds,dict):
+                boxes.append([bounds.get(key) for key in ('x','y','width','height')])
         for asset, start, span in dict.fromkeys(shot_sources(shot)):
-            if Path(asset).suffix.lower() not in VIDEO_EXTENSIONS:
+            suffix = Path(asset).suffix.lower()
+            if suffix not in VIDEO_EXTENSIONS | {'.gif'}:
                 continue
             if not isfinite(start) or not isfinite(span) or start<0 or span<=0:
                 raise ValueError(f"镜头 {shot['id']} 的源片时间窗无效")
             pad = min(.3,span/4)
+            times = (start+pad,start+span/2,start+span-pad)
+            if suffix=='.gif':
+                last = max(0.,probe_video(root/asset)-.1)
+                times = tuple(min(at,last) for at in times)
             rows.append(dict(id=shot['id'],source=asset,media_start=start,play_span=span,
-                             times=[round(at,5) for at in (start+pad,start+span/2,start+span-pad)],
+                             times=[round(at,5) for at in times],
                              spoken_topic=topic,anchor_text=anchor,spotlight_boxes=[box for box in boxes if box]))
     return rows
 

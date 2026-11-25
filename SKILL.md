@@ -86,7 +86,9 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v7.3�
 - `cold_open_ab` 需要两个 `sources`，可传 `hook`、`labels`、`countdown`。`title_sequence` 需要一至两行 `title`，可传 `subtitle`、`brand`、`highlight`、`paper`，时长 1.8–3.2 秒。
 - `callout_rig` 与 `fullbleed_rig` 使用一个 `source`，可设 `media_start` 与 `motion`。源片需覆盖入点、镜长和 0.2 秒尾部余量。`callout_rig` 传一至两个 `overlays`，贴图均提供 `kind`、`at`、`label`，可设 `duration`。角落补充信息用 `corner_tag`，可设 `sublabel` 或 `silent`。`spotlight_box` 只用于已经核对的局部像素目标，必须填写 `target_verified: true`、`target_note` 与 `box: [x, y, w, h]`，尺寸限 64–680 × 48–340。跨镜头复用同坐标会触发审计，使用总数上限为三处或全片镜头的 8% 向下取整，取较大者。`stat_badge` 传 `value`、`unit`，`strikethrough_list` 传 `items`，`verdict_stamp` 传短标签。
 - `studio_ui` 使用 `studio_style`、实际工作台 `data` 和取证文件 `sources`。剪辑台、代码编辑器、终端和音频工程台均可添加与 `callout_rig` 相同的 `overlays`。
-- `triptych_cards` 使用 `heading` 与两至四张 `cards`。每张卡片支持 `{label, sublabel?, source, media_start?, reveal_at}`，按镜内 `reveal_at` 点亮并登记 `pop`。素材支持 PNG、JPEG 和无循环 MP4。视频须从 `media_start` 覆盖点亮到镜尾的时长及 0.2 秒余量。
+- `triptych_cards` 使用 `heading` 与两至四张 `cards`。每张卡片支持 `{label, sublabel?, source, logo?, media_start?, reveal_at}`，按镜内 `reveal_at` 点亮并登记 `pop`。支持 PNG、JPEG、WebP、安全 SVG、GIF 和视频。装配时 WebP 转为无损 PNG，GIF 转为单次播放的 30 fps MP4，必要时定格尾帧。普通视频须覆盖从入点到镜尾的时长及 0.2 秒余量。
+- `evidence_spotlight` 用一个 `source` 检视原文、截图或架构图。可设 `heading`、`source_credit`、`logo`。传入网页采集的 `capture_meta` 可复用已定位的原文框和来源，也可给出原图像素 `highlight_box: [x, y, w, h]` 与镜内 `highlight_at`。
+- `title_sequence` 和 `corner_tag` 可填 `logo`。在 `callout_rig`、`studio_ui` 或 `evidence_spotlight` 中，可用 `prop_badge`、`reaction_cutout` 加入透明素材。叠层填 `source`、`at`，可选 `label`、`duration`、`side` 和 140–260 像素的 `size`。
 - `reference_breakdown` 将一条 `source` 放入 1152×648 静音检视窗，填 `channel` 署名和 `claim` 拆解主张。可设 `media_start`、严格升序的镜内 `cut_points` 及最多三项 `metrics`（`{label,value}`）。每处切点自动更新镜头计数并登记轻音量 `tick`。
 - `explainer_clip` 使用内嵌 `spec` 或本地 spec 路径，支持 Vox 文档、白板推导、图表、蓝图、数据尺与瑞士网格等语法。
 - `audio.bgm` 支持一至三首，可设 `bgm_cuts` 指定切换点。`audio.sound_marks` 支持 `{kind,at,gain}`，类型有 `tick`、`whoosh`、`pop`、`marker`、`stamp`、`riser`。片头、倒数和贴图会自行登记事件。需要单独混音时执行 `python3 kit/scripts/workspace.py mix-episode-audio.py audio.json --output out`，音频清单顶层带 `duration`。

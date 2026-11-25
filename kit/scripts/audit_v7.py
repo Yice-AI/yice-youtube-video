@@ -32,11 +32,12 @@ TOOLS = {
 CREATORS = {'johnnyharris','fireship'}
 ABSTRACT = ('规则', '清单', '优先级', '总结', '原则', '三句话', '步骤', 'rules', 'checklist', 'summary', 'priority')
 BINDINGS = {'exact_tool_capture', 'conceptual_explainer', 'physical_prop', 'callback_cut'}
-MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards', 'reference_breakdown'}
+MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards', 'reference_breakdown', 'evidence_spotlight'}
 REAL = {'callout_rig', 'cold_open_ab', 'fullbleed_rig', 'web_cam', 'real_video', 'stock_broll', 'reference_breakdown'}
-MOTION_OVERLAYS = {'stat_badge','strikethrough_list','verdict_stamp','spotlight_box','corner_tag'}
+MOTION_OVERLAYS = {'stat_badge','strikethrough_list','verdict_stamp','spotlight_box','corner_tag','prop_badge','reaction_cutout'}
 SFX = {'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser', 'slap'}
 VIDEO_EXTENSIONS = {'.mp4','.m4v','.mov','.webm'}
+IMAGE_EXTENSIONS = {'.png','.jpg','.jpeg','.webp','.svg'}
 WHITEBOARD_ICONS = {'person','cat','network','doc','chat','bulb','check','cross','screen','stack','gear','target','clock','chart'}
 STRUCTURED_CUES = {'bar','line','candle','image','clip','card','equation'}
 
@@ -85,6 +86,21 @@ def stage_mode(shot):
     return shot.get('stage_mode', shot.get('kind'))
 
 
+def primary_files(shot):
+    auxiliary = set(shot.get('aux_files',()))
+    return [path for path in shot.get('files',[]) if path not in auxiliary]
+
+
+def is_real_shot(shot):
+    mode = stage_mode(shot)
+    if mode in REAL:
+        return True
+    if mode=='evidence_spotlight':
+        files = shot.get('media',primary_files(shot))
+        return bool(files and Path(files[0]).suffix.lower() in VIDEO_EXTENSIONS | {'.gif'})
+    return False
+
+
 def semantic_binding_gate(shots):
     violations = []
     for shot in shots:
@@ -113,13 +129,14 @@ def semantic_binding_gate(shots):
         required = mentioned
         if mode!='reference_breakdown' and binding in {'physical_prop','callback_cut'}:
             required = mentioned-CREATORS
-        if mode in REAL and required and not required <= (shown & labeled):
+        real = is_real_shot(shot)
+        if real and required and not required <= (shown & labeled):
             violations.append({'shot':shot.get('id'),'reason':'点名工具与实际画面实体不一致',
                                'spoken_entities':sorted(mentioned),'visual_entities':sorted(shown & labeled)})
             continue
         is_abstract = shot.get('topic_kind') in {'rule','checklist','summary','principle'} or any(
             text in spoken.casefold() for text in ABSTRACT)
-        if is_abstract and mode in REAL and not (binding=='exact_tool_capture' and mentioned
+        if is_abstract and real and not (binding=='exact_tool_capture' and mentioned
                 and re.search(r'打开|点击|在.+里|open\s|click\s',spoken,re.I)):
             overlays = shot.get('overlays', [])
             labels = ' '.join(' '.join([str(overlay.get('label','')), *map(str,overlay.get('items',[]))])
@@ -129,7 +146,7 @@ def semantic_binding_gate(shots):
             matches_topic = any(text in labels.casefold() for text in ABSTRACT) or any(
                 len(normalized(tag))>=2 and normalized(tag) in normalized(labels)
                 and normalized(tag) in normalized(topic) for tag in tags)
-            if (mode not in {'callout_rig','cold_open_ab','reference_breakdown'} or not shot.get('has_motion_overlay')
+            if (mode not in {'callout_rig','cold_open_ab','reference_breakdown','evidence_spotlight'} or not shot.get('has_motion_overlay')
                     or binding not in {'callback_cut','conceptual_explainer'} or not matches_topic):
                 violations.append({'shot':shot.get('id'),'reason':'抽象规则或清单需要语义匹配的动效或总结贴图'})
     return {'ok':not violations,'violations':violations}
@@ -197,7 +214,7 @@ def first_half_motion_density_gate(shots, duration):
         mode = stage_mode(shot)
         has_overlay = any(overlay.get('kind') in MOTION_OVERLAYS for overlay in shot.get('overlays',[]))
         moving[half] += int(mode in MOTION or mode=='studio_ui' or has_overlay)
-        if mode in REAL and mode not in MOTION and not has_overlay:
+        if is_real_shot(shot) and mode not in MOTION and not has_overlay:
             bare = (bare if start-previous<=.001 else 0.)+end-start
             longest = max(longest,bare)
         else:
@@ -278,11 +295,15 @@ def timeline_gates(timeline, project, duration):
         mode = stage_mode(shot)
         span = b-a
         video_windows = []
+        files = primary_files(shot)
+        if any(file not in shot.get('files',()) or Path(file).suffix.lower() not in IMAGE_EXTENSIONS
+               or not (project/file).is_file() for file in shot.get('aux_files',())):
+            missing.append(key)
         if mode=='triptych_cards':
             cards = shot.get('cards',[])
             if (not isinstance(cards,list) or not 2<=len(cards)<=4
                     or any(not isinstance(card,dict) or not isinstance(card.get('source'),str) for card in cards)
-                    or [card['source'] for card in cards]!=shot.get('files')):
+                    or [card['source'] for card in cards]!=files):
                 invalid_cards.append(key)
             else:
                 for card in cards:
@@ -299,18 +320,21 @@ def timeline_gates(timeline, project, duration):
                             if card_durations[path]+1e-5<media_start+span-reveal_at+.2:
                                 raise ValueError('卡片视频缺少余量')
                             video_windows.append((path,media_start,span-reveal_at))
-                        elif path.suffix.lower() not in {'.png','.jpg','.jpeg'}:
+                        elif path.suffix.lower() not in IMAGE_EXTENSIONS:
                             raise ValueError('卡片素材格式无效')
                     except (TypeError,ValueError,KeyError,OSError,subprocess.CalledProcessError):
                         invalid_cards.append(key)
                         break
-        if mode in REAL:
+        if mode=='evidence_spotlight' and (len(files)!=1 or not (project/files[0]).is_file()
+                                           or Path(files[0]).suffix.lower() not in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS):
+            missing.append(key)
+        if is_real_shot(shot):
             real_seconds += span
-            files = [project/f for f in shot.get('files',[]) if Path(f).suffix.lower() in VIDEO_EXTENSIONS]
-            if not files:
+            videos = [project/f for f in files if Path(f).suffix.lower() in VIDEO_EXTENSIONS]
+            if not videos:
                 missing.append(key)
             media_start = float(shot.get('media_start',0.))
-            video_windows.extend((path,media_start,span) for path in files)
+            video_windows.extend((path,media_start,span) for path in videos)
         callback_of = shot.get('callback_of')
         valid_callback = False
         for path, source_start, play_span in video_windows:
@@ -320,10 +344,14 @@ def timeline_gates(timeline, project, duration):
             if not isfinite(source_start) or source_start<0 or play_span<=0:
                 invalid.append(key)
                 continue
-            if path not in digest_cache:
+            digests = shot.get('gif_source_hashes',{})
+            digest = digests.get(path.relative_to(project).as_posix()) if digests and path.is_relative_to(project) else None
+            if not isinstance(digest,str) or not re.fullmatch(r'[a-f0-9]{64}',digest):
+                digest = None
+            if digest is None and path not in digest_cache:
                 with path.open('rb') as f:
                     digest_cache[path] = hashlib.file_digest(f,'sha256').hexdigest()
-            digest = digest_cache[path]
+            digest = digest or digest_cache[path]
             previous_uses = source_reuse[digest]
             callback = bool(callback_of and callback_of!=key and any(use['shot']==callback_of for use in previous_uses))
             valid_callback |= callback

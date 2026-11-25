@@ -4,7 +4,7 @@ import argparse
 import copy
 import hashlib
 import json
-from math import isfinite
+from math import ceil, isfinite
 import os
 from pathlib import Path
 import re
@@ -13,17 +13,22 @@ import subprocess
 import sys
 import time
 from urllib.parse import unquote
+from xml.etree import ElementTree
+
+from PIL import Image
 
 KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(KIT.parent))
-from audit_v7 import probe_video, semantic_binding_gate
+from audit_v7 import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, probe_video, semantic_binding_gate
 from workspace import resolve_gsap_runtime, resolve_hyperframes_command
 from kit.editorial.audio_mix import mix_episode_audio
-from kit.editorial.editorial import EditorialStage
+from kit.editorial.editorial import EditorialStage, evidence_box
 from kit.studio_ui import add_workbench
 
 FPS = 30
-MODES = {'cold_open_ab','title_sequence','callout_rig','fullbleed_rig','studio_ui','explainer_clip','triptych_cards','reference_breakdown'}
+MODES = {'cold_open_ab','title_sequence','callout_rig','fullbleed_rig','studio_ui','explainer_clip','triptych_cards','reference_breakdown','evidence_spotlight'}
+SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
+LOGO_EXTENSIONS = {'.svg','.png','.webp'}
 
 
 def read(path):
@@ -64,14 +69,36 @@ def prepare_cards(shot, root, span, durations):
         reveal_at, media_start = float(card.get('reveal_at',float('nan'))),float(card.get('media_start',0.))
         if not 0<=reveal_at<span or not isfinite(media_start) or media_start<0:
             raise ValueError('卡片点亮时间或源入点无效')
-        if path.suffix.lower()=='.mp4':
-            if path not in durations:
-                durations[path] = probe_video(path)
-            if durations[path]+1e-5 < media_start+span-reveal_at+.2:
-                raise ValueError(f'卡片源视频不足以覆盖切片及 0.2 秒余量：{path.name}')
-        elif path.suffix.lower() not in {'.png','.jpg','.jpeg'}:
-            raise ValueError('卡片素材须为 PNG、JPEG 或 MP4')
+        validate_media(path,media_start+span-reveal_at,durations,allow_image=True)
         yield dict(card,source=str(path),reveal_at=reveal_at,media_start=media_start)
+
+
+def validate_media(path, length, durations, *, allow_image=False):
+    suffix = path.suffix.lower()
+    if suffix=='.gif' or (allow_image and suffix in IMAGE_EXTENSIONS):
+        return
+    if suffix not in VIDEO_EXTENSIONS:
+        raise ValueError(f'舞台素材格式不支持：{path.name}')
+    if path not in durations:
+        durations[path] = probe_video(path)
+    if durations[path]+1e-5 < length+.2:
+        raise ValueError(f'源视频不足以覆盖切片及 0.2 秒余量：{path.name}')
+
+
+def evidence_metadata(shot, root):
+    box = shot.get('highlight_box')
+    credit = shot.get('source_credit')
+    if shot.get('capture_meta'):
+        capture = read(locate(root,shot['capture_meta']))
+        credit = credit or capture.get('sourceName')
+        highlight = capture.get('highlight') or {}
+        if box is None and highlight.get('status')=='located' and isinstance(highlight.get('box'),dict):
+            bounds = highlight['box']
+            try:
+                box = evidence_box([bounds[key] for key in ('x','y','width','height')])
+            except (KeyError,ValueError):
+                pass
+    return dict(shot,highlight_box=box,source_credit=credit or '')
 
 
 def prepare_document(raw, root):
@@ -145,19 +172,18 @@ def prepare_shots(raw, root, cues):
         media_start = float(src.get('media_start',0.))
         if not isfinite(media_start) or media_start<0:
             raise ValueError(f'镜头 {key} 的源入点不合法')
-        expected = {'cold_open_ab':2,'callout_rig':1,'fullbleed_rig':1,'reference_breakdown':1}.get(mode)
+        expected = {'cold_open_ab':2,'callout_rig':1,'fullbleed_rig':1,'reference_breakdown':1,'evidence_spotlight':1}.get(mode)
         if expected is not None and len(media)!=expected:
-            raise ValueError(f'镜头 {key} 需要 {expected} 条视频源')
+            raise ValueError(f'镜头 {key} 需要 {expected} 条素材源')
         if expected:
             for path in media:
-                if path not in durations:
-                    durations[path] = probe_video(path)
-                if durations[path]+1e-5 < media_start+end-start+.2:
-                    raise ValueError(f'镜头 {key} 源视频不足以覆盖切片及 0.2 秒余量')
+                validate_media(path,media_start+end-start,durations,allow_image=mode=='evidence_spotlight')
+        if mode=='evidence_spotlight':
+            src = evidence_metadata(src,root)
         result.append(dict(src,id=key,act=act,start=start,end=end,media=media,media_start=media_start,
                            anchor_text=cue.get('text',''),anchor_cue_start=cue['firstCharTime'],
                            has_motion_overlay=(mode in {'callout_rig','studio_ui'} and bool(src.get('overlays'))
-                                               or mode in {'cold_open_ab','title_sequence','triptych_cards','reference_breakdown'})))
+                                               or mode in {'cold_open_ab','title_sequence','triptych_cards','reference_breakdown','evidence_spotlight'})))
     if not result:
         raise ValueError('清单至少需要一个镜头')
     if 'duration' in raw and abs(float(raw['duration'])-previous)>1/FPS:
@@ -181,6 +207,66 @@ def install_asset(source, target):
     except OSError:
         shutil.copy2(source,staging)
     staging.replace(target)
+    return target
+
+
+def sanitized_svg(source):
+    raw = source.read_text(encoding='utf-8-sig')
+    if re.search(r'<\s*!(?:DOCTYPE|ENTITY)\b',raw,re.I):
+        raise ValueError(f'SVG 含不安全的文档声明：{source.name}')
+    try:
+        root = ElementTree.fromstring(raw)
+    except ElementTree.ParseError as error:
+        raise ValueError(f'SVG 格式无效：{source.name}') from error
+    if root.tag not in {'svg',f'{{{SVG_NAMESPACE}}}svg'}:
+        raise ValueError(f'SVG 根节点无效：{source.name}')
+    for element in root.iter():
+        tag = element.tag.rsplit('}',1)[-1].lower()
+        attributes = {key.rsplit('}',1)[-1].lower():value for key,value in element.attrib.items()}
+        values = list(element.attrib.values())
+        if tag=='style':
+            values.append(element.text or '')
+        urls = (match.group(1).strip().strip("'\"").strip() for value in values
+                for match in re.finditer(r'url\s*\(([^)]*)\)',value,re.I))
+        if (tag in {'script','foreignobject','iframe','object','embed','animate','set','animatetransform','animatemotion'}
+                or any(key.startswith('on') for key in attributes)
+                or any(re.search(r'https?\s*://|javascript\s*:|@import',value,re.I) for value in values)
+                or any(not re.fullmatch(r'#[^\s]+|data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=\s]+',value.strip(),re.I)
+                       for key,value in attributes.items() if key in {'href','src'})
+                or any(not url.startswith('#') for url in urls)):
+            raise ValueError(f'SVG 含不安全元素或外部引用：{source.name}')
+        if ('{http://www.w3.org/XML/1998/namespace}base' in element.attrib
+                or any('\\' in value for value in values)):
+            raise ValueError(f'SVG 含不安全样式：{source.name}')
+        if not element.tag.startswith('{'):
+            element.tag = f'{{{SVG_NAMESPACE}}}{element.tag}'
+    ElementTree.register_namespace('',SVG_NAMESPACE)
+    return ElementTree.tostring(root,encoding='utf-8',xml_declaration=True)
+
+
+def install_visual(source, target_base, *, length=0., run=subprocess.run):
+    suffix = source.suffix.lower()
+    target = target_base.with_suffix({'.webp':'.png','.gif':'.mp4'}.get(suffix,suffix))
+    if suffix not in {'.webp','.svg','.gif'}:
+        return install_asset(source,target)
+    target.parent.mkdir(parents=True,exist_ok=True)
+    staging = target.with_name(f'{target.stem}.tmp{target.suffix}')
+    try:
+        if suffix=='.webp':
+            with Image.open(source) as image:
+                image.convert('RGBA' if 'A' in image.getbands() else 'RGB').save(staging)
+        elif suffix=='.svg':
+            staging.write_bytes(sanitized_svg(source))
+        else:
+            minimum = (ceil((length+.25)*FPS)+1)/FPS
+            padding = max(0.,minimum-probe_video(source))
+            filters = f'fps={FPS},pad=ceil(iw/2)*2:ceil(ih/2)*2,tpad=stop_mode=clone:stop_duration={padding:.6f}'
+            run(['ffmpeg','-nostdin','-v','error','-y','-ignore_loop','1','-i',str(source),
+                 '-vf',filters,'-an','-c:v','libx264','-preset','fast','-crf','17','-pix_fmt','yuv420p',
+                 '-movflags','+faststart',str(staging)],check=True)
+        staging.replace(target)
+    finally:
+        staging.unlink(missing_ok=True)
     return target
 
 
@@ -266,19 +352,52 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
     for shot in shots:
         mode,key = shot['stage_mode'],shot['id']
         a,b = shot['start']-first,shot['end']-first
-        assets = [install_asset(path,folder/'assets'/f'{key}-{i}{path.suffix.lower()}').relative_to(folder).as_posix()
-                  for i,path in enumerate(shot['media'])]
         text = shot['spoken_topic']
         start = shot['media_start']
+        span = b-a
+        assets, auxiliary, gif_hashes = [],[],{}
+        for i,path in enumerate(shot['media']):
+            length = start+span
+            if mode=='triptych_cards':
+                card = shot['cards'][i]
+                length = card['media_start']+span-card['reveal_at']
+            asset = install_visual(path,folder/'assets'/f'{key}-{i}',length=length,run=run).relative_to(folder).as_posix()
+            assets.append(asset)
+            if path.suffix.lower()=='.gif':
+                gif_hashes[asset] = file_fingerprint(path)['sha256']
+
+        def attach(value, slot, extensions):
+            if not isinstance(value,str) or not value:
+                raise ValueError(f'镜头 {key} 的 {slot} 需要素材路径')
+            source = locate(root,value)
+            if source.suffix.lower() not in extensions:
+                raise ValueError(f'镜头 {key} 的 {slot} 素材格式不支持：{source.name}')
+            saved = install_visual(source,folder/'assets'/f'{key}-{slot}',run=run).relative_to(folder).as_posix()
+            auxiliary.append(saved)
+            return saved
+
+        def with_logo(row, slot):
+            return dict(row,logo=attach(row['logo'],slot,LOGO_EXTENSIONS)) if 'logo' in row else row
+
+        overlays = []
+        for i,original in enumerate(shot.get('overlays',[])):
+            overlay = original
+            if overlay['kind']=='corner_tag':
+                overlay = with_logo(overlay,f'overlay-{i}-logo')
+            if overlay['kind'] in {'prop_badge','reaction_cutout'}:
+                overlay = dict(overlay,source=attach(overlay.get('source'),f'overlay-{i}-cutout',LOGO_EXTENSIONS))
+            overlays.append(overlay)
         if mode == 'cold_open_ab':
             hook = shot.get('hook',text)
             stage.add_cold_open_ab(a,b,*assets,hook=hook,labels=shot.get('labels',('A','B')),
                                    countdown=shot.get('countdown',3),media_start=start)
         elif mode == 'title_sequence':
+            logo = with_logo(shot,'logo').get('logo')
             stage.add_title_sequence(a,b,shot.get('title',text),subtitle=shot.get('subtitle',''),
-                                     highlight=shot.get('highlight',''),brand=shot.get('brand','一策'),paper=shot.get('paper',False))
+                                     highlight=shot.get('highlight',''),brand=shot.get('brand','一策'),
+                                     paper=shot.get('paper',False),logo=logo)
         elif mode == 'callout_rig':
-            stage.add_callout_rig(a,b,assets[0],overlays=shot['overlays'],media_start=start,motion=shot.get('motion','glide'))
+            stage.add_callout_rig(a,b,assets[0],overlays=overlays,media_start=start,motion=shot.get('motion','glide'))
         elif mode == 'fullbleed_rig':
             stage.add_fullbleed_rig(a,b,assets[0],media_start=start,motion=shot.get('motion','glide'))
         elif mode == 'studio_ui':
@@ -286,15 +405,22 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
             data['evidence'] = assets
             if 'monitor' in data:
                 monitor = locate(root,data['monitor'])
-                if probe_video(monitor)<b-a+.2:
-                    raise ValueError(f'工程台监视器视频过短：{key}')
-                data['monitor'] = install_asset(monitor,folder/'assets'/f'{key}-monitor{monitor.suffix}').relative_to(folder).as_posix()
+                validate_media(monitor,span,{})
+                data['monitor'] = install_visual(monitor,folder/'assets'/f'{key}-monitor',length=span,run=run).relative_to(folder).as_posix()
             base_plate = add_workbench(stage,a,b,shot['studio_style'],shot.get('title',text),data)
-            if shot.get('overlays'):
-                stage.add_overlays(a,b,shot['overlays'],nle_plate=base_plate if shot['studio_style']=='nle_timeline' else None)
+            if overlays:
+                stage.add_overlays(a,b,overlays,nle_plate=base_plate if shot['studio_style']=='nle_timeline' else None)
         elif mode == 'triptych_cards':
-            cards = [dict(card,source=asset) for card,asset in zip(shot['cards'],assets)]
+            cards = [dict(with_logo(card,f'card-{i}-logo'),source=asset)
+                     for i,(card,asset) in enumerate(zip(shot['cards'],assets))]
             stage.add_triptych_cards(a,b,heading=shot['heading'],cards=cards)
+        elif mode == 'evidence_spotlight':
+            logo = with_logo(shot,'logo').get('logo')
+            stage.add_evidence_spotlight(a,b,assets[0],heading=shot.get('heading') or text,
+                                         source_credit=shot['source_credit'],logo=logo,media_start=start,
+                                         highlight_box=shot['highlight_box'],highlight_at=shot.get('highlight_at',.45))
+            if overlays:
+                stage.add_overlays(a,b,overlays)
         elif mode == 'reference_breakdown':
             stage.add_reference_breakdown(a,b,assets[0],channel=shot.get('channel'),claim=shot.get('claim'),
                                           cut_points=shot.get('cut_points',()),metrics=shot.get('metrics',()),media_start=start)
@@ -307,8 +433,16 @@ def build_act(shots, root, folder, title, run, *, force_render=False):
             if spec['grammar']=='t6_swiss_card':
                 stage.light_zones.append((a,b))
         fields = ('anchor_cue_id','anchor_cue_start','anchor_text','spoken_topic','visual_subject',
-                  'semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','overlays','media_start','callback_of')
-        stage.shots[-1].update({field:shot[field] for field in fields if field in shot},id=key,stage_mode=mode)
+                  'semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of')
+        row = stage.shots[-1]
+        row.update({field:shot[field] for field in fields if field in shot},id=key,stage_mode=mode)
+        if 'overlays' in shot:
+            row['overlays'] = overlays
+        if auxiliary:
+            row['aux_files'] = auxiliary
+            row['files'] = list(dict.fromkeys([*row['files'],*auxiliary]))
+        if gif_hashes:
+            row['gif_source_hashes'] = gif_hashes
     return stage
 
 
@@ -401,10 +535,23 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
         stages.append((folder,stage,offset))
         marks.extend(stage.sound_events(offset))
         for row in stage.shots:
-            files = [(folder/p).relative_to(output).as_posix() for p in row['files']]
+            prefix = folder.relative_to(output)
+            files = [(prefix/p).as_posix() for p in row['files']]
             global_row = dict(row,start=round(offset+row['start'],5),end=round(offset+row['end'],5),files=files)
+            if 'aux_files' in row:
+                global_row['aux_files'] = [(prefix/p).as_posix() for p in row['aux_files']]
+            if 'gif_source_hashes' in row:
+                global_row['gif_source_hashes'] = {(prefix/p).as_posix():digest for p,digest in row['gif_source_hashes'].items()}
+            if row.get('logo'):
+                global_row['logo'] = (prefix/row['logo']).as_posix()
+            if 'overlays' in row:
+                global_row['overlays'] = [dict(overlay,**{key:(prefix/overlay[key]).as_posix()
+                                                         for key in ('source','logo') if overlay.get(key)})
+                                          for overlay in row['overlays']]
             if row['stage_mode']=='triptych_cards':
-                global_row['cards'] = [dict(card,source=file) for card,file in zip(row['cards'],files)]
+                global_row['cards'] = [dict(card,**{key:(prefix/card[key]).as_posix()
+                                                   for key in ('source','logo') if card.get(key)})
+                                       for card in row['cards']]
             if 'explainer_spec' in row:
                 global_row['explainer_spec'] = (folder/row['explainer_spec']).relative_to(output).as_posix()
             global_shots.append(global_row)

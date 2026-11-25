@@ -21,6 +21,8 @@ CRIMSON = "#a03528"
 MUTED = "#a3b3a7"
 LINE = "#465750"
 PAPER = "#e7ddc5"
+IMAGE_EXTENSIONS = {'.png','.jpg','.jpeg','.webp','.svg'}
+VIDEO_EXTENSIONS = {'.mp4','.m4v','.mov','.webm'}
 
 
 def txt(x: float, y: float, value: object, size: int = 38, color: str = IVORY,
@@ -51,6 +53,23 @@ def ln(x1: float, y1: float, x2: float, y2: float, color: str = LINE, width: flo
 
 def group(cls: str, body: str) -> str:
     return f'<g class="{cls}">{body}</g>'
+
+
+def svg_image(x, y, w, h, source):
+    return (f'<image x="{x}" y="{y}" width="{w}" height="{h}" href="{html.escape(source)}" '
+            'preserveAspectRatio="xMidYMid meet"/>')
+
+
+def evidence_box(value):
+    if not isinstance(value,(list,tuple)) or len(value)!=4:
+        raise ValueError('证据高亮需要原图的 [x, y, w, h] 坐标')
+    try:
+        x,y,w,h = map(float,value)
+    except (TypeError,ValueError):
+        raise ValueError('证据高亮坐标必须为有限数值') from None
+    if not all(isfinite(v) for v in (x,y,w,h)) or min(x,y)<0 or min(w,h)<=0 or x+w>1920.001 or y+h>1080.001:
+        raise ValueError('证据高亮框超出 1920×1080 原图')
+    return [x,y,w,h]
 
 
 def verified_spotlight_box(overlay):
@@ -214,7 +233,7 @@ class EditorialStage:
                    beats=sorted({0.,*[intro-start+i for i in range(countdown)]}))
         return row['id']
 
-    def add_title_sequence(self, start, end, title, *, subtitle='', highlight='', brand='一策', paper=False):
+    def add_title_sequence(self, start, end, title, *, subtitle='', highlight='', brand='一策', paper=False, logo=None):
         if not 1.8 <= round(end-start,5) <= 3.2:
             raise ValueError('片头扉页时长须为 1.8–3.2 秒')
         lines = title.splitlines() if isinstance(title,str) else list(title)
@@ -222,18 +241,24 @@ class EditorialStage:
             raise ValueError('片头须有一至两行主题')
         color = INK if paper else IVORY
         accent = CRIMSON if paper else CORAL
-        body = grid() + mono(100,208,brand,31,color)
+        body = grid()
+        if logo:
+            body += svg_image(100,182,32,32,logo)
+        body += mono(148 if logo else 100,208,brand,31,color)
         body += group('rise',''.join(word(96,423+133*i,text,min(120,1660//max(1,len(text))),
                                           accent if text==highlight else color) for i,text in enumerate(lines)))
         if subtitle:
             body += txt(100,683,subtitle,39,color)
         body += group('title-ruler',rule(100,755,1660,accent))
-        plate = self.add_plate(start,end,' / '.join(lines),body,bg=PAPER if paper else INK,kind='chapter_break')
+        plate = self.add_plate(start,end,' / '.join(lines),body,bg=PAPER if paper else INK,
+                               kind='chapter_break',files=[logo] if logo else None)
         self.scripts.append(f"tl.fromTo('#{plate} .title-ruler',{{scaleX:0}},"
                             f"{{scaleX:1,transformOrigin:'left center',duration:.8,immediateRender:false}},{start+.12:.5f});")
         self.sound_marks.extend((('whoosh',start),('stamp',start+.82)))
         row = self.shots[-1]
         row.update(stage_mode='title_sequence',layout='fullbleed',has_motion_overlay=True,beats=[0.,.12,.82])
+        if logo:
+            row['logo'] = logo
         return row['id']
 
     def add_reference_breakdown(self, start, end, src, *, channel, claim,
@@ -347,15 +372,19 @@ class EditorialStage:
                 sublabel = str(overlay.get('sublabel',''))
                 if not label.strip():
                     raise ValueError('角落铭牌需要文字')
-                width = min(760,max(190,57+max(len(label)*28,len(sublabel)*22)))
+                logo = overlay.get('logo')
+                inset = 44 if logo else 0
+                width = min(760,max(190,57+inset+max(len(label)*28,len(sublabel)*22)))
                 height = 80 if sublabel else 56
-                text_width = width-48
+                text_width = width-48-inset
                 main_fit = f'textLength="{text_width}" lengthAdjust="spacingAndGlyphs"' if len(label)*28>text_width else ''
                 body = rect(80,82,width,height,'#172322eb','rx="10"') + rect(80,82,5,height,CORAL)
-                body += txt(104,118,label,28,attrs=main_fit)
+                if logo:
+                    body += svg_image(102,82+(height-32)//2,32,32,logo)
+                body += txt(104+inset,118,label,28,attrs=main_fit)
                 if sublabel:
                     sub_fit = f' textLength="{text_width}" lengthAdjust="spacingAndGlyphs"' if len(sublabel)*22>text_width else ''
-                    body += txt(104,147,sublabel,22,MUTED,attrs='data-layout-ignore'+sub_fit)
+                    body += txt(104+inset,147,sublabel,22,MUTED,attrs='data-layout-ignore'+sub_fit)
                 body = group('rise',body)
                 audio = 'pop'
             elif style == 'stat_badge':
@@ -389,6 +418,22 @@ class EditorialStage:
                     raise ValueError('裁决印章须为短标签')
                 body = stamp(1000,535,label)
                 audio = 'stamp'
+            elif style in {'prop_badge','reaction_cutout'}:
+                source, side = overlay.get('source'),overlay.get('side','right')
+                size = float(overlay.get('size',210))
+                if not isinstance(source,str) or Path(source).suffix.lower() not in IMAGE_EXTENSIONS:
+                    raise ValueError('抠像挂件需要 PNG、WebP 或 SVG 素材')
+                if side not in {'left','right'} or not 140<=size<=260:
+                    raise ValueError('抠像挂件仅支持左右侧，尺寸须为 140–260')
+                x = 80 if side=='left' else 1840-size
+                y = 850-size-(42 if label else 0)
+                image = svg_image(x,y,size,size,source)
+                if label:
+                    image += rect(x,y+size+5,size,37,'#172322eb','rx="8"')
+                    fit = f'textLength="{size-14}" lengthAdjust="spacingAndGlyphs"' if len(label)*28>size-14 else ''
+                    image += txt(x+size/2,y+size+31,label,28,anchor='middle',attrs=fit)
+                body = group('cutout-hit',image)
+                audio = 'pop'
             else:
                 raise ValueError(f'未知动态贴图类型：{style}')
             if style != 'spotlight_box':
@@ -413,6 +458,10 @@ class EditorialStage:
                         beats.append(at+delay)
             if style == 'verdict_stamp':
                 self.add_stamp_slam(plate,begin)
+            if style in {'prop_badge','reaction_cutout'}:
+                self.scripts.append(f"tl.fromTo('#{plate} .cutout-hit',{{scale:1.18,rotation:4,y:-9,opacity:0}},"
+                                    f"{{scale:1,rotation:-1.5,y:0,opacity:1,duration:{min(.34,hold):.5f},"
+                                    f"transformOrigin:'center center',transformBox:'fill-box',ease:'back.out(1.35)',immediateRender:false}},{begin:.5f});")
             if style!='corner_tag' or not overlay.get('silent'):
                 self.add_sound_mark(audio,begin,gain=.10 if style=='corner_tag' else None)
             beats.append(at)
@@ -428,6 +477,78 @@ class EditorialStage:
                 finish = max(finish,stop) if finish is not None else stop
             if finish < end-1e-6:
                 self.scripts.append(f"tl.set('{selector}',{{autoAlpha:1,display:'inline'}},{finish:.5f});")
+
+    def add_evidence_spotlight(self, start, end, source, *, heading, source_credit='', logo=None,
+                               media_start=0., highlight_box=None, highlight_at=.45):
+        span = end-start
+        x,y,w,h = 200,148,1520,712
+        box = evidence_box(highlight_box) if highlight_box is not None else None
+        at = float(highlight_at)
+        if box and (not isfinite(at) or at<0 or at>=span):
+            raise ValueError('荧光标记时间须在证据镜头内')
+        suffix = Path(source).suffix.lower()
+        if suffix not in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS:
+            raise ValueError('证据检视台的素材格式无效')
+        moving = suffix in VIDEO_EXTENSIONS
+        idx = len(self.media_layers)
+        key = f'vp{idx}'
+        timing = f'data-start="{start:.5f}" data-duration="{span:.5f}"'
+        escaped = html.escape(source)
+        item = f'class="clip evidence-media" src="{escaped}" {timing} data-track-index="{2+idx%6}"'
+        if moving:
+            media = f'<video {item} muted playsinline preload="auto" data-media-start="{media_start:.5f}"></video>'
+        else:
+            media = f'<img {item} alt=""/>'
+        annotation = ''
+        focus = (w/2,h/2)
+        if box:
+            left,top,width,height = box
+            scale = h/1080
+            bx,by = (w-1920*scale)/2+left*scale,top*scale
+            bw,bh = width*scale,height*scale
+            focus = (bx+bw/2,by+bh/2)
+            annotation = (f'<svg class="clip evidence-mark" viewBox="0 0 {w} {h}" {timing} data-track-index="9" '
+                          'data-layout-allow-occlusion>'
+                          +rect(round(bx,3),round(by,3),round(bw,3),round(bh,3),'#f4ed55',
+                                'class="evidence-stripe" rx="3" opacity="0"')+'</svg>')
+        self.media_layers.append(
+            f'<div class="viewport evidence-window" style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">'
+            f'<div id="{key}" class="evidence-plane" data-layout-allow-overflow '
+            f'style="transform-origin:{focus[0]:.3f}px {focus[1]:.3f}px">'
+            +media+annotation+'</div></div>')
+        body = svg_image(200,34,32,32,logo) if logo else ''
+        if source_credit:
+            body += mono(248 if logo else 200,58,source_credit,min(28,1440//max(1,len(source_credit))))
+        body += txt(200,116,heading,min(49,1520//max(1,len(heading))))
+        body += rect(x,y,w,h,'none','rx="14" stroke="#829590" stroke-width="2"')
+        plate = self.add_plate(start,end,heading,body,bg=INK,animate=False,
+                               kind='real_video' if moving else 'screenshot',files=[source,*([logo] if logo else [])])
+        shadow = rect(209,163,w,h,'#00000036','rx="14"')+rect(205,154,w,h,'#00000046','rx="14"')
+        self.bg_layers.append(f'<div class="clip bg-fill" style="inset:0;pointer-events:none" {timing} data-track-index="1" '
+                              f'data-layout-allow-occlusion><svg viewBox="0 0 1920 1080">{shadow}</svg></div>')
+        row = self.shots[-1]
+        row.update(stage_mode='evidence_spotlight',layout='evidence_window',has_motion_overlay=True,
+                   highlight_box=box,source_credit=source_credit,beats=[0.,at] if box else [0.])
+        if logo:
+            row['logo'] = logo
+        intro = min(.42,span)
+        self.scripts.append(f"tl.fromTo('#{plate} svg, #{key}',{{opacity:0,y:8}},"
+                            f"{{opacity:1,y:0,duration:{intro:.5f},ease:'power3.out',immediateRender:false}},{start:.5f});")
+        if box:
+            zoom = min(.65,span-at)
+            self.scripts.append(f"tl.fromTo('#{key}',{{scale:1}},"
+                                f"{{scale:1.28,duration:{zoom:.5f},ease:'power3.inOut',immediateRender:false}},{start+at:.5f});")
+            self.scripts.append(f"tl.fromTo('#{key} .evidence-stripe',{{scaleX:0,opacity:0}},"
+                                f"{{scaleX:1,opacity:.38,duration:{zoom:.5f},transformOrigin:'left center',"
+                                f"transformBox:'fill-box',ease:'power3.inOut',immediateRender:false}},{start+at:.5f});")
+            if span-at > zoom:
+                self.scripts.append(f"tl.to('#{key}',{{scale:1.32,duration:{span-at-zoom:.5f},ease:'sine.inOut'}},{start+at+zoom:.5f});")
+            self.add_sound_mark('marker',start+at)
+        else:
+            self.scripts.append(f"tl.fromTo('#{key}',{{scale:1}},"
+                                f"{{scale:1.07,duration:{span:.5f},ease:'sine.inOut',immediateRender:false}},{start:.5f});")
+            self.add_sound_mark('pop',start)
+        return row['id']
 
     def add_triptych_cards(self, start, end, *, heading, cards):
         if not 2 <= len(cards) <= 4:
@@ -447,19 +568,23 @@ class EditorialStage:
             x = 96 + index * (width + 32)
             begin = start + at
             suffix = Path(source).suffix.lower()
-            if suffix == '.mp4':
+            if suffix in VIDEO_EXTENSIONS:
                 viewport = self.add_video(begin,end,source,x,top,width,height,media_start=card.get('media_start',0.),fit='contain')
-            elif suffix in {'.png','.jpg','.jpeg'}:
+            elif suffix in IMAGE_EXTENSIONS:
                 viewport = self.add_image(begin,end,source,x,top,width,height,zoom_to=1.,tone='natural',fit='contain')
             else:
-                raise ValueError('卡片素材须为 PNG、JPEG 或 MP4')
+                raise ValueError('卡片素材格式不支持')
             label = card['label']
             sublabel = card.get('sublabel','')
-            label_size = min(38,width//max(1,len(label)))
-            sublabel_size = min(27,width//max(1,len(sublabel)))
+            logo = card.get('logo')
+            inset = 46 if logo else 0
+            label_size = min(38,(width-inset)//max(1,len(label)))
+            sublabel_size = min(27,(width-inset)//max(1,len(sublabel)))
             body += f'<g class="card-{index}" opacity=".35">'
-            body += frame(x,top,width,height,CORAL) + txt(x,top+height+58,label,label_size)
-            body += txt(x,top+height+95,sublabel,sublabel_size,MUTED) + '</g>'
+            if logo:
+                body += svg_image(x,top+height+29,32,32,logo)
+            body += frame(x,top,width,height,CORAL) + txt(x+inset,top+height+58,label,label_size)
+            body += txt(x+inset,top+height+95,sublabel,sublabel_size,MUTED) + '</g>'
             files.append(source)
             beats.append(at)
             reveals.append((index,viewport,begin))
@@ -808,6 +933,10 @@ html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-
 .fullbleed{z-index:2}
 .clip.viewport{background:#121b19}
 .vp-inner{display:block;width:100%;height:100%;background:#121b19;will-change:transform}
+.evidence-window{border-radius:14px}
+.evidence-plane,.evidence-media,.evidence-mark{position:absolute;inset:0;width:100%;height:100%}
+.evidence-media{object-fit:contain;background:#121b19}
+.evidence-mark{pointer-events:none;mix-blend-mode:multiply}
 .tone-paper-tint.clip.viewport,.tone-paper-tint .vp-inner{background:#ebe3d2}
 .tone-paper-tint .vp-inner{filter:sepia(.08) brightness(.94) contrast(1.04)}
 .tone-dark-soft .vp-inner{filter:brightness(.93) contrast(1.05)}

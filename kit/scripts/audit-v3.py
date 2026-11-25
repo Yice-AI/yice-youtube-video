@@ -14,10 +14,11 @@ from fractions import Fraction
 from pathlib import Path
 
 from review import run
-from audit_v7 import difference_hash
+from audit_v7 import IMAGE_EXTENSIONS, difference_hash, primary_files
 
 REAL = {"real_video", "web_cam", "screenshot"}
 VISUAL = {".mp4", ".mov", ".webm", ".jpg", ".jpeg", ".png", ".webp", ".svg"}
+CUTOUT_OVERLAYS = {"prop_badge", "reaction_cutout"}
 GENERATED = re.compile(r"image2|ltx2|generated|metaphor-image|motion-video|prop-cutout", re.I)
 
 
@@ -180,6 +181,22 @@ def subzone_gate(project: Path, errors: list[str]) -> dict:
     for finding in findings:
         errors.append(f"v4 字幕安全区冲突：{finding['file']} y={finding['y']:.0f} 「{finding['text']}」")
     return {"violations": findings}
+
+
+def cutout_overlays_gate(timeline, project, errors):
+    missing = []
+    for shot in timeline["shots"]:
+        for overlay in shot.get("overlays", []):
+            if overlay.get("kind") not in CUTOUT_OVERLAYS:
+                continue
+            source = overlay.get("source")
+            if (not isinstance(source, str) or Path(source).suffix.lower() not in IMAGE_EXTENSIONS
+                    or source not in shot.get("aux_files", []) or source not in shot.get("files", [])
+                    or not (project / source).is_file()):
+                missing.append({"shot": shot.get("id"), "overlay": overlay["kind"]})
+    if missing:
+        errors.append("抠像叠层缺少已登记的图片素材")
+    return {"ok": not missing, "missing": missing}
 
 
 def precheck(args, errors):
@@ -372,13 +389,14 @@ def timeline_metrics(data, duration, project, errors, *, v4=False, v5=False):
         if kind == "evidence_wall":
             errors.append(f"镜头 {shot.get('id')} 使用了已禁用的多宫格碎框证据墙（evidence_wall），请改用单主视窗或 A/B 双视窗")
             continue
-        if not (previous <= start < end <= duration + 0.2) or kind not in REAL | {"stock_broll", "ai_generated", "text_card", "chapter_break", "explainer_graphic"}:
+        if not (previous <= start < end <= duration + 0.2) or kind not in REAL | {"stock_broll", "ai_generated", "text_card", "chapter_break", "explainer_graphic", "triptych_cards"}:
             raise ValueError(f"无效镜头 {shot.get('id')}")
         length = min(end, duration) - start
         files = shot.get("files", [])
-        max_windows = max(max_windows, len(files))
-        if len(files) > 3:
-            errors.append(f"镜头 {shot.get('id')} 同屏堆砌 {len(files)} 个视窗（上限 3 个，严禁蚂蚁字碎框）")
+        windows = len(primary_files(shot))
+        max_windows = max(max_windows, windows)
+        if windows > 3:
+            errors.append(f"镜头 {shot.get('id')} 同屏堆砌 {windows} 个视窗（上限 3 个，严禁蚂蚁字碎框）")
         if kind not in {"text_card", "chapter_break"}:
             if not files or not all((project / file).is_file() and (project / file).stat().st_size for file in files):
                 errors.append(f"镜头 {shot.get('id')} 缺少素材")
@@ -516,6 +534,8 @@ def rendered(args, out, errors):
     timeline = None
     if args.timeline:
         timeline = json.loads(args.timeline.read_text())
+        if any(overlay.get("kind") in CUTOUT_OVERLAYS for shot in timeline["shots"] for overlay in shot.get("overlays", [])):
+            result["cutout_overlays_gate"] = cutout_overlays_gate(timeline, args.project, errors)
         legacy_timeline = timeline
         if v6 and not v7:
             from audit_v6 import timeline_gates, masks, voice_continuity
