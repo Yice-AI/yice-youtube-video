@@ -1,10 +1,14 @@
-# v9.0 成片审计与签发
+# v10.0 成片审计与签发
 
 素材入箱时保留来源、许可或授权记录、文件哈希和实测底账。装配先运行各幕 HyperFrames check（及 Onetake 连续性探针），之后对实际导出成片运行统一审计：
 
 ```bash
-kit/scripts/audit-v3.sh --v9 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4
+kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4
 ```
+
+## v10 三态与向下兼容
+
+教程的三态占比和空间源码证据由 `three_mode_symphony_gate` 与 `dual_engine_craft_gate` 检查。v10 的实录时长区间为 30%–65%，并检查不同界面包装里的同一页是否超过两镜。旧片可继续分别运行 `--v9`、`--v7`。
 
 ## v9 六项画面检查
 

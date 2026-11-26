@@ -542,9 +542,10 @@ def rendered(args, out, errors):
             legacy_timeline = dict(timeline, shots=[dict(shot, kind="real_video") if shot["kind"]=="studio_ui" else shot for shot in timeline["shots"]])
         if v7:
             from audit_v7 import video_gates, v9_gates
+            v10 = getattr(args,"v10",False)
             if getattr(args,"v9",False):
-                result.update(v9_gates(timeline,args.project,args.rendered,duration,errors))
-            result.update(video_gates(timeline,args.project,args.rendered,duration,errors))
+                result.update(v9_gates(timeline,args.project,args.rendered,duration,errors,v10=v10))
+            result.update(video_gates(timeline,args.project,args.rendered,duration,errors,v10=v10))
         else:
             result.update(timeline_metrics(legacy_timeline, duration, args.project, errors,
                                            v4=args.v4 or args.v5 or v6, v5=args.v5 or v6))
@@ -600,7 +601,10 @@ def main():
     parser.add_argument("--v6", action="store_true", help="启用句首、科技实证、遮挡与云端配音门禁")
     parser.add_argument('--v7',action='store_true',help='启用语义、开场音轨、叠层动效与自然呼吸门禁')
     parser.add_argument('--v9',action='store_true',help='启用 v7 全部审计及六项画面与教程门禁')
+    parser.add_argument('--v10',action='store_true',help='审计空间编排、三态比例及实录同页重复')
     args = parser.parse_args()
+    if args.v10:
+        args.v9 = True
     if args.v9:
         args.v7 = True
     if args.v6 and (not args.rendered or not args.timeline): parser.error("--v6 需要 --rendered 与 --timeline")
@@ -627,6 +631,8 @@ def main():
         (out/'audit-v7-report.json').write_text(report+'\n')
     if args.v9:
         (out/'audit-v9-report.json').write_text(report+'\n')
+    if args.v10:
+        (out/'audit-v10-report.json').write_text(report+'\n')
     print(report)
     return int(bool(errors))
 

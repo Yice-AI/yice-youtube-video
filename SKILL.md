@@ -1,22 +1,24 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v9.0。Onetake 多风格快门渲染、HyperFrames 原生子合成、满屏实操教程、跨时窗遮挡校验、原速配音与声学母带。适用于旁白、真实录屏、分镜、成片和返修。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v10.0。Onetake 多风格快门渲染、HyperFrames 原生子合成、满屏实操教程、跨时窗遮挡校验、原速配音与声学母带。适用于旁白、真实录屏、分镜、成片和返修。
 ---
 
-# 一策 YouTube 视频制作 v9.0
+# 一策 YouTube 视频制作 v10.0
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。
+
+先按[五拍叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)排口播、镜头形态与跨镜承接。用空间积木生成子合成，用真实录屏证明输入与输出。
 
 ## 工具教程
 
 清单声明 `episode_kind: "tool_tutorial"`。前 0–5 秒展示官方复杂成品。接着录下真实安装命令、输入提示词、提交与 Agent 执行，等待加速时标出倍速。最后用 1080p 满屏跟焦演示真实成品的点击、修改和边界验证。每个工具使用自己的输入与真实输出，禁止用虚构的六行提纲或留白网页代拍。
 
-目标每镜 4–6 秒，全片均值 ≤6.5 秒。满屏占实录时长至少 70%，斜框占全片至多 15%，带框镜头之间隔一个其他镜头。照片档案用 `y2_vox` 暖纸冲印，数值用 `t5_data_ruler` 或 `t3_finance_chart`，终端用 `studio_ui`，2–4 项并排用 `triptych_cards`。双擎镜头禁止拼贴两张及以上静态截图。
+目标每镜 4–6 秒，全片均值 ≤6.5 秒。满屏占实录时长至少 70%，斜框占全片至多 15%，带框镜头之间隔一个其他镜头。照片档案用 `y2_vox` 暖纸冲印，数值用 `t5_data_ruler` 或 `t3_finance_chart`，终端用 `studio_ui`，2–4 项并排用 `triptych_cards`。多贴图镜头使用独立的空间运动，并由 v10 审计；平面静态拼贴仍会拦截。
 
 ## 制片入口
 
 0. **定题与破圈包装（动笔前必做）。** 未定题或冷启动选品时，严格按 [破圈选题与包装铁律](references/00-破圈选题与包装铁律.md) 执行「小号高倍黑马库 × 本人真实底牌库 × 第 1 秒视觉炸场度」三圈交叉筛选，用五维提案卡（标题封面、对标倍数、功利获得感、现成真家伙、前 10 秒炸场设计）列出候选供拍板。**先定高点击标题与封面构图，第 0–5 秒直接甩最终惊艳成品立住信任，全片禁塞自造内部黑话、禁铺满屏代码表格。**
-1. **拆稿定证据。** 每句注明要证明的事实、实际画面主体、语义绑定和首字锚点。「第一遍挡住、第二遍移开」「改前、改后」按可辨认的画面状态和台词时序编排。
+1. **五拍拆稿定证据。** 依[本机 Skill 协同表](references/01-高留存叙事与三态画面铁律.md#本机-skill-协同表)用 hyperframes-creative 排证据顺序、humanizer-zh 审口播、cheat-score 查钩子。动效从 hyperframes-animation 的 22 套蓝图、48 条规则选取，物理接力调用 onetake 的 motion.js / ui_kit.js。 每句注明要证明的事实、实际画面主体、语义绑定和首字锚点。「第一遍挡住、第二遍移开」「改前、改后」按可辨认的画面状态和台词时序编排。
 2. **按主体找素材。** 以下入口均在 `kit/scripts/`，保留素材来源和可复查的时间窗。
    - 本机实操用 `rec-demo.sh` 或常驻录屏师，保留连续操作。
    - 公开网页、文档与开源仓库用 `record-web-cam.sh` 录制深色高倍率画面。
@@ -25,7 +27,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v9.0�
    - 具象实物特写和人物抠像分别用 `find-media.sh`、`people-add.sh`。
    - 对原片内容或剪辑的具体评论可用 `reference_breakdown`，原片静音，明确频道署名和实测切点。
 3. **配音并验帧。** 执行 `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`。默认 `long_paragraph` 优先 65–115 字、最多 5 句，`natural_v7` 保留呼吸。`--pause-after 0-3=3.0` 可登记留白。Kaggle 异步每 2.5 秒轮询，默认总等待 900 秒，异步提交 HTTP 404 才回退。清单写好后运行 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify`，按首、中、尾帧逐镜核对台词及因果顺序。
-4. **装配与审片。** 需要连续光学变形的机制镜用 `onetake_clip`。多阶段机制用 `hyperframes_block`，数值关系可用 `t3_finance_chart`，实录优先用 `fullbleed` 满屏跟焦。用 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 装片，输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 和分幕工程。默认两个低优先级渲染进程，--draft 快速试片。画质一致的幕可复用，`--force-render` 强制刷新，`--build-only` 生成工程与母带。最后执行 `kit/scripts/audit-v3.sh --v9 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
+4. **装配与审片。** 需要连续光学变形的机制镜用 `onetake_clip`。多阶段机制用 `hyperframes_block`，数值关系可用 `t3_finance_chart`，实录优先用 `fullbleed` 满屏跟焦。用 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 装片，输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 和分幕工程。默认两个低优先级渲染进程，--draft 快速试片。画质一致的幕可复用，`--force-render` 强制刷新，`--build-only` 生成工程与母带。最后执行 `kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
 
 5. **封面与打包。** 用 `kit/scripts/thumbnail.sh --project . --title "标题" --summary "内容摘要"` 走 `image2` 原生直出，默认生成 3 张候选。打开 `thumbnail-contact-sheet.png` 对照信息流尺寸和右下角时长警示。用同一入口加 `--select 1` 导出小于 2 MB 的高清 JPG，默认存入 `thumbnails/` 并登记账本。
 

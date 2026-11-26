@@ -325,7 +325,7 @@ def breath_integrity_gate(project, timeline):
     return {'ok':not violations,'chapters':len(tracks),'violations':violations}
 
 
-def timeline_gates(timeline, project, duration):
+def timeline_gates(timeline, project, duration, *, real_range=(.45,.72)):
     shots = timeline['shots']
     project = Path(project)
     cues = {str(row['id']):float(row['firstCharTime']) for row in timeline.get('cues',[])}
@@ -422,7 +422,7 @@ def timeline_gates(timeline, project, duration):
     if abs(previous-duration)>.045:
         invalid.append('timeline_end')
     ratio = real_seconds/duration if duration else 0.
-    ratio_ok = .45<=ratio<=.72
+    ratio_ok = real_range[0]<=ratio<=real_range[1]
     repeats = {digest:len(uses) for digest,uses in source_reuse.items()
                if sum(not use['callback'] for use in uses)>2 or sum(use['callback'] for use in uses)>1}
     return {'ok':not (invalid or unaligned or repeats or missing or invalid_cards or overlaps or bad_callbacks) and ratio_ok,
@@ -492,9 +492,9 @@ def onetake_craft_gate(shots, project):
     return dict(ok=not violations,checked=checked,violations=violations)
 
 
-def video_gates(timeline, project, rendered, duration, errors):
+def video_gates(timeline, project, rendered, duration, errors, *, v10=False):
     gates = {
-        'v7_timeline_gate': timeline_gates(timeline,project,duration),
+        'v7_timeline_gate': timeline_gates(timeline,project,duration,real_range=(.30,.65) if v10 else (.45,.72)),
         'semantic_binding_gate': semantic_binding_gate(timeline['shots'],timeline.get('custom_entities')),
         'spotlight_restraint_gate': spotlight_restraint_gate(timeline['shots']),
         'opener_bgm_and_sfx_gate': opener_bgm_and_sfx_gate(Path(rendered).parent/'bed-only.wav',timeline.get('sound_marks',[]),duration),
@@ -676,7 +676,7 @@ def composition_material(entry):
     sources, images = [], set()
     for path in scripts:
         code = path.read_text()
-        sources.append(code)
+        sources.append(f"<script>{code}</script>" if path.suffix.lower() in {".js", ".mjs"} else code)
         for name in re.findall(r"""[\w./%+@-]+\.(?:png|jpe?g|webp)\b""", code, re.I):
             image = (path.parent/name).resolve()
             if not image.is_file():
@@ -685,8 +685,8 @@ def composition_material(entry):
     return '\n'.join(sources), sorted(images)
 
 
-def dual_engine_craft_gate(shots, project, manifest_root=None):
-    checked, violations = {}, []
+def dual_engine_craft_gate(shots, project, manifest_root=None, *, v10=False):
+    checked, violations, modes = {}, [], {}
     for shot in shots:
         mode = stage_mode(shot)
         if mode not in {'onetake_clip','hyperframes_block'}:
@@ -695,7 +695,11 @@ def dual_engine_craft_gate(shots, project, manifest_root=None):
             entry = composition_entry_for_audit(shot,project,manifest_root)
             source,images = composition_material(entry)
             checked[shot['id']] = [p.name for p in images]
-            if len(images) >= 2:
+            spatial = False
+            if v10:
+                from audit_spatial import composition_motion
+                spatial, modes[shot['id']] = composition_motion(source, shot.get('visual_mode'))
+            if len(images) >= 2 and not spatial:
                 violations.append(dict(shot=shot['id'], reason='static_raster_gallery', images=checked[shot['id']]))
             if mode == 'onetake_clip':
                 zooms = {float(n) for n in re.findall(r'\bzoom\s*:\s*([\d.]+)',source)}
@@ -704,7 +708,7 @@ def dual_engine_craft_gate(shots, project, manifest_root=None):
                     violations.append(dict(shot=shot['id'],reason='missing_camera_or_morph'))
         except (OSError,ValueError) as exc:
             violations.append(dict(shot=shot['id'],reason=str(exc)))
-    return dict(ok=not violations,checked=checked,violations=violations)
+    return dict(ok=not violations,checked=checked,violations=violations,**({'verified_modes':modes} if v10 else {}))
 
 
 def visual_fingerprint(image):
@@ -804,14 +808,22 @@ def tutorial_workflow_gate(timeline):
                 process_shots=process,product_shots=product,violations=violations)
 
 
-def v9_gates(timeline, project, rendered, duration, errors):
+def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
     shots = timeline['shots']
     richness = visual_richness_gate(timeline,project,rendered)
     result = dict(pacing_and_rhythm_gate=pacing_and_rhythm_gate(shots,duration),
                   framing_and_variety_gate=framing_and_variety_gate(shots,duration),
                   visual_richness_gate=richness,
-                  dual_engine_craft_gate=dual_engine_craft_gate(shots,project),
+                  dual_engine_craft_gate=dual_engine_craft_gate(shots,project,v10=v10),
                   cross_stage_asset_dedup_gate=cross_stage_asset_dedup_gate(timeline,project,rendered),
                   tutorial_workflow_gate=tutorial_workflow_gate(dict(timeline,capture_scores=richness['checked'])))
+    if v10:
+        from audit_spatial import subpage_repeats, three_mode_symphony_gate
+        result['three_mode_symphony_gate'] = three_mode_symphony_gate(
+            timeline, duration, result['dual_engine_craft_gate']['verified_modes'],
+            tutorial=result['tutorial_workflow_gate']['required'])
+        dedup = result['cross_stage_asset_dedup_gate']
+        dedup['violations'].extend(subpage_repeats(shots,project,rendered))
+        dedup['ok'] = not dedup['violations']
     errors.extend(name for name,gate in result.items() if not gate['ok'])
     return result
