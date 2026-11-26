@@ -818,7 +818,9 @@ def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
                   cross_stage_asset_dedup_gate=cross_stage_asset_dedup_gate(timeline,project,rendered),
                   tutorial_workflow_gate=tutorial_workflow_gate(dict(timeline,capture_scores=richness['checked'])))
     if v10:
-        from audit_spatial import subpage_repeats, three_mode_symphony_gate
+        from audit_spatial import spatial_frame_gates, spatial_measurements, subpage_repeats, three_mode_symphony_gate
+        result.update(spatial_frame_gates(shots,duration,spatial_measurements(shots,project),
+                                          result['tutorial_workflow_gate']['required']))
         result['three_mode_symphony_gate'] = three_mode_symphony_gate(
             timeline, duration, result['dual_engine_craft_gate']['verified_modes'],
             tutorial=result['tutorial_workflow_gate']['required'])

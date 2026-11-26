@@ -8,6 +8,8 @@ kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --
 
 ## v10 三态与向下兼容
 
+v10 教程须有至少 2 个 HyperFrames 镜头，占全片至少 15%，以及至少 3 个 Onetake 镜头，占至少 18%。`dual_engine_symphony_gate` 从实际合成采样背景，检查是否全程暗色。`title_card_collision` 检查可见标题与主体在 30 fps 每一帧的相交面积；`low_layer_contrast` 在展开态对三张可见托板采样，每层与背景的平均亮度差至少为 26。自定义合成用 `data-spatial-title`、`data-spatial-subject` 和 `data-spatial-layer` 标出实际画面元素。
+
 教程的三态占比和空间源码证据由 `three_mode_symphony_gate` 与 `dual_engine_craft_gate` 检查。v10 的实录时长区间为 30%–65%，并检查不同界面包装里的同一页是否超过两镜。旧片可继续分别运行 `--v9`、`--v7`。
 
 ## v9 六项画面检查

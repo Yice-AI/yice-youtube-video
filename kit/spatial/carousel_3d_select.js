@@ -11,8 +11,8 @@ cards.forEach((card,i)=>{
   if(i!==selected) tl.to(card,{x:pose(i,1).x*1.45,y:pose(i,1).y*1.5,z:-590,opacity:0,'--dof':'8px',duration:(dur-stop)*.64,ease:'power2.in'},stop);
 });
 const hero=cards[selected];hero.classList.add('card-morph-anchor');
-tl.to(hero,{x:0,y:27,z:390,rotationX:0,rotationY:0,scale:2.82,'--light':1.05,'--dof':'0px',duration:dur-stop,ease:'power3.inOut'},stop);
+tl.to(hero,{x:0,y:-4,z:260,rotationX:0,rotationY:0,scale:2.48,'--light':1.05,'--dof':'0px',duration:dur-stop,ease:'power3.inOut'},stop);
 tl.fromTo(cam,{x:-45,y:15,z:-150,rx:-6,ry:9},{x:0,y:0,z:0,rx:0,ry:0,duration:stop,ease:'power2.inOut',onUpdate:applyCamera},0);
-tl.to(cam,{z:210,y:-14,duration:dur-stop,ease:'power4.out',onUpdate:applyCamera},stop);
+tl.to(cam,{z:100,y:-14,duration:dur-stop,ease:'power4.out',onUpdate:applyCamera},stop);
 
-tl.to(q('header'),{opacity:0,duration:(dur-stop)*.32,ease:'power1.out'},stop);
+tl.to(q('header'),{autoAlpha:0,y:-45,duration:Math.min(.50,stop*.22),ease:'power2.in'},stop*.76);

@@ -651,7 +651,7 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
             del stage.light_zones[zone_count:]
             stage.light_zones.extend(caption_light_zones(folder/assets[0],start,a,b))
         fields = ('anchor_cue_id','anchor_cue_start','anchor_text','spoken_topic','visual_subject',
-                  'camera_moves','visual_mode','page_region','semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme','transition_in')
+                  'camera_moves','visual_mode','look','shutter','page_region','semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme','transition_in')
         row = stage.shots[-1]
         row.update({field:shot[field] for field in fields if field in shot},id=key,stage_mode=mode)
         if 'overlays' in shot:

@@ -86,3 +86,40 @@ def test_seek_sampling_distinguishes_camera_motion_from_static_art(tmp_path, mat
                       '<script>window.__timelines={still:gsap.timeline({paused:true}).to({},{duration:5})}</script>')
     frozen = audit_spatial.sample_choreography(static)
     assert not frozen['ok'] and len(frozen['timelines'][0]['deadZones']) == 5
+
+
+def test_dual_engine_counts_time_and_measured_palette():
+    modes = ['hyperframes_block']*2 + ['onetake_clip']*3
+    shots = [dict(id=str(i),stage_mode=mode,start=i,end=i+1) for i,mode in enumerate(modes)]
+    measured = {s['id']:dict(frames=[dict(phase=.88,overlaps=[],exploded=False,
+                samples={'background':dict(n=200,luma=190,chroma=20)})]) for s in shots}
+    gate = audit_spatial.spatial_frame_gates
+    assert gate(shots,10,measured,True)['dual_engine_symphony_gate']['ok']
+    assert not gate(shots,30,measured,True)['dual_engine_symphony_gate']['ok']
+    assert not gate(shots[:-1],10,measured,True)['dual_engine_symphony_gate']['ok']
+    for sample in measured.values():
+        sample['frames'][0]['samples']['background']['luma'] = 20
+    assert not gate(shots,10,measured,True)['dual_engine_symphony_gate']['ok']
+
+
+def test_seeked_pixels_and_visible_title_bounds(tmp_path):
+    import os
+    if not os.environ.get('YICE_PLAYWRIGHT_MODULE') or not os.environ.get('YICE_CHROME_EXECUTABLE'):
+        pytest.skip('需要本机 Playwright 与无头 Chromium')
+    entry = tmp_path/'frame.html'
+    shot = dict(id='scene',stage_mode='hyperframes_block',composition=entry.name,start=0,end=5)
+    fixture = """<style>*{margin:0}body{background:#181818}.plate{position:absolute;top:180px;width:250px;
+        height:180px;background:COLOR}header{position:absolute;left:200px;top:TOPpx;width:100px;height:60px}</style>
+        <section data-spatial-recipe="layer_explode_3d"><header data-spatial-title>标题</header>
+        <div data-spatial-subject data-spatial-layer="base" class="plate" style="left:150px"></div>
+        <div data-spatial-layer="skeleton" class="plate" style="left:450px"></div>
+        <div data-spatial-layer="letters" class="plate" style="left:750px"></div></section>
+        <script>window.__meta={dur:5};window.__seek=()=>{};</script>"""
+    for color,top,ok in [('#242424','210',False),('#dddddd','65',True)]:
+        markup = fixture.replace('COLOR',color).replace('TOP',top)
+        entry.write_text('<!doctype html><template>'+markup+'</template>' if ok else markup)
+        measured=audit_spatial.spatial_measurements([shot],tmp_path)
+        gates=audit_spatial.spatial_frame_gates([shot],5,measured,False)
+        assert gates['title_card_collision']['ok'] is ok
+        assert gates['low_layer_contrast']['ok'] is ok
+        assert gates['low_layer_contrast']['plates']['scene']['letters']['n']>0

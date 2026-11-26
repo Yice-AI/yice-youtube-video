@@ -38,7 +38,7 @@ env -i HOME="$HOME" PATH="$PATH" ./install.sh --check
 1. **初始化与视觉选型**：运行 `kit/scripts/new-episode.sh ep04` 创建剧集工程，用 `kit/scripts/visual-palette.sh` 按本期题材挑选契合的色板（或 `--from-shot` 从产品截图吸色）与动态蓝图。
 2. **配音与分镜草稿**：运行 `kit/scripts/voice.sh script.md --backend kaggle --speed 1.0 --output voice`，再用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成对齐首字时间的 30fps 骨架。
 3. **高清采集与验帧**：用 `collect-entity.sh`、`record-web-cam.sh`、`find-media.sh`、`scout-video-scenes.sh` 采集实证素材，填好 `episode-manifest.json`（高光段走 `onetake_clip`，动态机制走 `hyperframes_block`，实录优先用 `fullbleed` + `focus_push`），跑 `scout-video-scenes.sh --verify-manifest` 做首中尾帧与贴图防撞字核验。
-4. **装片、终审与封面**：运行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 以两个低优先级进程导出成片与字幕，可用 `--draft` 试片，执行 `kit/scripts/audit-v3.sh --v10` 检查节奏、画幅、空壳、双擎动效、跨镜重复、教程过程，以及既有像素与声学要求，最后用 `kit/scripts/thumbnail.sh` 生成并选定封面。
+4. **装片、终审与封面**：运行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 以两个低优先级进程导出成片与字幕，可用 `--draft` 试片，执行 `kit/scripts/audit-v3.sh --v10` 检查可见标题与主体碰撞、展开层板亮度、双擎时长与配色、节奏、画幅、空壳、双擎动效、跨镜重复、教程过程，以及既有像素与声学要求，最后用 `kit/scripts/thumbnail.sh` 生成并选定封面。
 
 完整字段契约与路由细则见 [SKILL.md](SKILL.md) 与 [references/10-双擎高阶视觉路由.md](references/10-双擎高阶视觉路由.md)。
 

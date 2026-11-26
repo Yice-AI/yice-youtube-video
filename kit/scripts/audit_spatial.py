@@ -14,8 +14,11 @@ def composition_motion(source, declared=None):
     camera = bool(re.search(r'OM\.camera\(',scripts) and re.search(r'OM\.(?:view|screenTravel)\(',scripts)
                   and len(set(re.findall(r'zoom\s*:\s*([\d.]+)',scripts))) > 1)
     spatial = bool((tween and 'preserve-3d' in source and depth and layered) or (camera and layered and (depth or re.search(r'OM\.view\(|OM\.lattice\(', scripts))))
-    recipe = re.search(r'data-spatial-recipe=[\'"]([\w-]+)', source)
+    recipe = re.search(r'<[a-zA-Z][^<>]*?\sdata-spatial-recipe=[\'"]([\w-]+)', source)
     process = recipe and recipe[1] in ('literal_action_stage','roadmap_thread_camera')
+    native_action = re.search(r'OM\.(?:shake|spring|gather)\(', scripts)
+    if declared == 'M3' and '__seek' in scripts and (native_action or camera):
+        return spatial, 'M3'
     if tween and process:
         return spatial, 'M3'
     if spatial:
@@ -151,6 +154,92 @@ const {pathToFileURL} = require('node:url');
     timelines = json.loads(result.stdout)
     return dict(ok=bool(timelines) and all(t['tweens'] and t['seekSafe'] and not t['deadZones']
                                            for t in timelines),timelines=timelines)
+
+
+def spatial_measurements(shots, project):
+    """Seek source compositions with the same Onetake assets used in the renderer."""
+    import importlib
+    import json
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+    from audit_v7 import composition_entry_for_audit
+    from workspace import onetake_look, resolve_onetake
+
+    results, entries = {}, {}
+    project = Path(project)
+    manifest = project.parent / 'episode-manifest.json'
+    originals = {s['id']:s for s in json.loads(manifest.read_text())['shots']} if manifest.is_file() else {}
+    with TemporaryDirectory() as folder:
+        for index, shot in enumerate(shots):
+            mode = stage_mode(shot)
+            if mode not in ('hyperframes_block', 'onetake_clip'):
+                continue
+            key = shot['id']
+            original = originals.get(key)
+            try:
+                entry = composition_entry_for_audit(shot,project)
+                if mode == 'onetake_clip':
+                    runtime = resolve_onetake()
+                    if not runtime:
+                        raise ValueError('未找到 Onetake 渲染环境')
+                    look = onetake_look(runtime,shot.get('look',(original or {}).get('look')))
+                    stage = importlib.import_module('render-onetake-clip').stage_composition
+                    entry = stage(entry,Path(folder)/str(index),runtime,look=look)
+                entries[key] = dict(entry=str(entry.resolve()),seconds=shot_span(shot))
+            except (ValueError, OSError) as exc:
+                results[key] = dict(error=str(exc))
+        if entries:
+            try:
+                proc = subprocess.run(['node',str(Path(__file__).with_name('sample-spatial-frames.cjs'))],
+                                      input=json.dumps(entries),text=True,capture_output=True,check=True,timeout=150)
+                results.update(json.loads(proc.stdout))
+            except (ValueError,OSError,subprocess.SubprocessError) as exc:
+                results.update({key:dict(error=str(exc)) for key in entries})
+    return results
+
+
+def spatial_frame_gates(shots, duration, measured, required):
+    engines = {'hyperframes_block':dict(count=0,seconds=0.),'onetake_clip':dict(count=0,seconds=0.)}
+    collisions, contrast, palette, ratios, plates = [], [], {}, {}, {}
+    for shot in shots:
+        mode, key = stage_mode(shot), shot['id']
+        if mode not in engines:
+            continue
+        engines[mode]['count'] += 1
+        engines[mode]['seconds'] += shot_span(shot)
+        result = measured.get(key,{})
+        if not result.get('frames'):
+            failure = dict(shot=key,reason='missing_frame_evidence',detail=result.get('error'))
+            collisions.append(failure)
+            contrast.append(failure)
+            continue
+        for frame in result['frames']:
+            if frame['overlaps']:
+                collisions.append(dict(shot=key,reason='title_card_collision',phase=frame['phase'],area=max(frame['overlaps'])))
+            if 'samples' not in frame:
+                continue
+            samples = frame['samples']
+            bg = samples.get('background',{})
+            palette[key] = bg
+            if frame['exploded']:
+                for layer in ('base','skeleton','letters'):
+                    value = samples.get(layer,{})
+                    delta = abs(value['luma']-bg['luma']) if value.get('n') and bg.get('n') else 0
+                    plates.setdefault(key,{})[layer] = dict(delta=delta,**value)
+                    if delta<26:
+                        contrast.append(dict(shot=key,reason='low_layer_contrast',layer=layer,delta=delta))
+    violations = []
+    for mode, minimum, share in [('hyperframes_block',2,.15),('onetake_clip',3,.18)]:
+        data = engines[mode]
+        ratios[mode] = data['seconds']/duration if duration else 0
+        if required and (data['count']<minimum or ratios[mode]+1e-8<share):
+            violations.append(dict(engine=mode,minimum_count=minimum,minimum_ratio=share))
+    if required and not any(bg.get('luma',0)>=110 or bg.get('chroma',0)>=70 for bg in palette.values()):
+        violations.append(dict(reason='all_dark_or_missing_palette'))
+    return dict(title_card_collision=dict(ok=not collisions,violations=collisions),
+                low_layer_contrast=dict(ok=not contrast,plates=plates,violations=contrast),
+                dual_engine_symphony_gate=dict(ok=not violations,required=required,engines=engines,ratios=ratios,
+                                              backgrounds=palette,violations=violations))
 
 
 if __name__ == '__main__':

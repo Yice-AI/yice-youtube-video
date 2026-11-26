@@ -109,7 +109,10 @@ def test_caption_boundaries_are_scaffold_anchors(tmp_path):
     shots=draft['shots']
     assert [s['start'] for s in shots]==[0,4.5,9.4]
     assert all(3.5<=audit.shot_span(s)<=6 for s in shots)
-    assert len({s['stage_mode'] for s in shots})>=2
+    assert [s['stage_mode'] for s in shots] == ['hyperframes_block','onetake_clip','fullbleed_rig']
+    assert [s['visual_mode'] for s in shots] == ['M1','M3','M2']
+    assert shots[0]['composition'] and shots[1]['comp'] and shots[2]['source']
+    assert shots[1]['shutter']==180 and shots[1]['look']=='paper'
     cues={c['id']:c['firstCharTime'] for c in draft['cues']}
     assert all(abs(cues[s['anchor_cue_id']]-s['start'])<=.22 for s in shots)
     (tmp_path/'captions.json').unlink()

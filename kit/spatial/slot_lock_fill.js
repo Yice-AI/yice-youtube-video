@@ -5,5 +5,5 @@ all('.token').forEach((chip,i)=>{
 });
 all('.slots i').forEach((slot,i)=>{
   tl.fromTo(slot,{scale:1},{scale:.94,duration:.09,yoyo:true,repeat:1},dur*(.5+i*.13));
-  tl.to(slot,{borderColor:'#e5bd83',duration:.14},dur*(.5+i*.13));
+  tl.to(slot,{borderColor:'#e5bd83','--lock-opacity':1,duration:.14},dur*(.5+i*.13));
 });

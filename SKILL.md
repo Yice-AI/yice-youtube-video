@@ -49,7 +49,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v10.0�
 
 所有时间用秒。镜头 `start`、`end`、旁白 `at` 和 `firstCharTime` 以全片起点为零。`overlays[].at` 是镜内相对时间。素材路径相对清单解析。
 
-用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 读取首字时间和同目录 captions.json 生成 30 fps 分镜草稿；可用 --captions 指定字幕文件，超过 6.2 秒的句群按字幕边界拆镜，needs_subcut 标记待人工补切的段落，再用核对过的画面替换占位镜头。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`aurora_indigo`、`paper_cool` 或 `paper_warm`。
+用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 读取首字时间和同目录 captions.json 生成 30 fps 分镜草稿。默认轮换 HyperFrames 空间镜、Onetake 过程镜和满屏实录，分别补齐对应的合成源码或实际录屏；可用 --captions 指定字幕文件，超过 6.2 秒的句群按字幕边界拆镜，needs_subcut 标记待人工补切的段落，再用核对过的画面替换占位镜头。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`aurora_indigo`、`paper_cool` 或 `paper_warm`。
 
 `gsap` 是可选覆盖项。省略时自动发现本机 GSAP，包括 toolkit 的 `local/vendor/gsap.min.js`。
 

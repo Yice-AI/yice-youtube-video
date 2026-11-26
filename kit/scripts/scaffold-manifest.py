@@ -29,19 +29,18 @@ def caption_cuts(start, end, captions):
     return list(reversed(result))
 
 
-def draft_stage(index, has_captions):
-    route = ('fullbleed_rig','studio_ui','fullbleed_rig','y2_vox','fullbleed_rig','t5_data_ruler')[index % 6]
-    if route == 'fullbleed_rig' and has_captions:
-        return dict(stage_mode=route, framing='fullbleed', motion='focus_push',
-                    source=f'media/shot-{index+1:02}.mp4', visual_subject='待录制满屏操作与结果')
-    if route == 'studio_ui':
-        return dict(stage_mode=route, studio_style='terminal_pipeline', data={'command':'待填实际命令','lines':[]},
-                    visual_subject='待补实际命令和执行输出')
-    # Without recordings keep the legacy no-caption draft buildable.
-    grammar = 'y2_vox' if route == 'fullbleed_rig' else route
-    return dict(stage_mode='explainer_clip', spec=dict(grammar=grammar, data={'title':'待补实证'},
-                cues=[dict(kind='title',at=0.,text='待替换经核验的素材')]), visual_subject='待补实证画面',
-                suggested_stage=route)
+def draft_stage(index):
+    key = f'shot-{index+1:02}'
+    route = ('M1', 'M3', 'M2', 'M3', 'M2', 'M1', 'M2', 'M3', 'M2', 'M3')[index % 10]
+    if route == 'M1':
+        return dict(stage_mode='hyperframes_block', visual_mode=route, composition=f'blocks/{key}/index.html',
+                    semantic_binding='conceptual_explainer', visual_subject='待制作空间拆解或选择')
+    if route == 'M3':
+        return dict(stage_mode='onetake_clip', visual_mode=route, comp=f'motion/{key}/comp.html',
+                    shutter=180, look='paper' if index % 10 in (1, 7) else 'ultramarine',
+                    semantic_binding='conceptual_explainer', visual_subject='待制作对应旁白的过程动作')
+    return dict(stage_mode='fullbleed_rig', visual_mode=route, framing='fullbleed', motion='focus_push',
+                source=f'media/{key}.mp4', semantic_binding='exact_tool_capture', visual_subject='待录制满屏操作与结果')
 
 
 def scaffold(manifest, timing, output, title, captions=None):
@@ -103,9 +102,9 @@ def scaffold(manifest, timing, output, title, captions=None):
     shots = []
     for i,(start,cue) in enumerate(cuts):
         end = cuts[i+1][0] if i+1<len(cuts) else duration
-        stage = draft_stage(i, bool(lines))
+        stage = draft_stage(i)
         shot = dict(id=f'shot-{i+1:02}',act='act-1',start=start,end=end,anchor_cue_id=cue['id'],
-                    spoken_topic=cue['text'],semantic_binding='conceptual_explainer',semantic_tags=['分镜草稿'],**stage)
+                    spoken_topic=cue['text'],semantic_tags=['分镜草稿'],**stage)
         if end-start > (6.2 if lines else 6.5):
             shot['needs_subcut'] = True
         shots.append(shot)
