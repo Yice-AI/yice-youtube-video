@@ -119,6 +119,15 @@ class VoiceCheckTests(unittest.TestCase):
         natural = check.check_chapter(audio, aligned, profile="natural_v7")
         self.assertTrue(any(a.get("pause_class") == "sentence" for a in natural["alerts"]))
 
+    def test_short_planned_pause_preserves_natural_sentence_range(self):
+        text = "甲乙。丙丁戊己。"
+        audio, aligned = self.synth(text=text, gaps={1: 1.0})
+        aligned["planned_pauses"] = {str(text.index("。")): .12}
+        result = check.check_chapter(audio, aligned, profile="natural_v7")
+        boundary = next(b for b in result["measurement"]["boundaries"] if b["kind"] == "sentence")
+        self.assertEqual(boundary["range_ms"], [0., 1250.])
+        self.assertFalse(any(a.get("pause_class") == "sentence" for a in result["alerts"]))
+
     def test_natural_v7_tolerates_short_unpunctuated_breath_and_flags_long_pause(self):
         audio, aligned = self.synth(gaps={1: .20})
         natural = check.check_chapter(audio, aligned, profile="natural_v7")

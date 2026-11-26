@@ -259,7 +259,9 @@ def measure(path, alignment, cache=None, thresholds=None):
         if planned is not None and kind in ('comma', 'contrast', 'sentence'):
             planned_ms = 1000 * float(planned)
             if (thresholds or {}).get('profile') == 'natural_v7':
-                interval = [max(0., planned_ms - 150.), planned_ms + 600.]
+                lower, upper = interval
+                interval = [max(0., planned_ms - 150.) if planned_ms > upper else lower,
+                            max(upper, planned_ms + 600.)]
             else:
                 interval = [planned_ms, planned_ms]
         # Whisper often assigns the pause to the NEXT word; examine a boundary
