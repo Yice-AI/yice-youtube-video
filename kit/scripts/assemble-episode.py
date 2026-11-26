@@ -21,7 +21,7 @@ from PIL import Image
 KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(KIT.parent))
 from audit_v7 import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, probe_video, semantic_binding_gate
-from workspace import ONETAKE_FILES, ONETAKE_FONTS, composition_files, resolve_gsap_runtime, resolve_hyperframes_command, resolve_onetake
+from workspace import ONETAKE_FILES, ONETAKE_FONTS, composition_files, resolve_gsap_runtime, resolve_hyperframes_command, resolve_onetake, render_workers, render_priority
 from kit.editorial.audio_mix import mix_episode_audio
 from kit.editorial.editorial import EditorialStage, EXPLAINER_THEMES, FONT_FILES, PALETTES, evidence_box
 from kit.studio_ui import add_workbench
@@ -316,6 +316,32 @@ def bright_caption_band(source, second):
         return False
 
 
+def caption_light_zones(source, media_start, start, end):
+    span = end - start
+    inset = min(.6, span * .2)
+    samples = [inset, span / 2, span - inset] if span >= 4 else [span / 2]
+    previous = samples[0]
+    light = bright_caption_band(source, media_start + previous)
+    boundary = start
+    for sample in samples[1:]:
+        current = bright_caption_band(source, media_start + sample)
+        if current != light:
+            lo, hi = round(previous * FPS), round(sample * FPS)
+            while hi - lo > 1:
+                mid = (lo + hi) // 2
+                if bright_caption_band(source, media_start + mid / FPS) == light:
+                    lo = mid
+                else:
+                    hi = mid
+            cut = start + hi / FPS
+            if light:
+                yield boundary, cut
+            boundary = cut
+        light, previous = current, sample
+    if light:
+        yield boundary, end
+
+
 def restore_file_paths(value):
     """Keep rebased paths local until the explainer opens its own file server."""
     if isinstance(value,dict):
@@ -355,7 +381,7 @@ def composition_entry(root, value, default):
     return entry
 
 
-def onetake(shot, root, folder, run, *, force_render=False):
+def onetake(shot, root, folder, run, *, force_render=False, workers=None):
     entry = composition_entry(root,shot.get('comp'),'comp.html')
     runtime = resolve_onetake()
     if runtime is None:
@@ -398,14 +424,14 @@ def onetake(shot, root, folder, run, *, force_render=False):
         except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
             pass
     cmd = [sys.executable,str(Path(__file__).with_name('render-onetake-clip.py')),str(entry),
-           '--out',str(output),'--span',str(span),'--shutter',str(shutter)]
+           '--out',str(output),'--span',str(span),'--shutter',str(shutter),'--workers',str(render_workers(workers))]
     if allow_staccato:
         cmd.append('--allow-staccato')
     if look is not None:
         cmd.extend(('--look',look))
     if shots:
         cmd.extend(('--look-from-shots',*map(str,shots)))
-    run(cmd,check=True)
+    run(cmd,check=True,**render_priority())
     write(stamp,inputs)
     return output.relative_to(folder).as_posix(), read(probe)
 
@@ -505,7 +531,7 @@ def explainer(shot, root, folder, run, *, force_render=False):
     return target.relative_to(folder).as_posix(),spec
 
 
-def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None):
+def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None, workers=None):
     first,last = shots[0]['start'],shots[-1]['end']
     stage = EditorialStage(title,duration=last-first,fps=FPS)
     for shot in shots:
@@ -561,10 +587,10 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None)
                                      paper=theme=='pine' and shot.get('paper',False),logo=logo)
         elif mode == 'callout_rig':
             stage.add_callout_rig(a,b,assets[0],overlays=overlays,media_start=start,motion=shot.get('motion','glide'),
-                                  framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''),refractive=cinema)
+                                  camera_moves=shot.get('camera_moves'),framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''),refractive=cinema)
         elif mode == 'fullbleed_rig':
             stage.add_fullbleed_rig(a,b,assets[0],media_start=start,motion=shot.get('motion','glide'),
-                                    framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''),refractive=cinema)
+                                    camera_moves=shot.get('camera_moves'),framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''),refractive=cinema)
         elif mode == 'studio_ui':
             data = dict(shot['data'])
             data['evidence'] = assets
@@ -590,9 +616,15 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None)
             stage.add_reference_breakdown(a,b,assets[0],channel=shot.get('channel'),claim=shot.get('claim'),
                                           cut_points=shot.get('cut_points',()),metrics=shot.get('metrics',()),media_start=start)
         elif mode == 'onetake_clip':
-            clip,probe = onetake(shot,root,folder,run,force_render=force_render)
+            clip,probe = onetake(shot,root,folder,run,force_render=force_render,workers=workers)
             stage.add_video(a,b,clip,0,0,1920,1080,fit='cover')
             stage._shot(text,'onetake_motion',a,b,[clip],beats=probe['beats'])
+            entry = composition_entry(root,shot['comp'],'comp.html')
+            source_folder = folder/'onetake-sources'/key
+            for source in composition_files(entry):
+                install_asset(source,source_folder/source.relative_to(entry.parent))
+            row_entry = source_folder/entry.name
+            stage.shots[-1]['comp'] = row_entry.relative_to(folder).as_posix()
             for event in probe['events']:
                 if event['t'] < span:
                     stage.add_sound_mark(event['kind'],a+event['t'],gain=event.get('gain'))
@@ -611,13 +643,15 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None)
             theme_name = clip_theme.get('name') if isinstance(clip_theme,dict) else clip_theme
             if theme_name in {'snow','paper','bauhaus'} or (not clip_theme and spec['grammar']=='t6_swiss_card'):
                 stage.light_zones.append((a,b))
+        zone_count = len(stage.light_zones)
         stage.apply_palette(theme,a,b,palette_start,keep_studio_panels=mode=='studio_ui')
         if cinema:
             stage.add_cinema_material(a,b,theme)
-        if mode in {'fullbleed_rig','callout_rig'} and bright_caption_band(folder/assets[0],start+span/2):
-            stage.light_zones.append((a,b))
+        if mode in {'fullbleed_rig','callout_rig'} and shot.get('framing','fullbleed') == 'fullbleed':
+            del stage.light_zones[zone_count:]
+            stage.light_zones.extend(caption_light_zones(folder/assets[0],start,a,b))
         fields = ('anchor_cue_id','anchor_cue_start','anchor_text','spoken_topic','visual_subject',
-                  'semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme','transition_in')
+                  'camera_moves','semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme','transition_in')
         row = stage.shots[-1]
         row.update({field:shot[field] for field in fields if field in shot},id=key,stage_mode=mode)
         if 'overlays' in shot:
@@ -654,7 +688,7 @@ def cleanup_failure(error, *, checked):
 def hyperframes_step(command, operation, args, folder, env, run):
     for attempt in range(3):
         try:
-            result = run(command+[operation,*args],cwd=folder,env=env,check=True,capture_output=True,text=True)
+            result = run(command+[operation,*args],cwd=folder,env=env,check=True,capture_output=True,text=True,**render_priority())
         except subprocess.CalledProcessError as error:
             if attempt==2 or not cleanup_failure(error,checked=operation=='render'):
                 if error.stdout:
@@ -672,8 +706,9 @@ def hyperframes_step(command, operation, args, folder, env, run):
             return
 
 
-def render_act(folder, stage, command, env, run, *, force_render=False):
-    arguments = ['.','--fps',str(FPS),'--quality','looks']
+def render_act(folder, stage, command, env, run, *, force_render=False, workers=None, draft=False):
+    workers = render_workers(workers)
+    arguments = ['.','--fps',str(FPS),'--quality','draft' if draft else 'looks']
     media = {'vendor/gsap.min.js','assets/mix.wav',*(path for row in stage.shots for path in row['files'])}
     inputs = dict(duration=round(stage.duration,6),command=command,arguments=arguments,
                   html=file_fingerprint(folder/'index.html'),
@@ -691,7 +726,7 @@ def render_act(folder, stage, command, env, run, *, force_render=False):
     pending = folder/'render.pending.mp4'
     try:
         hyperframes_step(command,'check',['.'],folder,env,run)
-        hyperframes_step(command,'render',[*arguments,'--output',pending.name],folder,env,run)
+        hyperframes_step(command,'render',[*arguments,'--workers',str(workers),'--output',pending.name],folder,env,run)
         if abs(probe_video(pending)-stage.duration)>1/FPS+.00001:
             raise ValueError(f'分幕渲染时长不符：{folder.name}')
         pending.replace(output)
@@ -701,7 +736,8 @@ def render_act(folder, stage, command, env, run, *, force_render=False):
     return 'rendered'
 
 
-def assemble(manifest, output, *, build_only=False, force_render=False, run=subprocess.run):
+def assemble(manifest, output, *, build_only=False, force_render=False, run=subprocess.run, workers=None, draft=False):
+    workers = render_workers(workers)
     import soundfile as sf
     from itertools import groupby
 
@@ -723,7 +759,7 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
         folder = output/'acts'/act
         folder.mkdir(parents=True,exist_ok=True)
         offset = items[0]['start']
-        stage = build_act(items,root,folder,raw.get('title',name),run,force_render=force_render,gsap=gsap)
+        stage = build_act(items,root,folder,raw.get('title',name),run,force_render=force_render,gsap=gsap,workers=workers)
         stages.append((folder,stage,offset))
         marks.extend(stage.sound_events(offset))
         for row in stage.shots:
@@ -744,7 +780,7 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
                 global_row['cards'] = [dict(card,**{key:(prefix/card[key]).as_posix()
                                                    for key in ('source','logo') if card.get(key)})
                                        for card in row['cards']]
-            for field in ('explainer_spec','composition'):
+            for field in ('explainer_spec','composition','comp'):
                 if field in row:
                     global_row[field] = (prefix/row[field]).as_posix()
             global_shots.append(global_row)
@@ -762,6 +798,8 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
                   for i,path in enumerate(audio.get('voice_processing_logs',[]))]
     timeline = dict(end=duration,shots=global_shots,cues=list(cues.values()),voice_tracks=voice_files,
                     voice_processing_logs=voice_logs,sound_marks=mix['sound_marks'],music_drops=audio.get('music_drops',[]))
+    if 'episode_kind' in raw:
+        timeline['episode_kind'] = raw['episode_kind']
     if 'custom_entities' in raw:
         timeline['custom_entities'] = raw['custom_entities']
     timeline['music_drops'] = [[row['start'],row['end']] if isinstance(row,dict) else row for row in timeline['music_drops']]
@@ -783,7 +821,7 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
         (folder/'assets').mkdir(exist_ok=True)
         sf.write(folder/'assets/mix.wav',wave[round(offset*rate):round(stop*rate)],rate,subtype='PCM_24')
         if not build_only:
-            render_status[folder.name] = render_act(folder,stage,command,env,run,force_render=force_render)
+            render_status[folder.name] = render_act(folder,stage,command,env,run,force_render=force_render,workers=workers,draft=draft)
     result = dict(ok=True,duration=duration,acts=len(stages),shots=len(shots),timeline='shot-timeline.json',srt=f'{name}.srt')
     if not build_only:
         concat = output/'acts.ffconcat'
@@ -807,9 +845,11 @@ def main(argv=None):
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--build-only',action='store_true',help='生成分幕工程和母带，跳过浏览器渲染')
     parser.add_argument('--force-render',action='store_true',help='忽略已有分幕渲染缓存')
+    parser.add_argument('--workers',type=int,help='渲染并发数，默认取 YICE_RENDER_WORKERS 或 2')
+    parser.add_argument('--draft',action='store_true',help='以草稿画质渲染并复用一致的 Onetake 片段')
     args = parser.parse_args(argv)
     try:
-        result = assemble(args.manifest,args.output,build_only=args.build_only,force_render=args.force_render)
+        result = assemble(args.manifest,args.output,build_only=args.build_only,force_render=args.force_render,workers=args.workers,draft=args.draft)
     except (OSError,ValueError,TypeError,KeyError,subprocess.SubprocessError) as exc:
         parser.error(str(exc))
     print(json.dumps(result,ensure_ascii=False))

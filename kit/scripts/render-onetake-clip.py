@@ -11,7 +11,7 @@ import subprocess
 import sys
 from tempfile import TemporaryDirectory
 
-from workspace import ONETAKE_COLORS, ONETAKE_FONTS, composition_files, onetake_look, onetake_python, resolve_onetake
+from workspace import ONETAKE_COLORS, ONETAKE_FONTS, composition_files, onetake_look, onetake_python, resolve_onetake, render_priority, render_workers
 
 FONT_ROOT = Path(__file__).resolve().parents[1] / 'template/assets/fonts'
 
@@ -133,7 +133,8 @@ def validate_probe(probe, allow_staccato):
         raise ValueError('Onetake __events() 须返回有效的镜头内 {t, kind, gain?} 列表')
 
 
-def render_clip(entry, output, *, shutter=180, workers=6, span=None, allow_staccato=False, look=None, look_from_shots=()):
+def render_clip(entry, output, *, shutter=180, workers=None, span=None, allow_staccato=False, look=None, look_from_shots=()):
+    workers = render_workers(workers)
     runtime = resolve_onetake()
     if runtime is None:
         raise ValueError('找不到 Onetake，请设置 YICE_ONETAKE_DIR')
@@ -149,7 +150,7 @@ def render_clip(entry, output, *, shutter=180, workers=6, span=None, allow_stacc
         palette = onetake_look(runtime,look,shots=look_from_shots,output=work/'product.json') if look is not None or look_from_shots else None
         staged = stage_composition(entry, work / 'composition', runtime, look=palette)
         result = subprocess.run([*python, '-c', PROBE, str(runtime / 'scripts/probe.py'), staged.as_uri()],
-                                check=True, stdout=subprocess.PIPE, text=True)
+                                check=True, **render_priority(), stdout=subprocess.PIPE, text=True)
         probe = json.loads(result.stdout)
         probe_path = output.with_suffix('.onetake-probe.json')
         probe_pending = work / 'probe.json'
@@ -161,7 +162,7 @@ def render_clip(entry, output, *, shutter=180, workers=6, span=None, allow_stacc
             raise
         pending = work / 'render.mp4'
         subprocess.run([*python, str(runtime / 'scripts/render.py'), str(staged), '--out', str(pending),
-                        '--fps', '30', '--shutter', str(shutter), '--workers', str(workers)], check=True)
+                        '--fps', '30', '--shutter', str(shutter), '--workers', str(workers)], check=True, **render_priority())
         render_path = pending.with_suffix('.render.json')
         render = json.loads(render_path.read_text())
         if render['fps'] != 30 or render['size'] != [1920, 1080] or render['shutter'] != shutter:
@@ -175,7 +176,7 @@ def render_clip(entry, output, *, shutter=180, workers=6, span=None, allow_stacc
                 padded = work / 'padded.mp4'
                 subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', str(pending),
                                 '-vf', f"tpad=stop_mode=clone:stop={frames - render['frames']}",
-                                '-an', '-c:v', 'libx264', '-crf', '16', '-pix_fmt', 'yuv420p', str(padded)], check=True)
+                                '-an', '-c:v', 'libx264', '-crf', '16', '-pix_fmt', 'yuv420p', '-threads', '2', str(padded)], check=True, **render_priority())
                 pending = padded
                 render['padded_frames'] = frames
         render_path.write_text(json.dumps(render, ensure_ascii=False, indent=2) + '\n')
@@ -189,7 +190,7 @@ def main():
     parser.add_argument('composition', type=Path)
     parser.add_argument('--out', required=True, type=Path)
     parser.add_argument('--shutter', type=float, default=180)
-    parser.add_argument('--workers', type=int, default=6)
+    parser.add_argument('--workers', type=int)
     parser.add_argument('--span', type=float)
     parser.add_argument('--allow-staccato', action='store_true')
     parser.add_argument('--look')

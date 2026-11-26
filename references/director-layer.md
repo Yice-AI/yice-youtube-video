@@ -1,6 +1,8 @@
-# v8.2 导演层与画面路由
+# v9.0 导演层与画面路由
 
 按旁白首字安排画面，先确定本句要证明的事实与叙事角色，再选色板与舞台。默认输出 `1920×1080`、`30fps`，支持五套主舞台主题（`obsidian`、`aurora_indigo`、`paper_cool`、`paper_warm`、`pine`）以及 `onetake` 六套电影色板（`paper`、`dusk`、`tabletop`、`ultramarine`、`riso`、`ember`）或产品截图自动吸色（`look_from_shots`），一切以贴合内容气质与视觉高级感为准。字幕统一保留 `y ≥ 900` 安全区。
+
+教程前 5 秒放官方复杂成品，接着实录命令或提示词与 Agent 执行过程，长等待注明倍速。随后用满屏多点推焦拆解真实成品并验证边界。以 4–6 秒一个镜头排台词，全片均值 ≤6.5 秒，满屏占实录 ≥70%，斜框占全片 ≤15%，带框镜不相邻。跨图对照选冲印台或分栏卡，双擎内禁止拼贴两张及以上静态截图。
 
 ## 选材、选型与因果核验
 
@@ -14,16 +16,16 @@
 
 | 舞台 | 用途与核心字段 |
 |---|---|
-| `onetake_clip` | **黄金前 8 秒钩子、核心机制高潮、全片灵魂结论收束**。填 `comp`、`shutter`（默认 `180`），可选 `look` 或 `look_from_shots`。用 `OM` 物理弹簧/相机跟随/连续变形（Carry）与真实快门动态模糊替代多框文字堆砌。 |
+| `onetake_clip` | **单主体相机推拉、连续变形与机制高潮**。填 `comp`、`shutter`（默认 `180`），可选 `look` 或 `look_from_shots`。用 `OM` 物理弹簧/相机跟随/连续变形（Carry）与真实快门动态模糊替代多框文字堆砌。 |
 | `hyperframes_block` | **多阶段架构、3D 卡片阵列、数据流与交互状态推演**。填 `composition`，挂载独立子合成（Registry 组件或 Animation 22 套蓝图），自动离线注入 GSAP 与打包字体。 |
-| `callout_rig` / `fullbleed_rig` | **真实网页与实操录屏主力舞台**。填 `source`、`media_start`、`motion`（支持 `focus_push` / `spring_glide` 两段呼吸运镜），推荐搭配 `framing: "perspective_3d"` 或 `"studio_window"` 悬浮暗场精工窗。 |
+| `callout_rig` / `fullbleed_rig` | **真实网页与实操录屏主力舞台**。填 `source`、`media_start`、`motion`（支持 `focus_push` / `spring_glide` 两段呼吸运镜），默认采用 `fullbleed` 满屏跟焦，暗场视窗只用于单镜强调。 |
 | `evidence_spotlight` | **原文、截图或架构图局部推近检视台**。传网页采集的 `capture_meta` 自动复用原文像素框与来源署名，或显式填 `highlight_box` 与 `highlight_at`。 |
 | `triptych_cards` | **两至四项多格式对照展台**（支持视频、GIF、WebP、PNG、安全 SVG）。现代主题下自动启用圆角毛玻璃立体展台卡与逐卡 `reveal_at` 弹性点亮。 |
 | `cold_open_ab` | **两条真视频同窗 A/B 对照**，填 `sources`、`labels`、`hook` 与 `countdown`。 |
 | `reference_breakdown` | **1152×648 静音原片拆解检视窗**，填 `channel` 署名、`claim`、实测 `cut_points` 与最多三项 `metrics`。 |
 | `studio_ui` | **剪辑台、代码编辑器、终端或音频工程台**，支持 `data.focus_lines` 聚光高亮当前核心代码/输出行。 |
 | `title_sequence` | **简洁章标题扉页**（`1.8–3.2` 秒），支持品牌 `logo` 与遮罩滑入。 |
-| `explainer_clip` | **数据图表与轻量参数化解说**（如 `t3_finance_chart`、`t4_blueprint_arch`）。`t7_editorial_board` 仅保留旧项目兼容，新片结论与高潮统一走 `onetake_clip` 或 `hyperframes_block`，禁止堆砌三框纯文字 PPT。 |
+| `explainer_clip` | **数据图表与轻量参数化解说**（档案用 `y2_vox` 暖纸冲印，数值用 `t5_data_ruler` 或 `t3_finance_chart`）。`t7_editorial_board` 仅保留旧项目兼容，新片结论与高潮统一走 `onetake_clip` 或 `hyperframes_block`，禁止堆砌三框纯文字 PPT。 |
 
 ## 叠层、破框贴图与运镜纪律
 

@@ -1,10 +1,21 @@
-# v8.2 成片审计与签发
+# v9.0 成片审计与签发
 
 素材入箱时保留来源、许可或授权记录、文件哈希和实测底账。装配先运行各幕 HyperFrames check（及 Onetake 连续性探针），之后对实际导出成片运行统一审计：
 
 ```bash
-kit/scripts/audit-v3.sh --v7 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4
+kit/scripts/audit-v3.sh --v9 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4
 ```
+
+## v9 六项画面检查
+
+| 报告项 | 硬性条件 |
+|---|---|
+| `pacing_and_rhythm_gate` | 目标 4–6 秒，均值 ≤6.5 秒，P90 ≤9 秒。普通镜 ≤10.5 秒，多视频接力或多段变焦复合镜 ≤13 秒。超过 10.5 秒的镜数 ≤max(1, 总镜数整除 20)。 |
+| `framing_and_variety_gate` | 满屏 ≥实录时长的 70%，斜框 ≤全片的 15%，带框镜头不相邻。连续满屏实录 ≤5 镜且 ≤35 秒，连续图形 ≤4 镜且 ≤28 秒。标注镜达到四镜时，纯角标 ≤60%。 |
+| `visual_richness_gate` | 抽查实录有效画面的首、中、尾，多数帧大面积平坦且边缘稀少会报出镜号。装片前也可查 low_density_shell_shots。 |
+| `dual_engine_craft_gate` | 双擎不能陈列两张及以上静态截图。Onetake 必须有相机深度变化或连续变形。 |
+| `cross_stage_asset_dedup_gate` | 对双擎、对照卡、证据台及实录中帧查文件与画面指纹。同一画面跨镜最多两次，允许登记一次可核验的回扣。 |
+| `tutorial_workflow_gate` | 工具教程须有可核验的实际输入／执行镜和复杂成品交互镜。以官方成品开场，跟拍真实操作并检查结果。 |
 
 ## 八项硬门禁与前置防线
 
@@ -25,7 +36,7 @@ kit/scripts/audit-v3.sh --v7 --project out --timeline out/shot-timeline.json --r
 
 ## OCR 与人工签发
 
-抽帧 OCR 的频道豁免仅适用于 `--v7` 且已声明对应频道的 `reference_breakdown` 或 `triptych_cards` 时间窗。私人路径、用户名、邮箱、IP、会话与凭据始终按全帧规则检查，项目特有词加入 `--forbid`。引用片段原音须静音，来源署名清晰，画面紧贴解说。
+抽帧 OCR 的频道豁免适用于 `--v7` 及包含该检查的 `--v9` 且已声明对应频道的 `reference_breakdown` 或 `triptych_cards` 时间窗。私人路径、用户名、邮箱、IP、会话与凭据始终按全帧规则检查，项目特有词加入 `--forbid`。引用片段原音须静音，来源署名清晰，画面紧贴解说。
 
 逐处核对实测数字与百分比。每处从原始观察和实测底账查回样本范围、分子、分母和舍入方式，再核对旁白、屏幕读数与字幕一致。抽听各章多音字、句尾和拼缝，并在关键 1080p 帧上确认字与主体完整（含跨镜转场中间帧与快门动态模糊瞬态帧）。只在机器门禁和实际观看、听辨结果均通过后签发。
 

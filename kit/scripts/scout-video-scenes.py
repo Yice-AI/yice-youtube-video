@@ -11,10 +11,9 @@ import subprocess
 import sys
 import tempfile
 
-import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from audit_v7 import VERIFIED_OVERLAYS, VIDEO_EXTENSIONS, difference_hash, probe_video
+from audit_v7 import VERIFIED_OVERLAYS, VIDEO_EXTENSIONS, difference_hash, frame_scores, effective_frame, shell_metrics, probe_video
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
 from kit.editorial.editorial import STUDIO_VIEW, cutout_overlay_box
 
@@ -53,26 +52,6 @@ def sample_frames(source, step):
             index += 1
         if process.wait():
             raise ValueError(f'视频抽帧失败：{source.name}')
-
-
-def frame_scores(frame):
-    rgb = np.asarray(frame)
-    quantized = rgb.astype(np.uint16) >> 4
-    bins = (quantized[:,:,0]<<8) | (quantized[:,:,1]<<4) | quantized[:,:,2]
-    counts = np.bincount(bins.ravel(),minlength=4096)
-    flat = float(np.partition(counts,-2)[-2:].sum()/bins.size)
-    grey = np.asarray(frame.convert('L'),dtype=np.float32)
-    edge = float((np.abs(np.diff(grey,axis=0)).mean()+np.abs(np.diff(grey,axis=1)).mean())/510)
-    is_flat = flat>=.72
-    band = grey[148:176,40:280]
-    # 字幕的浅色笔画旁会紧贴深色描边，并在数个相邻行横向分布。
-    bright = band[1:-1,1:-1]
-    dark = np.minimum.reduce([band[:-2,1:-1],band[2:,1:-1],band[1:-1,:-2],band[1:-1,2:]])
-    outlines = (bright >= 200) & (bright-dark >= 100)
-    text_rows = outlines.sum(axis=1) >= 12
-    subtitle_edge = bool(np.count_nonzero(text_rows)>=3 and np.count_nonzero(outlines.any(axis=0))>=30)
-    return dict(dhash=f'{difference_hash(frame):016x}',flat_bg_ratio=round(flat,4),is_flat_slide=is_flat,
-                richness_score=round(edge*(.35 if is_flat else 1.),4),has_burned_subtitle=subtitle_edge)
 
 
 def subtitle_ocr(row, binary):
@@ -230,7 +209,7 @@ def make_verification_rows(manifest):
                 last = max(0.,probe_video(root/asset)-.1)
                 times = tuple(min(at,last) for at in times)
             rows.append(dict(id=shot['id'],source=asset,media_start=start,play_span=span,
-                             times=[round(at,5) for at in times],
+                             framing=shot.get('framing','fullbleed'), times=[round(at,5) for at in times],
                              spoken_topic=topic,anchor_text=anchor,spotlight_boxes=[box for box in boxes if box]))
             overlays = [overlay for overlay in shot.get('overlays',[])
                         if overlay['kind'] in {'prop_badge','reaction_cutout'}]
@@ -280,6 +259,7 @@ def write_verification(manifest, output):
     rows = make_verification_rows(manifest)
     font, small = contact_font(18),contact_font(15)
     pages,collisions,unavailable = [],[],[]
+    low_density = []
     row_height = 256
     for first in range(0,max(1,len(rows)),10):
         page = rows[first:first+10]
@@ -296,21 +276,27 @@ def write_verification(manifest, output):
             hits,missing = overlay_text_check(row,source)
             collisions.extend(hits)
             unavailable.extend(missing)
+            scores = []
             for col,at in enumerate(row['times']):
                 x = 10+col*333
                 frame = frame_at(source,at)
+                scores.append(frame_scores(effective_frame(frame,row)))
                 marks = ImageDraw.Draw(frame)
                 for bx,by,bw,bh in row['spotlight_boxes']:
                     marks.rectangle((bx/6,by/6,(bx+bw)/6,(by+bh)/6),outline='#ff745a',width=2)
                 image.paste(frame,(x,y+43))
                 draw.text((x,y+226),f"{('首','中','尾')[col]} · {at:.2f}s",font=small,fill='white')
+            metrics = shell_metrics(scores,precheck=True)
+            row['frame_scores'] = scores
+            if metrics['low_density']:
+                low_density.append(dict(shot=row['id'],source=row['source'],**metrics))
         name = 'manifest-visual-verify.jpg' if first==0 else f'manifest-visual-verify-{first//10+1:02d}.jpg'
         image.save(output/name,quality=93)
         pages.append(name)
         for row in page:
             row['page'] = name
     write_json(output/'manifest-visual-verify.json',dict(shots=rows,pages=pages,manual_review_required=True,
-               overlay_text_collisions=collisions,overlay_text_ocr_unavailable=unavailable))
+               low_density_shell_shots=low_density,overlay_text_collisions=collisions,overlay_text_ocr_unavailable=unavailable))
     return len(rows)
 
 

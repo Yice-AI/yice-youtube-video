@@ -511,7 +511,7 @@ class EditorialStage:
                 event['gain'] = self.sound_gains[index]
             yield event
 
-    def add_callout_rig(self, start, end, src, *, overlays, media_start=0., motion='glide',
+    def add_callout_rig(self, start, end, src, *, overlays, media_start=0., motion='glide', camera_moves=None,
                         framing='fullbleed', window_title='', refractive=False):
         focus = None
         if motion!='hold':
@@ -519,7 +519,7 @@ class EditorialStage:
             if target is not None:
                 x,y,w,h = verified_spotlight_box(target)
                 focus = (x+w/2,y+h/2)
-        sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion,focus=focus,
+        sid = self.add_fullbleed_rig(start,end,src,media_start=media_start,motion=motion,focus=focus,camera_moves=camera_moves,
                                     framing=framing,window_title=window_title,refractive=refractive)
         self.shots[-1].update(stage_mode='callout_rig',media_start=media_start)
         self.add_overlays(start,end,overlays,focus=focus,motion=motion,framing=framing)

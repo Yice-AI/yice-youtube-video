@@ -13,6 +13,27 @@ ONETAKE_FONTS = ('SourceHanSansCN-Bold.otf', 'SourceHanSerifCN-Heavy.otf', 'Sour
 ONETAKE_COLORS = ('ground','deep','card','line','mute','ink','accent','accent2')
 
 
+def render_workers(value=None):
+    workers = int(os.environ.get('YICE_RENDER_WORKERS', 2) if value is None else value)
+    if workers < 1:
+        raise ValueError('渲染进程数至少为 1')
+    return workers
+
+
+def render_priority():
+    if os.name != 'posix':
+        return {}
+    target = max(10, int(os.environ.get('YICE_RENDER_NICE', 10)))
+
+    def lower_priority():
+        try:
+            os.nice(max(0, target - os.nice(0)))
+        except OSError:
+            pass
+
+    return {'preexec_fn': lower_priority}
+
+
 def composition_files(entry):
     if entry.is_symlink() or not entry.is_file() or entry.suffix.lower() != '.html':
         raise ValueError(f'合成入口须为本地 HTML：{entry.name}')

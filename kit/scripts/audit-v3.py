@@ -541,7 +541,9 @@ def rendered(args, out, errors):
             from audit_v6 import timeline_gates, masks, voice_continuity
             legacy_timeline = dict(timeline, shots=[dict(shot, kind="real_video") if shot["kind"]=="studio_ui" else shot for shot in timeline["shots"]])
         if v7:
-            from audit_v7 import video_gates
+            from audit_v7 import video_gates, v9_gates
+            if getattr(args,"v9",False):
+                result.update(v9_gates(timeline,args.project,args.rendered,duration,errors))
             result.update(video_gates(timeline,args.project,args.rendered,duration,errors))
         else:
             result.update(timeline_metrics(legacy_timeline, duration, args.project, errors,
@@ -597,7 +599,10 @@ def main():
     parser.add_argument("--v5", action="store_true", help="启用 Skill v5.0 自治成片硬门禁")
     parser.add_argument("--v6", action="store_true", help="启用句首、科技实证、遮挡与云端配音门禁")
     parser.add_argument('--v7',action='store_true',help='启用语义、开场音轨、叠层动效与自然呼吸门禁')
+    parser.add_argument('--v9',action='store_true',help='启用 v7 全部审计及六项画面与教程门禁')
     args = parser.parse_args()
+    if args.v9:
+        args.v7 = True
     if args.v6 and (not args.rendered or not args.timeline): parser.error("--v6 需要 --rendered 与 --timeline")
     if args.v7 and (not args.rendered or not args.timeline): parser.error('--v7 需要 --rendered 与 --timeline')
     errors = []
@@ -620,6 +625,8 @@ def main():
         (out / "audit-v6-report.json").write_text(report + "\n")
     if args.v7:
         (out/'audit-v7-report.json').write_text(report+'\n')
+    if args.v9:
+        (out/'audit-v9-report.json').write_text(report+'\n')
     print(report)
     return int(bool(errors))
 

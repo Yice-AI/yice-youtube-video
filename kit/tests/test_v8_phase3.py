@@ -216,7 +216,7 @@ class Phase3Tests(unittest.TestCase):
             self.assertIn('opacity=".17"',markup)
             self.assertNotIn(longer,markup)
 
-    @unittest.skipUnless(shutil.which('uv') and Path('/Applications/Google Chrome.app').exists(),
+    @unittest.skipUnless(shutil.which('uv'),
                          '需要本机离线 Playwright 与 Chrome')
     def test_featured_board_and_architecture_audit(self):
         samples=[
@@ -241,7 +241,7 @@ class Phase3Tests(unittest.TestCase):
                                                  safe=dict(top=56,bottom=172)),ensure_ascii=False))
                 run=subprocess.run(['uv','run','--offline','--with','playwright','python3',
                                     str(KIT/'explainer/render.py'),'--spec',str(spec),'--audit',str(report)],
-                                    env={**os.environ,'PLAYWRIGHT_EXECUTABLE_PATH':'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'},
+                                    env=os.environ.copy(),
                                     text=True,capture_output=True,timeout=100)
                 self.assertEqual(run.returncode,0,run.stderr+run.stdout)
                 data=json.loads(report.read_text())

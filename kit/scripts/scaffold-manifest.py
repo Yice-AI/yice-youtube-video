@@ -9,7 +9,46 @@ from pathlib import Path
 FPS = 30
 
 
-def scaffold(manifest, timing, output, title):
+def caption_cuts(start, end, captions):
+    """Choose a complete path through subtitle starts, closest to five seconds per shot."""
+    points = {round(at * FPS): at for at, _ in captions if start < at < end}
+    first, last = round(start * FPS), round(end * FPS)
+    cost, previous = {first: 0.}, {}
+    for frame in sorted(set(points) | {last}):
+        choices = [(cost[left] + ((frame-left)/FPS-5)**2, left)
+                   for left in range(frame-6*FPS, frame-105+1) if left in cost]
+        if choices:
+            cost[frame], previous[frame] = min(choices)
+    if last not in previous:
+        return []
+    result = []
+    frame = previous[last]
+    while frame != first:
+        result.append(points[frame])
+        frame = previous[frame]
+    return list(reversed(result))
+
+
+def draft_stage(index, has_captions):
+    route = ('fullbleed_rig','studio_ui','fullbleed_rig','y2_vox','fullbleed_rig','t5_data_ruler')[index % 6]
+    if route == 'fullbleed_rig' and has_captions:
+        return dict(stage_mode=route, framing='fullbleed', motion='focus_push',
+                    source=f'media/shot-{index+1:02}.mp4', visual_subject='待录制满屏操作与结果')
+    if route == 'studio_ui':
+        return dict(stage_mode=route, studio_style='terminal_pipeline', data={'command':'待填实际命令','lines':[]},
+                    visual_subject='待补实际命令和执行输出')
+    # Without recordings keep the legacy no-caption draft buildable.
+    grammar = 'y2_vox' if route == 'fullbleed_rig' else route
+    return dict(stage_mode='explainer_clip', spec=dict(grammar=grammar, data={'title':'待补实证'},
+                cues=[dict(kind='title',at=0.,text='待替换经核验的素材')]), visual_subject='待补实证画面',
+                suggested_stage=route)
+
+
+def scaffold(manifest, timing, output, title, captions=None):
+    if captions is None and (manifest.parent/"captions.json").is_file():
+        captions = manifest.parent/"captions.json"
+    lines = sorted((float(r["startMs"])/1000 if "startMs" in r else float(r["start"]), str(r["text"]))
+                   for r in json.loads(captions.read_text())) if captions else []
     voice = json.loads(manifest.read_text())
     if timing is None and (manifest.parent/'voice-timing.json').is_file():
         timing = manifest.parent/'voice-timing.json'
@@ -45,20 +84,38 @@ def scaffold(manifest, timing, output, title):
         while opening in ids:
             opening += '-lead'
         cuts.insert(0,(0.,dict(id=opening,firstCharTime=0.,end=cuts[0][0],text='开场')))
+    expanded = []
+    for i,(start,cue) in enumerate(cuts):
+        end = cuts[i+1][0] if i+1<len(cuts) else duration
+        subcuts = caption_cuts(start,end,lines) if lines and end-start > 6.2 else []
+        for j,at in enumerate([start,*subcuts]):
+            anchor = cue
+            if subcuts:
+                key = f"{cue['id']}-{j+1}"
+                while key in ids:
+                    key += '-sub'
+                ids.add(key)
+                stop = (subcuts+[end])[j]
+                words = ''.join(text for t,text in lines if at-1e-6 <= t < stop-1e-6)
+                anchor = dict(id=key,firstCharTime=at if j else cue['firstCharTime'],end=stop,text=words or cue['text'])
+            expanded.append((round(at*FPS)/FPS,anchor))
+    cuts = expanded
     shots = []
     for i,(start,cue) in enumerate(cuts):
         end = cuts[i+1][0] if i+1<len(cuts) else duration
-        text = cue['text']
-        shots.append(dict(id=f'shot-{i+1:02}',act='act-1',start=start,end=end,anchor_cue_id=cue['id'],
-                          stage_mode='explainer_clip',spoken_topic=text,visual_subject='待替换素材的分镜占位',
-                          semantic_binding='conceptual_explainer',semantic_tags=['分镜草稿'],
-                          spec=dict(grammar='t7_editorial_board',data={'title':'画面待补'},
-                                    cues=[dict(kind='card',at=0.,text=text)])))
+        stage = draft_stage(i, bool(lines))
+        shot = dict(id=f'shot-{i+1:02}',act='act-1',start=start,end=end,anchor_cue_id=cue['id'],
+                    spoken_topic=cue['text'],semantic_binding='conceptual_explainer',semantic_tags=['分镜草稿'],**stage)
+        if end-start > (6.2 if lines else 6.5):
+            shot['needs_subcut'] = True
+        shots.append(shot)
     anchors = [cue for _,cue in cuts]
     used = {cue['id'] for cue in anchors}
     anchors.extend(cue for cue in cues if cue['id'] not in used)
     result = dict(title=title,filename='episode',duration=duration,cues=sorted(anchors,key=lambda cue:cue['firstCharTime']),
                   voice_manifest=os.path.relpath(manifest,output.parent),shots=shots)
+    if captions:
+        result['captions'] = os.path.relpath(captions,output.parent)
     output.parent.mkdir(parents=True,exist_ok=True)
     with output.open('x',encoding='utf-8') as stream:
         json.dump(result,stream,ensure_ascii=False,indent=2)
@@ -70,11 +127,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--voice-manifest',required=True,type=Path)
     parser.add_argument('--voice-timing',type=Path)
+    parser.add_argument('--captions',type=Path)
     parser.add_argument('--output',type=Path,default=Path('episode-manifest.json'))
     parser.add_argument('--title',default='分镜草稿')
     args = parser.parse_args()
     try:
-        result = scaffold(args.voice_manifest.resolve(),args.voice_timing,args.output.resolve(),args.title)
+        result = scaffold(args.voice_manifest.resolve(),args.voice_timing,args.output.resolve(),args.title,args.captions)
     except (OSError,TypeError,ValueError,KeyError) as error:
         parser.error(str(error))
     print(json.dumps(dict(path=str(args.output.resolve()),duration=result['duration'],shots=len(result['shots'])),ensure_ascii=False))

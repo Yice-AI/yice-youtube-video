@@ -66,6 +66,27 @@ def difference_hash(image):
     return bits
 
 
+def frame_scores(frame):
+    import numpy as np
+    rgb = np.asarray(frame)
+    quantized = rgb.astype(np.uint16) >> 4
+    bins = (quantized[:,:,0]<<8) | (quantized[:,:,1]<<4) | quantized[:,:,2]
+    counts = np.bincount(bins.ravel(),minlength=4096)
+    flat = float(np.partition(counts,-2)[-2:].sum()/bins.size)
+    grey = np.asarray(frame.convert('L'),dtype=np.float32)
+    edge = float((np.abs(np.diff(grey,axis=0)).mean()+np.abs(np.diff(grey,axis=1)).mean())/510)
+    is_flat = flat>=.72
+    band = grey[-32:-4,40:280]
+    # 字幕的浅色笔画旁会紧贴深色描边，并在数个相邻行横向分布。
+    bright = band[1:-1,1:-1]
+    dark = np.minimum.reduce([band[:-2,1:-1],band[2:,1:-1],band[1:-1,:-2],band[1:-1,2:]])
+    outlines = (bright >= 200) & (bright-dark >= 100)
+    text_rows = outlines.sum(axis=1) >= 12
+    subtitle_edge = bool(np.count_nonzero(text_rows)>=3 and np.count_nonzero(outlines.any(axis=0))>=30)
+    return dict(dhash=f'{difference_hash(frame):016x}',flat_bg_ratio=round(flat,4),is_flat_slide=is_flat,
+                edge_density=round(edge,5), richness_score=round(edge*(.35 if is_flat else 1.),4),has_burned_subtitle=subtitle_edge)
+
+
 def probe_video(path):
     proc = subprocess.run(['ffprobe','-v','error','-select_streams','v:0','-show_entries',
                            'format=duration:stream=duration','-of','json',str(path)],
@@ -486,3 +507,303 @@ def video_gates(timeline, project, rendered, duration, errors):
         if not report['ok']:
             errors.append(f'v7 {name} 未通过')
     return {'real_ratio':gates['v7_timeline_gate']['real_ratio'],**gates}
+
+
+RIGS = {'fullbleed_rig', 'callout_rig', 'real_video', 'web_cam'}
+WINDOWED = {'perspective_3d', 'studio_window'}
+RASTER = {'.jpg', '.jpeg', '.png', '.webp'}
+
+
+def shot_span(shot):
+    return round(float(shot['end']) - float(shot['start']), 5)
+
+
+def pacing_and_rhythm_gate(shots, duration):
+    from math import ceil
+    spans = sorted(shot_span(s) for s in shots)
+    average = duration / len(shots) if shots else 0
+    p90 = spans[ceil(.9 * len(spans))-1] if spans else 0
+    long_shots, violations = [], []
+    for shot in shots:
+        span, mode = shot_span(shot), stage_mode(shot)
+        reveals = {card.get('reveal_at', 0) for card in shot.get('cards', [])
+                   if Path(card['source']).suffix.lower() in VIDEO_EXTENSIONS}
+        compound = (mode == 'triptych_cards' and len(reveals) >= 2 or mode == 'cold_open_ab'
+                    or mode == 'reference_breakdown' and shot.get('cut_points') or len(shot.get('camera_moves', [])) >= 2)
+        limit = 13 if compound else 10.5
+        if span > 10.5:
+            long_shots.append(shot['id'])
+        if span > limit:
+            violations.append(dict(shot=shot['id'], seconds=span, limit=limit))
+    if not shots or average > 6.5 or p90 > 9 or len(long_shots) > max(1, len(shots)//20):
+        violations.append(dict(reason='全片均值、P90 或长镜数量超限'))
+    return dict(ok=not violations, average_shot_seconds=round(average, 3), p90_shot_seconds=p90,
+                long_shots=long_shots, violations=violations)
+
+
+def framing_and_variety_gate(shots, duration):
+    from itertools import groupby
+    captures = [s for s in shots if stage_mode(s) in RIGS]
+    full = sum(shot_span(s) for s in captures if s.get('framing','fullbleed') == 'fullbleed')
+    capture_span = sum(map(shot_span,captures))
+    full_ratio = full/capture_span if capture_span else 1.
+    angle = sum(shot_span(s) for s in shots if s.get('framing') == 'perspective_3d')
+    angle_ratio = angle/duration if duration else 0.
+    callouts = [s for s in shots if stage_mode(s) == 'callout_rig']
+    corners = sum({o['kind'] for o in s.get('overlays', [])} == {'corner_tag'} for s in callouts)
+    corner_ratio = corners/len(callouts) if callouts else 0.
+    violations = []
+    for name, failed in [('fullbleed_ratio', full_ratio < .70), ('perspective_ratio', angle_ratio > .15),
+                         ('corner_tag_ratio', len(callouts) >= 4 and corner_ratio > .60)]:
+        if failed:
+            violations.append(dict(reason=name))
+    window_runs = [list(group) for windowed,group in groupby(shots, lambda s:s.get('framing') in WINDOWED) if windowed]
+    for run in window_runs:
+        if len(run) > 1:
+            violations.append(dict(reason='adjacent_windows', shots=[s['id'] for s in run]))
+    runs = {}
+    for name, matches, count_limit, time_limit in (
+            ('fullbleed',lambda s:stage_mode(s) in RIGS and s.get('framing','fullbleed')=='fullbleed',5,35),
+            ('graphic',lambda s:not is_real_shot(s),4,28)):
+        lengths = []
+        for match,group in groupby(shots,matches):
+            if match:
+                run = list(group)
+                seconds = round(sum(map(shot_span,run)),5)
+                lengths.append((len(run),seconds))
+                if len(run)>count_limit or seconds>time_limit:
+                    violations.append(dict(reason=name+'_run',shots=[s['id'] for s in run],seconds=seconds))
+        runs[name] = dict(max_count=max((n for n,_ in lengths),default=0),
+                          max_seconds=max((t for _,t in lengths),default=0))
+    return dict(ok=not violations, fullbleed_ratio=round(full_ratio,4), perspective_ratio=round(angle_ratio,4),
+                runs=runs,capture_count=len(captures), perspective_count=sum(s.get('framing')=='perspective_3d' for s in captures),
+                max_consecutive_windowed_shots=max(map(len,window_runs),default=0),
+                corner_tag_ratio=round(corner_ratio,4), violations=violations)
+
+
+def effective_frame(frame, shot, rendered=False):
+    from PIL import ImageOps
+    width, height = frame.size
+    if shot.get('framing') in WINDOWED:
+        if rendered:
+            return frame.crop((round(width*136/1920), round(height*142/1080),
+                               round(width*1784/1920), round(height*868/1080)))
+        return ImageOps.fit(frame, (320,141))
+    return frame.crop((0,0,width,round(height*890/1080)))
+
+
+def shell_metrics(scores, *, precheck=False):
+    from statistics import median
+    flat = median(s['flat_bg_ratio'] for s in scores)
+    edge = median(s['edge_density'] for s in scores)
+    richness = median(s['richness_score'] for s in scores)
+    return dict(flat_bg_ratio=flat, edge_density=edge, richness_score=richness,
+                low_density=sum(s['flat_bg_ratio'] > .78 and (s['edge_density'] < .018 or precheck and s['richness_score'] < .007)
+                                for s in scores) > len(scores)/2)
+
+
+def capture_frame(shot, project, rendered, local, source=None):
+    from io import BytesIO
+    from PIL import Image
+    files = [source] if source else primary_files(shot) or [shot.get('source','')]
+    path = next((Path(project)/f for f in files if Path(f).suffix.lower() in VIDEO_EXTENSIONS
+                 and (Path(project)/f).is_file()), None)
+    use_render = path is None
+    at = float(shot['start'] if use_render else shot.get('media_start',0)) + local
+    video = rendered if use_render else path
+    if not video:
+        raise ValueError('缺少可抽帧的视频')
+    cmd = ['ffmpeg','-nostdin','-v','error','-ss',f'{at:.5f}','-threads','2','-i',str(video),
+           '-frames:v','1','-vf','scale=320:-1','-threads','1','-c:v','png','-f','image2pipe','-']
+    data = subprocess.run(cmd,check=True,capture_output=True).stdout
+    with Image.open(BytesIO(data)) as frame:
+        return effective_frame(frame.convert('RGB'),shot,use_render)
+
+
+def visual_richness_gate(timeline, project, rendered):
+    checked, violations = {}, []
+    for shot in timeline['shots']:
+        if stage_mode(shot) not in RIGS or shot.get('semantic_binding') != 'exact_tool_capture':
+            continue
+        span = shot_span(shot)
+        pad = min(.3, span/4)
+        try:
+            scores = [frame_scores(capture_frame(shot,project,rendered,t)) for t in (pad,span/2,span-pad)]
+            metrics = shell_metrics(scores)
+            checked[shot['id']] = dict(samples=scores, **metrics)
+            if metrics['low_density']:
+                violations.append(dict(shot=shot['id'],reason='low_density_shell_capture',**metrics))
+        except (OSError,ValueError,subprocess.SubprocessError) as exc:
+            violations.append(dict(shot=shot['id'],reason=str(exc)))
+    return dict(ok=not violations,checked=checked,violations=violations)
+
+
+def composition_entry_for_audit(shot, project, manifest_root=None):
+    project = Path(project)
+    mode = stage_mode(shot)
+    field, default = ('comp','comp.html') if mode == 'onetake_clip' else ('composition','index.html')
+    for root in (project,Path(manifest_root) if manifest_root else project):
+        if shot.get(field):
+            path = root/shot[field]
+            path = path/default if path.is_dir() else path
+            if path.is_file():
+                return path
+    # v8 renders keep HyperFrames sources in the act and Onetake sources beside the manifest.
+    root = Path(manifest_root) if manifest_root else project.parent
+    manifest = root/'episode-manifest.json'
+    if manifest.is_file():
+        original = next((s for s in json.loads(manifest.read_text())['shots'] if s['id']==shot['id']), {})
+        if original.get(field):
+            path = root/original[field]
+            path = path/default if path.is_dir() else path
+            if path.is_file():
+                return path
+    raise ValueError('缺少合成源码')
+
+
+def composition_material(entry):
+    scripts = [entry, *(p for p in entry.parent.rglob('*') if p.suffix.lower() in {'.js','.mjs','.css'}
+                        and 'vendor' not in p.relative_to(entry.parent).parts
+                        and p.name not in {'motion.js','ui_kit.js','gsap.min.js'})]
+    sources, images = [], set()
+    for path in scripts:
+        code = path.read_text()
+        sources.append(code)
+        for name in re.findall(r"""[\w./%+@-]+\.(?:png|jpe?g|webp)\b""", code, re.I):
+            image = (path.parent/name).resolve()
+            if not image.is_file():
+                image = (entry.parent/name).resolve()
+            images.add(image)
+    return '\n'.join(sources), sorted(images)
+
+
+def dual_engine_craft_gate(shots, project, manifest_root=None):
+    checked, violations = {}, []
+    for shot in shots:
+        mode = stage_mode(shot)
+        if mode not in {'onetake_clip','hyperframes_block'}:
+            continue
+        try:
+            entry = composition_entry_for_audit(shot,project,manifest_root)
+            source,images = composition_material(entry)
+            checked[shot['id']] = [p.name for p in images]
+            if len(images) >= 2:
+                violations.append(dict(shot=shot['id'], reason='static_raster_gallery', images=checked[shot['id']]))
+            if mode == 'onetake_clip':
+                zooms = {float(n) for n in re.findall(r'\bzoom\s*:\s*([\d.]+)',source)}
+                morph = re.search(r'\b(?:OM\.(?:morphRect|zoomThrough)|UIK\.\w+|(?:ctx|context)\.(?:arc|bezierCurveTo)|setAttribute\([\'"]d[\'"])\s*[, (]',source)
+                if len(zooms)<2 and not morph:
+                    violations.append(dict(shot=shot['id'],reason='missing_camera_or_morph'))
+        except (OSError,ValueError) as exc:
+            violations.append(dict(shot=shot['id'],reason=str(exc)))
+    return dict(ok=not violations,checked=checked,violations=violations)
+
+
+def visual_fingerprint(image):
+    """Remove solid page margins before comparing versions of the same visual."""
+    from PIL import Image, ImageChops, ImageStat
+    image = image.convert('RGB')
+    thumb = image.copy()
+    thumb.thumbnail((320,320))
+    background = thumb.getpixel((0,0))
+    diff = ImageChops.difference(thumb,Image.new('RGB',thumb.size,background)).convert('L')
+    box = diff.point(lambda value: 255 if value > 22 else 0).getbbox()
+    content = thumb.crop(box) if box else thumb
+    if min(content.size) < 3 or max(ImageStat.Stat(content).stddev) < 5:
+        return None
+    return difference_hash(content)
+
+
+def cross_stage_asset_dedup_gate(timeline, project, rendered):
+    from PIL import Image
+    fingerprints, errors = [], []
+    project = Path(project)
+    for shot in timeline['shots']:
+        key, mode = shot['id'], stage_mode(shot)
+        try:
+            files = primary_files(shot) or shot.get('sources',[]) or ([shot['source']] if shot.get('source') else [])
+            images = {project/p for p in files if Path(p).suffix.lower() in RASTER}
+            cards = shot.get('cards',[])
+            images.update(project/c['source'] for c in cards if Path(c['source']).suffix.lower() in RASTER)
+            if mode in {'onetake_clip','hyperframes_block'}:
+                entry = composition_entry_for_audit(shot,project)
+                images.update(composition_material(entry)[1])
+            for path in sorted(images):
+                with path.open('rb') as stream, Image.open(path) as image:
+                    fingerprints.append((key,path.name,hashlib.file_digest(stream,'sha256').hexdigest(),visual_fingerprint(image)))
+            if mode in REAL or mode in {'triptych_cards','evidence_spotlight','studio_ui'}:
+                videos = [(p,shot.get('media_start',0),0) for p in files if Path(p).suffix.lower() in VIDEO_EXTENSIONS]
+                if cards:
+                    videos = [(c['source'],c.get('media_start',0),c.get('reveal_at',0)) for c in cards
+                              if Path(c['source']).suffix.lower() in VIDEO_EXTENSIONS]
+                if not videos and mode in RIGS:
+                    videos = [(None,0,0)]
+                for video,start,reveal in videos:
+                    frame = capture_frame(dict(shot,media_start=start,start=shot['start']+reveal),
+                                          project,rendered,(shot_span(shot)-reveal)/2,video)
+                    fingerprints.append((key,Path(video).name if video else 'rendered',None,visual_fingerprint(frame)))
+        except (OSError,ValueError,subprocess.SubprocessError) as exc:
+            errors.append(dict(shot=key,reason=str(exc)))
+    callbacks = {s['id']:s.get('callback_of') for s in timeline['shots']}
+    collisions = set()
+    for _,_,sha,perceptual in fingerprints:
+        matched = []
+        for key,_,other_sha,other_hash in fingerprints:
+            if ((sha and sha==other_sha) or (perceptual is not None and other_hash is not None
+                                            and (perceptual^other_hash).bit_count()<=5)) and key not in matched:
+                matched.append(key)
+        if len(matched) > 2:
+            valid_callback = any(callbacks[key] in matched[:i] for i,key in enumerate(matched))
+            if len(matched)-int(valid_callback)>2:
+                collisions.add(tuple(matched))
+    violations = errors + [dict(shots=list(ids),reason='repeated_visual') for ids in sorted(collisions)]
+    return dict(ok=not violations,fingerprints=len(fingerprints),violations=violations)
+
+
+def tutorial_workflow_gate(timeline):
+    shots = timeline['shots']
+    vocabulary = entity_vocabulary(timeline.get('custom_entities'))
+    named, process, product = set(), [], []
+    checked = timeline.get('capture_scores')
+    input_markers = r'输入.{0,8}(提示词|命令)|安装命令|终端执行|命令行执行|agent.{0,8}(执行|运行|生成过程)|type.{0,8}prompt|terminal command'
+    result_markers = r'交互|点击|拖[动拽]|编辑|操作成品|演示成品|interactive|click|drag|edit'
+    for shot in shots:
+        key = shot['id']
+        visual = ' '.join([shot.get('visual_subject',''),*shot.get('semantic_tags',[])])
+        named.update(entities(shot.get('spoken_topic','')+' '+str(shot.get('spoken_entity',''))+' '+visual,vocabulary)-CREATORS)
+        files = primary_files(shot) or shot.get('sources',[]) or [shot.get('source','')]
+        capture = (stage_mode(shot) in RIGS and shot.get('semantic_binding')=='exact_tool_capture'
+                   and any(Path(f).suffix.lower() in VIDEO_EXTENSIONS for f in files))
+        metric = (checked or {}).get(key,{})
+        motion = checked is None or len({s['dhash'] for s in metric.get('samples',[])}) > 1
+        if stage_mode(shot)=='studio_ui' and shot.get('studio_style') in {'terminal_pipeline','vscode_workbench'} and any(files):
+            process.append(key)
+        elif capture and motion and re.search(input_markers,visual,re.I):
+            process.append(key)
+        elif capture and motion and not metric.get('low_density') and re.search(result_markers,visual,re.I):
+            product.append(key)
+    duration = timeline.get('end') or sum(map(shot_span,shots))
+    ratio = sum(shot_span(s) for s in shots if is_real_shot(s))/duration if duration else 0.
+    kind = timeline.get('episode_kind')
+    required = kind=='tool_tutorial' or kind!='essay' and len(named)>=2 and ratio>=.45
+    minimum = max(2 if len(named)>=2 else 1,len(named)//2)
+    violations = []
+    if required and len(process)<minimum:
+        violations.append('missing_input_or_execution')
+    if required and not product:
+        violations.append('missing_interactive_result')
+    return dict(ok=not violations,required=required,entities=sorted(named),minimum_process_shots=minimum,
+                process_shots=process,product_shots=product,violations=violations)
+
+
+def v9_gates(timeline, project, rendered, duration, errors):
+    shots = timeline['shots']
+    richness = visual_richness_gate(timeline,project,rendered)
+    result = dict(pacing_and_rhythm_gate=pacing_and_rhythm_gate(shots,duration),
+                  framing_and_variety_gate=framing_and_variety_gate(shots,duration),
+                  visual_richness_gate=richness,
+                  dual_engine_craft_gate=dual_engine_craft_gate(shots,project),
+                  cross_stage_asset_dedup_gate=cross_stage_asset_dedup_gate(timeline,project,rendered),
+                  tutorial_workflow_gate=tutorial_workflow_gate(dict(timeline,capture_scores=richness['checked'])))
+    errors.extend(name for name,gate in result.items() if not gate['ok'])
+    return result

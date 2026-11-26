@@ -1,12 +1,11 @@
-# 一策 YouTube 视频制作 v8.2
+# 一策 YouTube 视频制作 v9.0
 
 把中文深度科技与商业视频的导演方法、素材采集、原速配音、**Onetake + HyperFrames 双擎动态视觉**、封面直出与机器审片整合在一套可复现工具链中：**`SKILL.md` 管导演路由与审美铁律，`kit/` 管采集、配音、双擎渲染、混音和成片门禁**。公开仓库只分发方法、代码与离线测试，不放私人录音、成片或凭据。
 
-## 核心能力一览（v8.2）
+## 核心能力一览（v9.0）
 
-- **混合双擎高阶视觉（告别简陋 PPT 感）**：
-  - **`onetake_clip`（高光重武器）**：桥接本机 `onetake`（`OM` 39 种物理弹簧/相机跟随/连续变形/流体原语 + `UIK` 界面复刻 + 6 套电影色板与产品截图自动吸色），渲染前执行 `probe.py` 跨拍连续性探针，默认开启 **180° 真实快门线性光积分动态模糊**，专攻黄金前 8 秒钩子、机制高潮与灵魂结论收束；
-  - **`hyperframes_block` 与 3D 精工舞台（日常主力）**：支持挂载 `hyperframes-registry` 近 400 个组件与 `hyperframes-animation` 22 套动态蓝图（可通过 `kit/scripts/visual-palette.sh` 一键检索），内置 `perspective_3d` / `studio_window` 悬浮浏览器窗、环境呼吸光晕、胶片微噪点、现代立体毛玻璃三联卡与四类同步跨镜丝滑转场（`whip_push` / `zoom_through` / `iris_reveal` / `blur_crossfade`）。
+- **工具教程三段实拍**。0–5 秒展示官方复杂成品，再拍输入命令或提示词、Agent 执行，最后用 1080p 满屏多点跟焦验证成品交互。目标每镜 4–6 秒，平均不超过 6.5 秒；满屏占实录至少 70%，斜框占全片至多 15%，带框镜头不能相邻。
+- **按素材选舞台**。暖纸冲印用 `y2_vox`，数据尺和图表用 `t5_data_ruler` / `t3_finance_chart`，真实终端用 `studio_ui`，并排比较用 `triptych_cards`。Onetake 与 HyperFrames 用于连续运镜、矢量变形与状态推演，禁止在双擎内拼贴两张及以上静态截图。
 - **五路后台高清净屏采集与防废片清洗**：`30fps` 高倍率网页净屏实拍（预滚解码懒加载图 + 自动隐藏弹窗 + 带回原文高亮坐标）、GitHub/官网原生 `<video>` 演示流直下与 `.svg` 矢量标志提取、`≥1920px` 横屏图库硬筛、长片自动剔除硬切与旧字幕、Apple Vision 抠图主体完整性门禁与贴图首中尾 OCR 防撞字核验。
 - **原速克隆配音、精排字幕与广播级母带**：默认走授权 Kaggle 免费 GPU（`--backend kaggle --speed 1.0`）保留自然呼吸，自动生成短句去句尾标点 `captions.json` 与深浅自适应烟熏黑曜石胶囊字幕；BGM `2.5s` 等功率余弦无缝循环 + 物理包络轻音效，母带校准 `-14.5 ± 0.8 LUFS`、`≤ -1.0 dBTP`。
 - **`image2` 封面零劣化直出闭环**：`kit/scripts/thumbnail.sh` 绑定 `tts-venv` 原生直调 `image2`，一次生成 3 张候选 + `640/320/168px` 三尺寸预览联系表 + 右下角假时长水印 OCR 警示 + `<2MB` 高清 JPG 选定入账。
@@ -36,8 +35,8 @@ env -i HOME="$HOME" PATH="$PATH" ./install.sh --check
 
 1. **初始化与视觉选型**：运行 `kit/scripts/new-episode.sh ep04` 创建剧集工程，用 `kit/scripts/visual-palette.sh` 按本期题材挑选契合的色板（或 `--from-shot` 从产品截图吸色）与动态蓝图。
 2. **配音与分镜草稿**：运行 `kit/scripts/voice.sh script.md --backend kaggle --speed 1.0 --output voice`，再用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成对齐首字时间的 30fps 骨架。
-3. **高清采集与验帧**：用 `collect-entity.sh`、`record-web-cam.sh`、`find-media.sh`、`scout-video-scenes.sh` 采集实证素材，填好 `episode-manifest.json`（高光段走 `onetake_clip`，动态机制走 `hyperframes_block`，实录走 `perspective_3d` / `studio_window` + `transition_in`），跑 `scout-video-scenes.sh --verify-manifest` 做首中尾帧与贴图防撞字核验。
-4. **装片、终审与封面**：运行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 导出成片与字幕，执行 `kit/scripts/audit-v3.sh --v7` 完成八项硬门禁与像素/声学终审，最后用 `kit/scripts/thumbnail.sh` 生成并选定封面。
+3. **高清采集与验帧**：用 `collect-entity.sh`、`record-web-cam.sh`、`find-media.sh`、`scout-video-scenes.sh` 采集实证素材，填好 `episode-manifest.json`（高光段走 `onetake_clip`，动态机制走 `hyperframes_block`，实录优先用 `fullbleed` + `focus_push`），跑 `scout-video-scenes.sh --verify-manifest` 做首中尾帧与贴图防撞字核验。
+4. **装片、终审与封面**：运行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 以两个低优先级进程导出成片与字幕，可用 `--draft` 试片，执行 `kit/scripts/audit-v3.sh --v9` 检查节奏、画幅、空壳、双擎动效、跨镜重复、教程过程，以及既有像素与声学要求，最后用 `kit/scripts/thumbnail.sh` 生成并选定封面。
 
 完整字段契约与路由细则见 [SKILL.md](SKILL.md) 与 [references/10-双擎高阶视觉路由.md](references/10-双擎高阶视觉路由.md)。
 

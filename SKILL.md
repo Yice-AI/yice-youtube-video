@@ -1,11 +1,17 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.2。Onetake 多风格快门渲染、HyperFrames 原生子合成、3D 实录视窗、跨时窗遮挡校验、原速配音与声学母带。适用于旁白、真实录屏、分镜、成片和返修。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v9.0。Onetake 多风格快门渲染、HyperFrames 原生子合成、满屏实操教程、跨时窗遮挡校验、原速配音与声学母带。适用于旁白、真实录屏、分镜、成片和返修。
 ---
 
-# 一策 YouTube 视频制作 v8.2
+# 一策 YouTube 视频制作 v9.0
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。
+
+## 工具教程
+
+清单声明 `episode_kind: "tool_tutorial"`。前 0–5 秒展示官方复杂成品。接着录下真实安装命令、输入提示词、提交与 Agent 执行，等待加速时标出倍速。最后用 1080p 满屏跟焦演示真实成品的点击、修改和边界验证。每个工具使用自己的输入与真实输出，禁止用虚构的六行提纲或留白网页代拍。
+
+目标每镜 4–6 秒，全片均值 ≤6.5 秒。满屏占实录时长至少 70%，斜框占全片至多 15%，带框镜头之间隔一个其他镜头。照片档案用 `y2_vox` 暖纸冲印，数值用 `t5_data_ruler` 或 `t3_finance_chart`，终端用 `studio_ui`，2–4 项并排用 `triptych_cards`。双擎镜头禁止拼贴两张及以上静态截图。
 
 ## 制片入口
 
@@ -19,7 +25,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.2�
    - 具象实物特写和人物抠像分别用 `find-media.sh`、`people-add.sh`。
    - 对原片内容或剪辑的具体评论可用 `reference_breakdown`，原片静音，明确频道署名和实测切点。
 3. **配音并验帧。** 执行 `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`。默认 `long_paragraph` 优先 65–115 字、最多 5 句，`natural_v7` 保留呼吸。`--pause-after 0-3=3.0` 可登记留白。Kaggle 异步每 2.5 秒轮询，默认总等待 900 秒，异步提交 HTTP 404 才回退。清单写好后运行 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify`，按首、中、尾帧逐镜核对台词及因果顺序。
-4. **装配与审片。** 黄金前 8 秒、机制高潮与片尾核心结论优先用 `onetake_clip`。多阶段机制用 `hyperframes_block`，数值关系可用 `t3_finance_chart`，实录用 `perspective_3d` 或 `studio_window`。用 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 装片，输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 和分幕工程。输入一致的幕可复用，`--force-render` 强制刷新，`--build-only` 生成工程与母带。最后执行 `kit/scripts/audit-v3.sh --v7 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
+4. **装配与审片。** 需要连续光学变形的机制镜用 `onetake_clip`。多阶段机制用 `hyperframes_block`，数值关系可用 `t3_finance_chart`，实录优先用 `fullbleed` 满屏跟焦。用 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 装片，输出 MP4、SRT、`shot-timeline.json`、`bed-only.wav` 和分幕工程。默认两个低优先级渲染进程，--draft 快速试片。画质一致的幕可复用，`--force-render` 强制刷新，`--build-only` 生成工程与母带。最后执行 `kit/scripts/audit-v3.sh --v9 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
 
 5. **封面与打包。** 用 `kit/scripts/thumbnail.sh --project . --title "标题" --summary "内容摘要"` 走 `image2` 原生直出，默认生成 3 张候选。打开 `thumbnail-contact-sheet.png` 对照信息流尺寸和右下角时长警示。用同一入口加 `--select 1` 导出小于 2 MB 的高清 JPG，默认存入 `thumbnails/` 并登记账本。
 
@@ -29,9 +35,9 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.2�
 
 | 镜头任务 | 视觉路由 |
 | --- | --- |
-| 黄金前 8 秒的钩子、核心机制高潮、全片结论 | `onetake_clip` 用 OM 弹簧、运镜和跨拍变形，默认 180° 真实快门积分。三张纯文字方框逐页切换不能承担这些镜头。 |
+| 需要连续变形的机制或结论 | `onetake_clip` 用 OM 弹簧、运镜和跨拍变形，默认 180° 真实快门积分。三张纯文字方框逐页切换不能承担这些镜头。 |
 | 多阶段架构、3D 卡片阵列、交互状态推演 | `hyperframes_block` 按口播推进实体、光轨和状态，复用 HyperFrames Registry 组件和 Animation 蓝图。 |
-| 真实网页与录屏实证，目标至少占全片 50% | `perspective_3d` / `studio_window` 保持操作可读。需要时用前景实物或同步跨镜转场保留注意力。 |
+| 真实网页与录屏实证，目标至少占全片 50% | `fullbleed` 配合 `focus_push` 或分段 `camera_moves` 展示操作。需要时用前景实物或同步跨镜转场保留注意力。 |
 
 `t7_editorial_board` 保留旧项目兼容。合成契约、清单用法与离线验收见 [双擎高阶视觉路由](references/10-双擎高阶视觉路由.md)。
 
@@ -41,7 +47,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v8.2�
 
 所有时间用秒。镜头 `start`、`end`、旁白 `at` 和 `firstCharTime` 以全片起点为零。`overlays[].at` 是镜内相对时间。素材路径相对清单解析。
 
-用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 从首字时间生成 30 fps 分镜草稿，再用核对过的画面替换占位镜头。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`aurora_indigo`、`paper_cool` 或 `paper_warm`。
+用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 读取首字时间和同目录 captions.json 生成 30 fps 分镜草稿；可用 --captions 指定字幕文件，超过 6.2 秒的句群按字幕边界拆镜，needs_subcut 标记待人工补切的段落，再用核对过的画面替换占位镜头。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`aurora_indigo`、`paper_cool` 或 `paper_warm`。
 
 `gsap` 是可选覆盖项。省略时自动发现本机 GSAP，包括 toolkit 的 `local/vendor/gsap.min.js`。
 

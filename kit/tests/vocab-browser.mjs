@@ -21,7 +21,7 @@ const server=http.createServer((req,res)=>{
   res.setHeader('Content-Type',file.endsWith('.css')?'text/css':file.endsWith('.js')?'text/javascript':'application/octet-stream');res.end(fs.readFileSync(file));
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-const browser=await chromium.launch({headless:true,channel:'chrome'}),page=await browser.newPage({viewport:{width:1920,height:1080}});
+const browser=await chromium.launch({headless:true,executablePath:process.env.YICE_CHROME_EXECUTABLE}),page=await browser.newPage({viewport:{width:1920,height:1080}});
 try{
   for(const [kind,names]of [['recipe',Object.keys(examples)],['transition',VOCAB_TRANSITIONS],['layer',VOCAB_LAYERS],['layout',['title-free']]])for(const name of names){
     let errors=[];const onError=e=>errors.push(e.message);page.on('pageerror',onError);
