@@ -75,6 +75,29 @@ class DiversityAndGuardsTests(unittest.TestCase):
         self.assertEqual((hits[0]['sample'],hits[0]['text']),('中',obscured['text']))
         self.assertEqual(hits[0]['overlay_box'],[42,434,380,422])
 
+    def test_stat_badge_must_leave_dense_quadrant_heading_visible(self):
+        import audit_v7
+        cells = [dict(text='正文',box=[x,y+dy,80,18])
+                 for x,y in [(270,190),(1100,190),(270,620),(1100,620)] for dy in (0,50,90)]
+        heading = dict(text='37 个文本框',box=[1540,108,150,30])
+        stat = dict(kind='stat_badge',at=.3)
+        row = dict(id='four',source='proof.mp4',media_start=0,play_span=4,overlays=[stat],
+                   viewport=(0,0,1920,1080))
+        with patch.object(scout,'overlay_ocr',return_value=cells+[heading]):
+            hits, missing = scout.overlay_text_check(row,self.root/'proof.mp4')
+        self.assertFalse(missing)
+        self.assertEqual([h['text'] for h in hits],[heading['text']]*3)
+        self.assertTrue(all(h['severity']=='error' for h in hits))
+        self.assertEqual(audit_v7.quadrant_heading_hits(cells,row['viewport']),[])
+        self.assertEqual(audit_v7.quadrant_heading_hits([heading],row['viewport']),[])
+        real_reader = audit_v7.stat_badge_occlusions
+        def read_fixture(row,source,overlay):
+            return real_reader(row,source,overlay,reader=lambda *args:cells+[heading])
+        shot=dict(row,start=0,end=4,stage_mode='callout_rig',files=['proof.mp4'])
+        with patch.object(audit_v7,'stat_badge_occlusions',side_effect=read_fixture):
+            self.assertFalse(audit_v7.quadrant_overlay_gate([shot],self.root)['ok'])
+            self.assertTrue(audit_v7.quadrant_overlay_gate([dict(shot,overlays=[])],self.root)['ok'])
+
     def test_onetake_look_from_shot_and_local_injection(self):
         source = self.root/'product.png'
         Image.new('RGB',(40,30),'lavender').save(source)

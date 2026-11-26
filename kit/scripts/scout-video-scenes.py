@@ -13,14 +13,13 @@ import tempfile
 
 from PIL import Image, ImageDraw, ImageFont
 
-from audit_v7 import VERIFIED_OVERLAYS, VIDEO_EXTENSIONS, difference_hash, frame_scores, effective_frame, shell_metrics, probe_video
+from audit_v7 import OCR, overlay_ocr, stat_badge_occlusions, VERIFIED_OVERLAYS, VIDEO_EXTENSIONS, difference_hash, frame_scores, effective_frame, shell_metrics, probe_video
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
 from kit.editorial.editorial import STUDIO_VIEW, cutout_overlay_box
 
 SIZE = (320, 180)
 SCALE = 'scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2'
 VIDEO_STAGES = {'callout_rig','fullbleed_rig','cold_open_ab','triptych_cards','reference_breakdown','studio_ui','evidence_spotlight'}
-OCR = Path(__file__).resolve().parents[1] / 'tools/ocr/ocr'
 
 
 def read_json(path):
@@ -212,27 +211,21 @@ def make_verification_rows(manifest):
                              framing=shot.get('framing','fullbleed'), times=[round(at,5) for at in times],
                              spoken_topic=topic,anchor_text=anchor,spotlight_boxes=[box for box in boxes if box]))
             overlays = [overlay for overlay in shot.get('overlays',[])
-                        if overlay['kind'] in {'prop_badge','reaction_cutout'}]
+                        if overlay['kind'] in {'prop_badge','reaction_cutout','stat_badge'}]
             if overlays:
                 rows[-1]['overlays'] = overlays
                 rows[-1]['viewport'] = STUDIO_VIEW if shot.get('framing') in {'studio_window','perspective_3d'} else (0,0,1920,1080)
     return rows
 
 
-def overlay_ocr(source, at, viewport, binary):
-    x,y,w,h = viewport
-    with tempfile.TemporaryDirectory() as temp:
-        frame = Path(temp)/'frame.png'
-        transform = f'scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},pad=1920:1080:{x}:{y}'
-        subprocess.run(['ffmpeg','-v','error','-ss',str(at),'-i',str(source),'-frames:v','1',
-                        '-vf',transform,'-threads','1',str(frame)],check=True,capture_output=True,timeout=10)
-        result = subprocess.run([str(binary),str(frame)],check=True,capture_output=True,text=True,timeout=5)
-    return json.loads(result.stdout)['results']
-
-
 def overlay_text_check(row, source, binary=OCR):
     collisions, unavailable = [], []
     for overlay in row.get('overlays',[]):
+        if overlay['kind']=='stat_badge':
+            hits,missing = stat_badge_occlusions(row,source,overlay,binary,overlay_ocr)
+            collisions.extend(hits)
+            unavailable.extend(missing)
+            continue
         start = float(overlay['at'])
         stop = min(row['play_span'], start + float(overlay.get('duration',row['play_span']-start)))
         if not 0 <= start < stop:
@@ -319,6 +312,9 @@ def main(argv=None):
     try:
         if args.verify_manifest:
             count = write_verification(args.verify_manifest.resolve(),args.output)
+            evidence = read_json(args.output/'manifest-visual-verify.json')
+            if any(hit.get('severity')=='error' for hit in evidence['overlay_text_collisions']):
+                raise ValueError('四宫格标题被数字角标遮挡，请移除角标后重试')
         else:
             rows = scene_candidates(args.videos,args.window,args.step,args.top,args.include_flat,args.allow_burned_subtitles)
             write_scene_contact(rows,args.output)

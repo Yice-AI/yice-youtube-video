@@ -6,7 +6,15 @@ from math import isfinite
 from pathlib import Path
 import re
 import subprocess
+import sys
+import tempfile
 import unicodedata
+
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+from kit.editorial.editorial import STAT_BADGE_BOX, STUDIO_VIEW
+
+OCR = Path(__file__).resolve().parents[1] / 'tools/ocr/ocr'
 
 
 TOOLS = {
@@ -628,6 +636,79 @@ def capture_frame(shot, project, rendered, local, source=None):
         return effective_frame(frame.convert('RGB'),shot,use_render)
 
 
+def overlay_ocr(source, at, viewport, binary):
+    x,y,w,h = viewport
+    with tempfile.TemporaryDirectory() as temp:
+        frame = Path(temp)/'frame.png'
+        transform = f'scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},pad=1920:1080:{x}:{y}'
+        subprocess.run(['ffmpeg','-v','error','-ss',str(at),'-i',str(source),'-frames:v','1',
+                        '-vf',transform,'-threads','1',str(frame)],check=True,capture_output=True,timeout=10)
+        result = subprocess.run([str(binary),str(frame)],check=True,capture_output=True,text=True,timeout=5)
+    return json.loads(result.stdout)['results']
+
+
+def quadrant_heading_hits(lines, viewport):
+    """Find text obscured in the upper-right title area of a dense four-panel view."""
+    left, top, width, height = viewport
+    groups = [[], [], [], []]
+    for line in lines:
+        if not any(c.isalnum() for c in line['text']):
+            continue
+        x,y,w,h = line['box']
+        cx,cy = (x+w/2-left)/width, (y+h/2-top)/height
+        if .04 <= cx < .98 and .07 <= cy < .96:
+            groups[2*int(cy >= .5)+int(cx >= .5)].append(line)
+    if min(map(len,groups)) < 3:
+        return []
+    bx,by,bw,bh = STAT_BADGE_BOX
+    hits = []
+    for line in groups[1]:
+        x,y,w,h = line['box']
+        if y <= top+height*.25 and x<bx+bw and x+w>bx and y<by+bh and y+h>by:
+            hits.append(line)
+    return hits
+
+
+def stat_badge_occlusions(row, source, overlay, binary=OCR, reader=overlay_ocr):
+    span, start = row['play_span'], float(overlay.get('at',0))
+    stop = min(span,start+float(overlay.get('duration',span-start)))
+    hits, unavailable = [], []
+    if stop <= start:
+        return hits, unavailable
+    for sample,local in zip(('首','中','尾'),(start,(start+stop)/2,max(start,stop-1/30))):
+        at = row['media_start']+local
+        context = dict(shot=row['id'],source=str(source),overlay='stat_badge',sample=sample,
+                       media_time=at,overlay_box=list(STAT_BADGE_BOX))
+        try:
+            lines = reader(source,at,row['viewport'],binary)
+        except (OSError,ValueError,KeyError,subprocess.SubprocessError) as exc:
+            unavailable.append(dict(context,reason=str(exc)))
+            continue
+        for line in quadrant_heading_hits(lines,row['viewport']):
+            hits.append(dict(context,text=line['text'],text_box=line['box'],severity='error',
+                             reason='quadrant_heading_occlusion'))
+    return hits, unavailable
+
+
+def quadrant_overlay_gate(shots, project):
+    violations = []
+    for shot in shots:
+        badges = [o for o in shot.get('overlays',[]) if o.get('kind')=='stat_badge']
+        if not badges:
+            continue
+        files = primary_files(shot) or [shot.get('source','')]
+        video = next((name for name in files if Path(name).suffix.lower() in VIDEO_EXTENSIONS),None)
+        if not video:
+            continue
+        framed = shot.get('framing') or shot.get('layout','fullbleed')
+        row = dict(id=shot['id'],play_span=shot_span(shot),media_start=shot.get('media_start',0),
+                   viewport=STUDIO_VIEW if framed in {'studio_window','perspective_3d'} else (0,0,1920,1080))
+        for badge in badges:
+            hits, missing = stat_badge_occlusions(row,Path(project)/video,badge)
+            violations.extend(hits+missing)
+    return dict(ok=not violations,violations=violations)
+
+
 def visual_richness_gate(timeline, project, rendered):
     checked, violations = {}, []
     for shot in timeline['shots']:
@@ -819,6 +900,7 @@ def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
                   tutorial_workflow_gate=tutorial_workflow_gate(dict(timeline,capture_scores=richness['checked'])))
     if v10:
         from audit_spatial import spatial_frame_gates, spatial_measurements, subpage_repeats, three_mode_symphony_gate
+        result['quadrant_overlay_gate'] = quadrant_overlay_gate(shots,project)
         result.update(spatial_frame_gates(shots,duration,spatial_measurements(shots,project),
                                           result['tutorial_workflow_gate']['required']))
         result['three_mode_symphony_gate'] = three_mode_symphony_gate(
