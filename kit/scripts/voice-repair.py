@@ -155,6 +155,8 @@ def splice(samples, rate, alignment, cuts, groups, replacements, *, natural=Fals
         previous_replaced = replaced
     if any(left['e'] > right['s'] + 1/rate for left, right in zip(mapped, mapped[1:])):
         raise ValueError('淡化接缝侵入字时间，拒绝拼接')
+    if natural:
+        v.preserve_room_floor(output[:, None], rate, -68.)
     return output, dict(text=alignment['text'], mapped=mapped, matched_ratio=1.,
                         planned_pauses=alignment.get('planned_pauses', {})), splices
 

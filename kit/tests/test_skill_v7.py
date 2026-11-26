@@ -680,6 +680,16 @@ def test_sentence_repair_room_tone_preserves_mono_shape():
     np.testing.assert_allclose(bridge, samples[:RATE // 5])
 
 
+def test_natural_splice_preserves_timing_and_replaces_dead_air():
+    samples = np.r_[tone(.2), np.zeros(round(.055 * RATE)), tone(.2)]
+    words = [dict(charStart=0, charEnd=1, s=.01, e=.19),
+             dict(charStart=1, charEnd=2, s=.27, e=.44)]
+    repaired, aligned, _ = importlib.import_module('voice-repair').splice(
+        samples, RATE, dict(text='甲乙', mapped=words), [0, len(samples)/RATE], [words], {}, natural=True)
+    assert len(repaired) == len(samples) and aligned['mapped'] == words
+    assert np.min(np.abs(repaired[round(.201*RATE):round(.254*RATE)])) > 10**(-80/20)
+
+
 def test_concat_rejects_periodically_silent_room_tone(tmp_path):
     poisoned = np.r_[tone(.015,10**(-60/20),400),tone(.045,10**(-95/20),400)]
     bridge = voice.room_tone(poisoned[:,None],RATE,3*RATE,dbfs=-68.)
