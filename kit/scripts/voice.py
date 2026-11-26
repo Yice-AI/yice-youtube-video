@@ -37,6 +37,31 @@ def normalize_tts_text(text):
     return _CHINESE_TTS_SPACES.sub("", text)
 
 
+_PRONUNCIATION_NOTE = re.compile(r"([\u3400-\u9fffA-Za-z0-9]+)〔(?:读|音)[：:]\s*([^〕]+?)〕")
+
+
+def extract_pronunciations(text):
+    pairs = {}
+    for prefix, reading in _PRONUNCIATION_NOTE.findall(text or ""):
+        prefix, reading = prefix.strip(), reading.strip()
+        if "=" in reading:
+            surface, reading = (part.strip() for part in reading.split("=", 1))
+        elif re.search(r"[A-Za-z0-9]+$", prefix):
+            surface = re.search(r"[A-Za-z0-9]+$", prefix)[0]
+        else:
+            surface = prefix[-len(reading):] if len(prefix) >= len(reading) else prefix
+        if surface and reading and surface != reading:
+            pairs[surface] = reading
+    return pairs
+
+
+def apply_pronunciations(text, pronunciations=None):
+    result = text
+    for surface, reading in sorted((pronunciations or {}).items(), key=lambda item: -len(item[0])):
+        result = result.replace(surface, reading)
+    return result
+
+
 def spoken(text):
     plain = re.sub(r"〔[^〕]*〕", "", text).replace("**", "").replace("`", "")
     return normalize_tts_text(re.sub(r"\s+", " ", plain).strip())
@@ -47,7 +72,7 @@ def parse_script(path):
     for line in Path(path).read_text().splitlines():
         heading = re.match(r"^##\s+(\d{2}[a-z]?)\s*(.*)", line)
         if heading:
-            chapter = {"id": heading[1], "title": heading[2].strip(), "scenes": []}
+            chapter = {"id": heading[1], "title": heading[2].strip(), "scenes": [], "pronunciations": {}}
             if any(c["id"] == chapter["id"] for c in chapters):
                 raise ValueError(f"重复章号：{chapter['id']}")
             chapters.append(chapter)
@@ -62,6 +87,7 @@ def parse_script(path):
         if sid in seen or not text:
             raise ValueError(f"重复幕号或空旁白：{sid}")
         seen.add(sid)
+        chapter["pronunciations"].update(extract_pronunciations(cells[1]))
         chapter["scenes"].append({"id": sid, "text": text})
     chapters = [c for c in chapters if c["scenes"]]
     if not chapters:
@@ -87,20 +113,48 @@ def generate_jobs(jobs, brand, backend="modal", candidates=3):
     import random
     sys.path[:0] = [str(TOOLKIT / "local/tools"), str(TOOLKIT / "tools")]
     from local_voiceover import MLXBackend, load_clone
-    backend = MLXBackend("8bit", load_clone(brand))
+    mlx = MLXBackend("8bit", load_clone(brand))
     for job in jobs:
         target = Path(job["path"])
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.exists():
             raise ValueError(f"拒绝覆盖已有原音：{target}")
-        backend.mx.random.seed(job["seed"])
-        random.seed(job["seed"])
-        backend.generate(text=normalize_tts_text(job["text"]), model=backend.model,
-                         ref_audio=backend.clone["audio"], ref_text=backend.clone["text"],
-                         lang_code=backend.clone["language"], stt_model=None,
+        mode = job.get("chunk_mode", "long_paragraph")
+        pronunciations = job.get("pronunciations") or {}
+        if job.get("chunks"):
+            chunks = [apply_pronunciations(c, pronunciations) for c in job["chunks"]]
+        else:
+            chunks = chapter_chunks(apply_pronunciations(job["text"], pronunciations), mode)
+        pauses = {int(k): v for k, v in job.get("pauses", {}).items()}
+        if len(chunks) == 1 and not pauses:
+            mlx.mx.random.seed(job["seed"])
+            random.seed(job["seed"])
+            mlx.generate(text=normalize_tts_text(chunks[0]), model=mlx.model,
+                         ref_audio=mlx.clone["audio"], ref_text=mlx.clone["text"],
+                         lang_code=mlx.clone["language"], stt_model=None,
                          output_path=str(target.parent), file_prefix=target.stem,
                          audio_format="wav", join_audio=True, verbose=False,
                          max_tokens=4096, split_pattern="")
+        else:
+            folder = target.with_suffix(".chunks")
+            folder.mkdir(exist_ok=True)
+            raw = []
+            for index, chunk in enumerate(chunks):
+                part = folder / f"chunk-{index:03}.wav"
+                chunk_seed = (int(job["seed"]) + index * 997) % (2**32)
+                mlx.mx.random.seed(chunk_seed)
+                random.seed(chunk_seed)
+                mlx.generate(text=normalize_tts_text(chunk), model=mlx.model,
+                             ref_audio=mlx.clone["audio"], ref_text=mlx.clone["text"],
+                             lang_code=mlx.clone["language"], stt_model=None,
+                             output_path=str(folder), file_prefix=part.stem,
+                             audio_format="wav", join_audio=True, verbose=False,
+                             max_tokens=4096, split_pattern="")
+                if not part.is_file() or part.stat().st_size <= 44:
+                    raise RuntimeError(f"MLX 未生成有效分段 WAV：{part}")
+                raw.append(part)
+            _concat_wavs(raw, target, pauses=pauses)
+            write_json(folder / "chunks.json", dict(texts=chunks, pauses=pauses, backend="local", chunk_mode=mode))
         if not target.is_file() or target.stat().st_size <= 44:
             raise RuntimeError(f"MLX 未生成有效 WAV：{target}")
 
@@ -457,7 +511,11 @@ def generate_modal_job(job, brand, backend="modal"):
         return
     target.parent.mkdir(parents=True, exist_ok=True)
     mode = job.get('chunk_mode', 'long_paragraph')
-    chunks = job.get("chunks") or chapter_chunks(job["text"], mode)
+    pronunciations = job.get("pronunciations") or {}
+    if job.get("chunks"):
+        chunks = [apply_pronunciations(c, pronunciations) for c in job["chunks"]]
+    else:
+        chunks = chapter_chunks(apply_pronunciations(job["text"], pronunciations), mode)
     temperatures = [0.65, 0.72, 0.78]
     temperature = temperatures[int(job.get("seed", 0)) % len(temperatures)]
     folder = target.with_suffix(".chunks")
@@ -475,7 +533,8 @@ def generate_modal_job(job, brand, backend="modal"):
 
 
 def generate_raw(chapters, output, brand, seeds=(42, 43), backend="local", candidates=3, chunk_mode='long_paragraph'):
-    jobs = [dict(text=chapter["text"], seed=seed, chunk_mode=chunk_mode,
+    jobs = [dict(text=chapter["text"], pronunciations=chapter.get("pronunciations") or {},
+                 seed=seed, chunk_mode=chunk_mode,
                  path=str(output / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
             for chapter in chapters for seed in seeds]
     generate_jobs(jobs, brand, backend=backend, candidates=candidates)
@@ -980,7 +1039,8 @@ def main():
     write_json(output / "analysis/script-manifest.json", {"chapters": chapters})
     generate = make_generator(args.brand, output / "generation", args.reuse_candidates, args.backend, args.candidates)
     transcribe = make_transcriber(resolve_asr_model(args.asr_model), args.asr_prompt, output / "analysis/asr")
-    jobs = [dict(chapter=chapter["id"], text=chapter["text"], seed=seed, chunk_mode=args.chunk_mode,
+    jobs = [dict(chapter=chapter["id"], text=chapter["text"], pronunciations=chapter.get("pronunciations") or {},
+                 seed=seed, chunk_mode=args.chunk_mode,
                  path=str(output / "raw" / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
             for chapter in chapters for seed in seeds]
     if args.pause_after:
@@ -1011,8 +1071,19 @@ def main():
     records, timings, scenes, subtitles, compact_subtitles, offset = [], [], [], [], [], 0
     failed = []
     for chapter in chapters:
+        chapter_exceptions = normalization
+        if chapter.get("pronunciations"):
+            if any(k in {"number_unit", "english_name", "homophone"} for k in normalization):
+                chapter_exceptions = {k: dict(v) for k, v in normalization.items()}
+                chapter_exceptions.setdefault("homophone", {})
+                for surface, reading in chapter["pronunciations"].items():
+                    chapter_exceptions["homophone"].setdefault(surface, reading)
+            else:
+                chapter_exceptions = dict(normalization)
+                for surface, reading in chapter["pronunciations"].items():
+                    chapter_exceptions.setdefault(surface, reading)
         result = flow.process_chapter(chapter, [job for job in jobs if job["chapter"] == chapter["id"]],
-            output / "candidates" / chapter["id"], generate, transcribe, exceptions=normalization,
+            output / "candidates" / chapter["id"], generate, transcribe, exceptions=chapter_exceptions,
             threshold=args.asr_threshold, silence=args.silence, offset=offset, anchors=anchors,
             skip_post=args.skip_post, max_rounds=args.max_repair_rounds,
             profile=args.profile,

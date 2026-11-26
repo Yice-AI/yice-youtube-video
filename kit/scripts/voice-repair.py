@@ -235,7 +235,8 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
             chapter_number = int(re.match(r'\d+', chapter['id'])[0]) if re.match(r'\d+', chapter['id']) else 0
             for candidate in range(candidates_per_sentence):
                 seed = 200000 + round_number*10000 + chapter_number*300 + span[0]*candidates_per_sentence + candidate
-                jobs.append(dict(text=span_text.strip(), seed=seed, sentence=span[0], span=span, char_offset=lo+leading,
+                jobs.append(dict(text=span_text.strip(), pronunciations=chapter.get('pronunciations') or {},
+                                 seed=seed, sentence=span[0], span=span, char_offset=lo+leading,
                                  path=str(folder/f'sentence-{span[0]:02}-seed-{seed}.wav')))
         generate(jobs)
         selections, screened = {}, []

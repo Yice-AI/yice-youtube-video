@@ -26,6 +26,9 @@ READINGS = {
         'suǒ': '所索锁', 'yóu': '由油游邮', 'lǐ': '里理礼李', 'shù': '述术树竖',
         'huì': '会汇绘惠', 'shū': '书输舒', 'chuán': '传船', 'shè': '摄设射社',
         'jī': '机基积激', 'tí': '提题', 'cháng': '常长尝', 'zhuāng': '装庄妆',
+        'fēng': '风封峰蜂锋', 'róu': '柔揉', 'bǎn': '版板', 'zhèn': '阵振震镇',
+        'xiàn': '现线县献限宪', 'chéng': '成程城呈诚承', 'shēng': '升声生牲',
+        'gǎo': '稿搞镐',
     }.items() for char in group
 }
 
@@ -158,6 +161,15 @@ def audit(text, transcription, exceptions=None, threshold=.97, *, auto_homophone
         opts = list(dict.fromkeys(full for full, v in expected_pct if v is not None and v == val))
         if len(opts) == 1:
             replace(opts[0], match[0], 'number_unit', '同值百分比写法')
+    # Equivalent ratio notation: 三比四 <-> 3:4 / 3-4
+    expected_ratios = [(m[0], numeric(m[1]), numeric(m[2]))
+                       for m in re.finditer('(' + NUMBER + ')比(' + NUMBER + ')', text)]
+    for match in list(re.finditer('(' + NUMBER + r')\s*[:：/-]\s*(' + NUMBER + ')', heard))[::-1]:
+        left, right = numeric(match[1]), numeric(match[2])
+        opts = list(dict.fromkeys(full for full, a, b in expected_ratios
+                                  if left is not None and right is not None and (a, b) == (left, right)))
+        if len(opts) == 1:
+            replace(opts[0], match[0], 'number_unit', '同值比例写法')
     expected_numbers = {}
     for match in re.finditer(NUMBER, text):
         expected_numbers.setdefault(numeric(match[0]), []).append(match[0])

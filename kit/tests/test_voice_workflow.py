@@ -227,6 +227,42 @@ class VoiceWorkflowTests(unittest.TestCase):
         self.assertTrue(chunks[0].startswith("我的视频"))
         self.assertTrue(chunks[-1].endswith("大概一样。"))
 
+    def test_local_backend_chunks_long_paragraphs_and_applies_pronunciation_notes(self):
+        script = self.root / 'script.md'
+        s1 = '第一个出场的是归藏〔读：归葬〕开源的网页演示工具，把六行提纲丢给助手就能直接吐出单文件网页。'
+        s2 = '打开浏览器按方向键横向翻页，克莱因蓝点阵底纹配上超大号数字看板，完全没有密密麻麻的字墙感。'
+        s3 = '同一份提纲换一句指令切到电子杂志风格，背景立刻变成实时流动的暖色光影，断网双击也能全屏路演。'
+        script.write_text(f'## 01 演示\n| 幕 | 旁白 |\n| --- | --- |\n| 1-1 | {s1} |\n| 1-2 | {s2} |\n| 1-3 | {s3} |\n')
+        chapters = voice.parse_script(script)
+        self.assertIn('归藏开源', chapters[0]['text'])
+        self.assertNotIn('归葬', chapters[0]['text'])
+        self.assertEqual(chapters[0]['pronunciations'], {'归藏': '归葬'})
+
+        calls = []
+        backend = mock.Mock()
+        backend.clone = dict(audio='synthetic', text='reference', language='zh')
+        def generate(**kwargs):
+            calls.append(kwargs['text'])
+            target = Path(kwargs['output_path'], kwargs['file_prefix'] + '.wav')
+            synthetic(target, kwargs['text'])
+        backend.generate.side_effect = generate
+        with mock.patch.dict(sys.modules, {'local_voiceover': types.SimpleNamespace(
+                MLXBackend=lambda *_: backend, load_clone=lambda _: backend.clone)}):
+            voice.generate_raw(chapters, self.root / 'out', 'test', [42], backend='local', chunk_mode='long_paragraph')
+        self.assertGreaterEqual(len(calls), 2)
+        self.assertTrue(any('归葬开源' in c for c in calls))
+        self.assertFalse(any('归藏' in c for c in calls))
+        wav = self.root / 'out/seed42/chapter-01-raw.wav'
+        self.assertTrue(wav.is_file() and sf.info(wav).frames > 24000)
+        self.assertTrue((wav.with_suffix('.chunks') / 'chunks.json').is_file())
+
+    def test_aspect_ratio_and_extended_single_reading_homophones(self):
+        result = quality.audit('小红书三比四竖版套图，杂志风与现成组件。',
+                               {'text': '小红书3-4竖板套图，杂志封与线程组件。'},
+                               auto_homophone=True)
+        self.assertTrue(result['ok'], result)
+        self.assertFalse(quality.audit('小红书三比四竖版', {'text': '小红书3-5竖版'}, auto_homophone=True)['ok'])
+
 
 if __name__=='__main__':
     unittest.main()
