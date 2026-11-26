@@ -1,0 +1,67 @@
+<canvas id="grid" width="1920" height="1080">
+</canvas>
+<header data-spatial-title>@@HUD@@</header>
+<div id="scene">
+<div id="cards">
+</div>
+<section id="folder" data-spatial-subject>
+<small>@@PROJECT@@</small>
+<b>@@FILE@@</b>
+<i id="seal">✓</i>
+</section>
+</div>
+<div id="cmd">
+<b>$</b> @@COMMAND@@</div>
+<script>
+const DURATION = @@DURATION@@;
+window.__meta = { dur: DURATION, fps: 30, w: 1920, h: 1080, beats: [DURATION * .1, DURATION * .4, DURATION * .75] };
+const files = @@IMAGES@@;
+const cards = files.map((file, i) => { const c = document.createElement('img'); c.src = file; c.className = 'file'; document.querySelector('#cards').append(c); return c; });
+const camera = t => OM.camera(t, [{ t: 0, x: 934, y: 507, zoom: 1.08 }, { t: DURATION * .32, x: 970, y: 527, zoom: .94 }, { t: DURATION * .76, x: 968, y: 560, zoom: 1.09 }, { t: DURATION, x: 964, y: 554, zoom: 1.12 }]);
+window.__seek = t => {
+    const cameraPose = camera(t), ctx = document.querySelector('#grid').getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, 1920, 1080);
+    const grid = OM.lattice(cameraPose, { depth: 1.3, spacing: 52, px: 1.6 });
+    ctx.setTransform(...grid.matrix);
+    ctx.fillStyle = '#827464';
+    ctx.beginPath();
+    for (let x = grid.x0; x < grid.x1; x += grid.spacing)
+        for (let y = grid.y0; y < grid.y1; y += grid.spacing) {
+            ctx.moveTo(x + grid.r, y);
+            ctx.arc(x, y, grid.r, 0, 2 * Math.PI);
+        }
+    ctx.fill();
+    document.querySelector('#scene').style.transform = 'matrix(' + OM.view(cameraPose).join(',') + ')';
+    const placement = UIK.stage({ x: 204, y: 330, s: 1 });
+    cards.forEach((card, i) => {
+        const from = placement.place(i * 1120 / (cards.length - 1), Math.abs(i - (cards.length - 1) / 2) * 22), to = { x: 820 + i * 9, y: 520 + i * 4 };
+        const c = OM.gather(t, DURATION * .18, DURATION * .64, i, cards.length, from, to, { arc: 140, stagger: .12, spin: .26 });
+        card.style.transform = 'translate3d(' + c.x + 'px,' + c.y + 'px,' + (1 - c.k) * i * 12 + 'px) rotateY(' + (i - (cards.length - 1) / 2) * (1 - c.k) * -9 + 'deg) rotate(' + c.rot + 'rad) scale(' + (1 - .37 * c.k) + ')';
+    });
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < cards.length; i++) {
+        const phase = OM.seg(t, DURATION * .24, DURATION * .71);
+        ctx.strokeStyle = 'rgba(255,' + (103 + i * 18) + ',71,' + (.08 + .44 * Math.sin(Math.PI * phase)) + ')';
+        ctx.beginPath();
+        ctx.moveTo(290 + i * 1120 / (cards.length - 1), 465);
+        ctx.bezierCurveTo(310 + i * 1120 / (cards.length - 1), 320, 1080, 380, 970, 595);
+        ctx.stroke();
+    }
+    ctx.restore();
+    document.querySelector('#folder').style.setProperty('--blink', String(.62 + .30 * Math.sin(t * 5)));
+    const terminal = document.querySelector('#cmd');
+    const open = OM.seg(t, DURATION * .63, DURATION * .87);
+    terminal.style.transform = 'translateY(' + ((1 - open) * 8) + 'px)';
+    terminal.style.opacity = String(open);
+    const spring = OM.spring(Math.max(0, t - DURATION * .66), .65, 17);
+    document.querySelector('#folder').style.transform = 'translateY(' + (-9 * spring) + 'px) rotateX(' + (1 - spring) * 9 + 'deg)';
+    const seal = OM.seal(t, DURATION * .68, DURATION * .9, { turns: .18 });
+    document.querySelector('#seal').style.transform = 'scale(' + seal.k + ') rotate(' + seal.rot + 'rad)';
+};
+window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2));
+window.__events = () => [{ t: .4, kind: 'tick', gain: .12 }, { t: DURATION * .65, kind: 'pop', gain: .17 }, { t: DURATION * .78, kind: 'stamp', gain: .17 }];
+window.__ready = Promise.all([document.fonts.ready, ...cards.map(c => c.decode())]).then(() => window.__seek(0));
+</script>

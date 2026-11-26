@@ -27,7 +27,7 @@ def materials(tmp_path):
 
 @pytest.mark.parametrize('recipe,data,expected',[
     ('carousel_3d_select',dict(selected_index=2,select_at=2), 'M1'),
-    ('layer_explode_3d',dict(boxes=[[.1,.2,.3,.4]],count=24), 'M1'),
+    ('layer_explode_3d',dict(boxes=[[.1,.2,.3,.4]],vector_shapes=[[.12,.22,.60,.045]],count=24), 'M1'),
     ('roadmap_thread_camera',dict(steps=[dict(no=i,title='步骤',sub='说明',at=.7*i) for i in range(3)],focus_step=0), 'M3'),
     ('literal_action_stage',dict(action='bad_slides_pileup',labels=['甲','乙','丙'],warning='重复'), 'M3'),
     ('literal_action_stage',dict(action='dead_image_locked',warning='无法修改'), 'M3'),
@@ -39,6 +39,9 @@ def test_portable_recipes(tmp_path,materials,recipe,data,expected):
     spec=dict(id='demo',duration=5,recipe=recipe,data=dict(data,images=paths,image=paths[0]))
     p=build(spec,tmp_path,tmp_path/'outputs'/'demo',gsap)
     assert composition_motion(p.read_text())[1] == expected
+    if recipe=='layer_explode_3d':
+        assert '<rect x="120.00" y="123.75" width="600.00"' in p.read_text()
+
     assert (p.parent/'vendor/gsap.min.js').is_file()
     assert 'paused:true' in p.read_text() and str(tmp_path) not in p.read_text()
     assert dual_engine_craft_gate([dict(id='demo',stage_mode='hyperframes_block',composition=p)],tmp_path,v10=True)['ok']
@@ -92,14 +95,21 @@ def test_dual_engine_counts_time_and_measured_palette():
     modes = ['hyperframes_block']*2 + ['onetake_clip']*3
     shots = [dict(id=str(i),stage_mode=mode,start=i,end=i+1) for i,mode in enumerate(modes)]
     measured = {s['id']:dict(frames=[dict(phase=.88,overlaps=[],exploded=False,
-                samples={'background':dict(n=200,luma=190,chroma=20)})]) for s in shots}
+                samples={'background':dict(n=200,luma=20,chroma=10),'highlights':{str(int(s['id'])%2):100}})]) for s in shots}
     gate = audit_spatial.spatial_frame_gates
     assert gate(shots,10,measured,True)['dual_engine_symphony_gate']['ok']
     assert not gate(shots,30,measured,True)['dual_engine_symphony_gate']['ok']
     assert not gate(shots[:-1],10,measured,True)['dual_engine_symphony_gate']['ok']
+    name='unified_cyber_stage_and_accent_gate'
+    assert gate(shots,10,measured,True)[name]['ok']
     for sample in measured.values():
-        sample['frames'][0]['samples']['background']['luma'] = 20
-    assert not gate(shots,10,measured,True)['dual_engine_symphony_gate']['ok']
+        sample['frames'][0]['samples']['highlights']={'2':100}
+    assert not gate(shots,10,measured,True)[name]['ok']
+    measured['0']['frames'][0]['samples']['background']['luma']=43
+    measured['0']['frames'][0]['titles']=[[74,60,400,96]]
+    gates=gate(shots,10,measured,True)
+    assert any(v['reason']=='bright_stage_background' for v in gates[name]['violations'])
+    assert gates['no_ppt_slide_header_gate']['violations'][0]['reason']=='ppt_slide_header_detected'
 
 
 def test_seeked_pixels_and_visible_title_bounds(tmp_path):
@@ -115,7 +125,7 @@ def test_seeked_pixels_and_visible_title_bounds(tmp_path):
         <div data-spatial-layer="skeleton" class="plate" style="left:450px"></div>
         <div data-spatial-layer="letters" class="plate" style="left:750px"></div></section>
         <script>window.__meta={dur:5};window.__seek=()=>{};</script>"""
-    for color,top,ok in [('#242424','210',False),('#dddddd','65',True)]:
+    for color,top,ok in [('#242424','210',False),('#39cfef','65',True)]:
         markup = fixture.replace('COLOR',color).replace('TOP',top)
         entry.write_text('<!doctype html><template>'+markup+'</template>' if ok else markup)
         measured=audit_spatial.spatial_measurements([shot],tmp_path)
@@ -123,3 +133,30 @@ def test_seeked_pixels_and_visible_title_bounds(tmp_path):
         assert gates['title_card_collision']['ok'] is ok
         assert gates['low_layer_contrast']['ok'] is ok
         assert gates['low_layer_contrast']['plates']['scene']['letters']['n']>0
+
+
+@pytest.mark.parametrize(('recipe','data','marker'), [
+    ('duplicate_laser_sweep',dict(cards=['一','二','三'],series='测试',caption='<caption>'),'OM.spring'),
+    ('bitmap_lock_glitch',dict(image='material-0.png'),'OM.shake'),
+    ('energy_roadmap_dive',dict(stations=[dict(image=f'material-{i}.png',label='站') for i in range(4)],target=3),'data-overview-station'),
+    ('live_control_sync',dict(image='material-1.png',slider='强度',switch='锁定',canvas='预览'),'OM.cursor'),
+    ('capsule_archive_seal',dict(images=['material-0.png','material-1.png'],project='档案',command='open <bundle>'),'OM.gather'),
+])
+def test_declarative_onetake_recipes_copy_real_inputs(tmp_path,materials,recipe,data,marker):
+    from kit.onetake.scene import build as compile_scene
+    output=tmp_path/'compiled'
+    entry=compile_scene(dict(recipe=recipe,duration=5,hud='测试 <HUD>',data=data), tmp_path, output)
+    html=entry.read_text()
+    assert marker in html and 'OM.camera(' in html and 'window.__seek' in html
+    assert '测试 &lt;HUD&gt;' in html and '@@' not in html
+    if recipe=='energy_roadmap_dive':
+        assert len(list(output.glob('*.png')))==4 and html.count('data-overview-station')==4
+    if recipe=='capsule_archive_seal':
+        assert 'open &lt;bundle&gt;' in html and '#E6F4FF' in html
+
+
+def test_roadmap_gate_checks_unclipped_projected_bounds():
+    shot=dict(id='r',stage_mode='onetake_clip',start=0,end=5)
+    frame=dict(phase=.5,overlaps=[],stations=[[129,500],[1400,1791]])
+    gate=audit_spatial.spatial_frame_gates([shot],5,{'r':dict(frames=[frame])},False)['roadmap_overview_safe_gate']
+    assert not gate['ok'] and len(gate['violations'])==2

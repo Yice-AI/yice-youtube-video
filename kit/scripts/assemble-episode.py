@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import tempfile
 import sys
 import time
 from urllib.parse import unquote
@@ -24,6 +25,8 @@ from audit_v7 import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, probe_video, semantic_b
 from workspace import ONETAKE_FILES, ONETAKE_FONTS, composition_files, resolve_gsap_runtime, resolve_hyperframes_command, resolve_onetake, render_workers, render_priority
 from kit.editorial.audio_mix import mix_episode_audio
 from kit.editorial.editorial import EditorialStage, EXPLAINER_THEMES, FONT_FILES, PALETTES, evidence_box
+from kit.onetake.scene import build as build_onetake_scene
+from kit.spatial.block import build as build_spatial_scene
 from kit.studio_ui import add_workbench
 
 FPS = 30
@@ -381,8 +384,36 @@ def composition_entry(root, value, default):
     return entry
 
 
+def compile_inline_scene(shot, root, folder, gsap):
+    """Publish a complete compiled scene only after all its inputs have been resolved."""
+    spatial = shot['stage_mode'] == 'hyperframes_block'
+    field = 'spatial_spec' if spatial else 'onetake_spec'
+    if field not in shot:
+        return shot
+    span = round(shot['end']-shot['start'], 6)
+    spec = dict(shot[field], duration=span if spatial else round(span+.36, 6))
+    spec.setdefault('id', 'scene-'+shot['id'])
+    cache = folder/'scene-cache'/shot['id']
+    cache.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=cache) as temporary:
+        staging = Path(temporary)
+        entry = (build_spatial_scene(spec, root, staging, gsap) if spatial
+                 else build_onetake_scene(spec, root, staging))
+        # Include compiled media, CSS and motion code, even when only a screenshot changed.
+        inputs = [(p.relative_to(staging).as_posix(),file_fingerprint(p)) for p in composition_files(entry)]
+        version = hashlib.sha256(json.dumps(inputs,sort_keys=True).encode()).hexdigest()
+        target = cache/version
+        if not target.is_dir():
+            try:
+                staging.rename(target)
+            except OSError:
+                if not target.is_dir():
+                    raise
+        return dict(shot, compiled_entry=target/entry.name)
+
+
 def onetake(shot, root, folder, run, *, force_render=False, workers=None):
-    entry = composition_entry(root,shot.get('comp'),'comp.html')
+    entry = shot.get('compiled_entry') or composition_entry(root,shot.get('comp'),'comp.html')
     runtime = resolve_onetake()
     if runtime is None:
         raise ValueError('找不到本机 Onetake')
@@ -451,7 +482,7 @@ class CompositionRoot(HTMLParser):
 
 
 def install_subcomposition(shot, root, folder, gsap):
-    entry = composition_entry(root,shot.get('composition'),'index.html')
+    entry = shot.get('compiled_entry') or composition_entry(root,shot.get('composition'),'index.html')
     files = composition_files(entry)
     parser = CompositionRoot()
     markup = entry.read_text()
@@ -536,6 +567,8 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
     stage = EditorialStage(title,duration=last-first,fps=FPS)
     for shot in shots:
         mode,key = shot['stage_mode'],shot['id']
+        if mode in ('hyperframes_block', 'onetake_clip'):
+            shot = compile_inline_scene(shot,root,folder,gsap or gsap_runtime({},root))
         a,b = shot['start']-first,shot['end']-first
         text = shot['spoken_topic']
         start = shot['media_start']
@@ -619,7 +652,7 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
             clip,probe = onetake(shot,root,folder,run,force_render=force_render,workers=workers)
             stage.add_video(a,b,clip,0,0,1920,1080,fit='cover')
             stage._shot(text,'onetake_motion',a,b,[clip],beats=probe['beats'])
-            entry = composition_entry(root,shot['comp'],'comp.html')
+            entry = shot.get('compiled_entry') or composition_entry(root,shot['comp'],'comp.html')
             source_folder = folder/'onetake-sources'/key
             for source in composition_files(entry):
                 install_asset(source,source_folder/source.relative_to(entry.parent))

@@ -79,11 +79,18 @@ def build(spec, source_dir, output, gsap):
             content = (f'<span>{label(captions[index])}</span>' if captions else '')
             chips.append(f'<i class="chip" style="{pos};{image_style}">{content}</i>')
             borders.append(f'<i class="bare-box" style="{pos}"></i>')
+        if data.get('vector_shapes'):
+            vectors = []
+            for x,y,w,h in items('vector_shapes',1,1200):
+                number(x,0,1,'矢量横坐标'); number(y,0,1,'矢量纵坐标')
+                number(w,0,1-x+.00001,'矢量宽度'); number(h,0,1-y+.00001,'矢量高度')
+                vectors.append(f'<rect x="{x*1000:.2f}" y="{y*562.5:.2f}" width="{max(.8,w*1000):.2f}" height="{max(.8,h*562.5):.2f}"/>')
+            borders = ['<svg class="native-vectors" viewBox="0 0 1000 562.5">'+''.join(vectors)+'</svg>']
         number(data['count'], 1, 1000000, 'count')
-        body = (f'<div class="model" data-spatial-subject><div class="layer base" data-spatial-layer="base"><img src="{bottom}" alt=""><img class="face" src="{source}" alt=""><b class="plate-tag">01　柔光底纹层</b></div>'
-                f'<div class="layer skeleton" data-spatial-layer="skeleton">{"".join(borders)}<b class="plate-tag">02　矢量图表层</b></div><div class="layer letters" data-spatial-layer="letters"><div class="text-boxes">{"".join(chips)}</div><b class="plate-tag">03　{len(boxes)} 个独立文字层</b></div>'
+        body = (f'<div class="model" data-spatial-subject><div class="layer base" data-spatial-layer="base"><img src="{bottom}" alt=""><img class="face" src="{source}" alt=""><b class="plate-tag">01 · AMBIENT BASE</b></div>'
+                f'<div class="layer skeleton" data-spatial-layer="skeleton">{"".join(borders)}<b class="plate-tag">02 · VECTOR GRAPHICS</b></div><div class="layer letters" data-spatial-layer="letters"><div class="text-boxes">{"".join(chips)}</div><b class="plate-tag">03 · {len(boxes)} NATIVE TEXTS</b></div>'
                 '<i class="guide g1"></i><i class="guide g2"></i></div>')
-        overlay = (f'<aside class="meter"><strong>0</strong><b>{label(data.get("unit", "个图层"))}</b></aside>')
+        overlay = (f'<div class="depth-ruler" aria-hidden="true"><small>Z</small></div><aside class="meter"><strong>0</strong><b>{label(data.get("unit", "个图层"))}</b></aside>')
     elif recipe == 'roadmap_thread_camera':
         nodes = items('steps', 3, 4)
         if type(data['focus_step']) is not int or not 0 <= data['focus_step'] < len(nodes):
@@ -112,7 +119,21 @@ def build(spec, source_dir, output, gsap):
             body = f'<div class="locked-shot">{img(data["image"])}</div><div class="pointer">↖</div><i class="ripple"></i><div class="warning">⊠　{label(data["warning"])}</div>'
         elif action == 'slot_lock_fill':
             words = items('labels',3,4)
-            body = '<div class="plan-lines" data-spatial-subject>' + ''.join(f'<div>{label(word)}</div>' for word in words) + '</div><div class="slots" data-spatial-subject>' + ''.join('<i></i>' for _ in words) + '</div>' + ''.join(f'<b class="token">{label(w)}</b>' for w in words)
+            paths, rows = [], []
+            fields = data.get('fields',[])
+            if fields and (not isinstance(fields,list) or len(fields)!=len(words)):
+                raise ValueError('每个数据槽需要一个对应的来源字段')
+            for i,word in enumerate(words):
+                y = 336 + i*83
+                curve = f'M 696 {y} C 790 {y-55} 1008 {y-5} 1215 {y}'
+                paths.append(f'<path class="wire-rail" d="{curve}"/><path class="data-wire" pathLength="1" d="{curve}"/><circle class="comet" r="4"/>')
+                field = f'<em>{label(fields[i])}</em>' if fields else ''
+                rows.append(f'<div>{field}<b>{label(word)}</b></div>')
+            body = ('<svg class="slot-traces" viewBox="0 0 1920 1080">'+''.join(paths)+'</svg>'
+                    + '<div class="plan-lines" data-spatial-subject><small>'+label(data.get('source_label','输入'))
+                    + '</small>'+''.join(rows)+'</div><div class="slots" data-spatial-subject>'
+                    + '<i></i>'*len(words)+'</div>'+''.join(f'<b class="token">{label(w)}</b>' for w in words))
+
         else:
             body = ''.join(f'<div class="file-card">{img(src)}</div>' for src in items('images',2,6)) + f'<div class="command">{label(data["command"])}</div><div class="folder"><small>{label(data["folder"])}</small><h2>SKILL.md</h2></div>'
 
@@ -126,9 +147,10 @@ def build(spec, source_dir, output, gsap):
     if 'steps' in data:
         settings_data['steps'] = [{'at':step['at']} for step in data['steps']]
     settings=json.dumps(settings_data,ensure_ascii=False).replace('<','\\u003c')
+    hud = label(spec.get('hud') or spec.get('eyebrow') or spec.get('title',''))
     markup=f'''<!doctype html><html lang="zh"><head><meta charset="utf-8"><style>{css}</style><script src="vendor/gsap.min.js"></script></head><body>
 <div id="{ident}" data-composition-id="{ident}" data-start="0" data-duration="{duration}" data-width="1920" data-height="1080" data-spatial-recipe="{recipe}" data-spatial-action="{label(data.get('action',''))}" style="--accent:{accent}">
-<div class="stage-light"></div><div class="bloom"></div><header data-spatial-title><small>{label(spec.get('eyebrow',''))}</small><h1>{label(spec.get('title',''))}</h1></header><div class="stage"><div class="world">{body}</div></div><div class="streak"></div>{overlay}<div class="film-grain"></div></div>
+<div class="stage-light"></div><div class="bloom"></div><svg class="ambient-wires" viewBox="0 0 1920 1080" aria-hidden="true"><path d="M-90 830C310 760 382 355 805 433S1365 776 2010 255"/><path class="energy-thread" pathLength="1" d="M-90 830C310 760 382 355 805 433S1365 776 2010 255"/></svg><header data-spatial-title>{hud}</header><div class="stage"><div class="world">{body}</div></div><div class="streak"></div>{overlay}<div class="film-grain"></div></div>
 <script>(()=>{{const root=document.getElementById('{ident}'), q=s=>root.querySelector(s), all=s=>[...root.querySelectorAll(s)];
 const data={settings}, dur={duration}, tl=gsap.timeline({{paused:true}});{script}
 tl.to({{}},{{duration:.001}},{duration}-.001);window.__timelines=window.__timelines||{{}};window.__timelines['{ident}']=tl;

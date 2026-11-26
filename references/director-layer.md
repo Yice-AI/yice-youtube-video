@@ -1,4 +1,4 @@
-# v10.0 导演层与画面路由
+# v11.0 导演层与画面路由
 
 按旁白首字安排画面，先确定本句要证明的事实与叙事角色，再选色板与舞台。默认输出 `1920×1080`、`30fps`，支持五套主舞台主题（`obsidian`、`aurora_indigo`、`paper_cool`、`paper_warm`、`pine`）以及 `onetake` 六套电影色板（`paper`、`dusk`、`tabletop`、`ultramarine`、`riso`、`ember`）或产品截图自动吸色（`look_from_shots`），一切以贴合内容气质与视觉高级感为准。字幕统一保留 `y ≥ 900` 安全区。
 
@@ -16,8 +16,8 @@
 
 | 舞台 | 用途与核心字段 |
 |---|---|
-| `onetake_clip` | **单主体相机推拉、连续变形与机制高潮**。填 `comp`、`shutter`（默认 `180`），可选 `look` 或 `look_from_shots`。用 `OM` 物理弹簧/相机跟随/连续变形（Carry）与真实快门动态模糊替代多框文字堆砌。 |
-| `hyperframes_block` | **多阶段架构、3D 卡片阵列、数据流与交互状态推演**。填 `composition`，挂载独立子合成（Registry 组件或 Animation 22 套蓝图），自动离线注入 GSAP 与打包字体。 |
+| `onetake_clip` | **单主体相机推拉、连续变形与机制高潮**。新镜填 `onetake_spec` 的配方与数据，已有合成可填 `comp`。填 `shutter`（默认 `180`），可选 `look` 或 `look_from_shots`。用 `OM` 物理弹簧/相机跟随/连续变形（Carry）与真实快门动态模糊替代多框文字堆砌。 |
+| `hyperframes_block` | **多阶段架构、3D 卡片阵列、数据流与交互状态推演**。新镜填 `spatial_spec` 直编空间动效，已有项目可填 `composition` 挂载独立子合成（Registry 组件或 Animation 22 套蓝图），自动离线注入 GSAP 与打包字体。 |
 | `callout_rig` / `fullbleed_rig` | **真实网页与实操录屏主力舞台**。填 `source`、`media_start`、`motion`（支持 `focus_push` / `spring_glide` 两段呼吸运镜），默认采用 `fullbleed` 满屏跟焦，暗场视窗只用于单镜强调。 |
 | `evidence_spotlight` | **原文、截图或架构图局部推近检视台**。传网页采集的 `capture_meta` 自动复用原文像素框与来源署名，或显式填 `highlight_box` 与 `highlight_at`。 |
 | `triptych_cards` | **两至四项多格式对照展台**（支持视频、GIF、WebP、PNG、安全 SVG）。现代主题下自动启用圆角毛玻璃立体展台卡与逐卡 `reveal_at` 弹性点亮。 |

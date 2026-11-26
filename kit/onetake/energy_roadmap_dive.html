@@ -1,0 +1,55 @@
+<canvas style="position:absolute;inset:0" width="1920" height="1080" id="dots">
+</canvas>
+<div class="paper">
+</div>
+<header data-spatial-title>@@HUD@@</header>
+<div id="world">
+<svg class="route" viewBox="0 0 1920 1080">
+<defs>
+<linearGradient id="spectrum">
+<stop stop-color="#ff3b5c"/>
+<stop offset=".5" stop-color="#ffad65"/>
+<stop offset="1" stop-color="#38bdf8"/>
+</linearGradient>
+</defs>
+<path id="route" d="@@PATH@@" fill="none" stroke="url(#spectrum)" style="filter:drop-shadow(0 0 6px #ff913b)" stroke-width="9" stroke-linecap="round"/>
+<circle class="tail" r="2.0" fill="#ffd29b"/>
+<circle class="tail" r="2.55" fill="#ffd29b"/>
+<circle class="tail" r="3.1" fill="#ffd29b"/>
+<circle class="tail" r="3.65" fill="#ffd29b"/>
+<circle class="tail" r="4.2" fill="#ffd29b"/>
+<circle class="tail" r="4.75" fill="#ffd29b"/>
+<circle class="tail" r="5.3" fill="#ffd29b"/>
+<circle class="tail" r="5.85" fill="#ffd29b"/>
+<circle class="tip" r="10"/>
+</svg>@@STATIONS@@</div>
+<script>
+const D = @@DURATION@@;
+window.__meta = { dur: D, fps: 30, w: 1920, h: 1080, beats: [.4, D * .44, D * .76] };
+const camera = t => OM.camera(t, [{ t: 0, x: 980, y: 537, zoom: .86 }, { t: D * .52, x: 960, y: 540, zoom: .95 }, { t: D * .76, x: @@TARGET_X@@, y: 540, zoom: 1.66 }, { t: D * .87, x: @@TARGET_X@@, y: 515, zoom: 2.14 }, { t: D * .965, x: @@TARGET_X@@, y: 487, zoom: 5.9 }, { t: D, x: @@TARGET_X@@, y: 487, zoom: 6.7 }]);
+window.__seek = t => {
+    const cameraPose = camera(t);
+    const ctx = drawCameraLattice(cameraPose, "#7888d4");
+    const near = OM.lattice(cameraPose, { depth: 2.2, spacing: 125, px: 1.8 });
+    ctx.setTransform(...near.matrix);
+    ctx.fillStyle = '#f3c99380';
+    for (let x = near.x0; x < near.x1; x += near.spacing)
+        for (let y = near.y0; y < near.y1; y += near.spacing)
+            ctx.fillRect(x, y, 2.1, 2.1);
+    document.getElementById('terminal-inside').style.opacity = String(OM.seg(t, D * .82, D * .945));
+    const progress = OM.ease.smoother(OM.seg(t, 0, D * .62));
+    const path = document.querySelector('#route'), len = path.getTotalLength();
+    path.style.strokeDasharray = len;
+    path.style.strokeDashoffset = len * (1 - progress);
+    const tip = path.getPointAtLength(len * progress);
+    const pen = document.querySelector('.tip');
+    pen.setAttribute('cx', tip.x);
+    pen.setAttribute('cy', tip.y);
+    document.querySelectorAll('.tail').forEach((el, i) => { const q = path.getPointAtLength(Math.max(0, len * progress - (8 - i) * 5)); el.setAttribute('cx', q.x); el.setAttribute('cy', q.y); el.style.opacity = String((i + 1) / 12); });
+    document.querySelectorAll('.station').forEach((el, i) => { const enter = OM.spring(Math.max(0, t - D * i * .12), .7, 16), leave = i !== @@TARGET@@ ? OM.seg(t, D * .54, D * .71) : 0; el.style.opacity = Math.min(1, enter * 2) * (1 - leave); el.style.visibility = leave >= 1 ? 'hidden' : 'visible'; el.style.transform = 'translateY(' + (1 - enter) * 32 + 'px) scale(' + (.9 + .1 * enter) + ')'; });
+    document.querySelector('header').style.opacity = 1 - OM.seg(t, D * .58, D * .7);
+};
+window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.max(0, Math.min(1, (D * .6 - a) * 3)) * Math.abs(b - a) * 380;
+window.__events = () => [{ t: D * .43, kind: 'tick', gain: .17 }, { t: D * .68, kind: 'pop', gain: .14 }];
+window.__ready = Promise.all([document.fonts.ready, ...Array.from(document.images, i => i.decode())]).then(() => window.__seek(0));
+</script>

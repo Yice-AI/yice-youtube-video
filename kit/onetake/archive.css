@@ -1,0 +1,136 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(ellipse at 49% 54%,#19202b 0%,#0e121c 37%,#07090f 78%)!important;
+  color: #e1e8f2;
+  font-family: "Source Han Sans CN",sans-serif;
+  overflow: hidden;
+  width: 1920px;
+  height: 1080px;
+}
+
+canvas {
+  position: absolute;
+  inset: 0;
+}
+
+#scene {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  width: 1920px;
+  height: 1080px;
+  perspective: 1800px;
+}
+
+.file {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: center;
+  width: 328px;
+  height: 185px;
+  border: 1px solid #e9c78ba6;
+  border-radius: 7px;
+  box-shadow: 0 0 13px #f9b35d34,0 16px 25px #0008;
+}
+
+#cmd {
+  transform-origin: left center;
+  position: absolute;
+  left: 50%;
+  top: 750px;
+  background: #0d1825;
+  color: #E6F4FF;
+  font: 600 25px/30px monospace;
+  padding: 13px 22px;
+  border: 1px solid #e0a65b70;
+  border-radius: 14px;
+  box-shadow: 0 0 22px #38bdf826;
+  backdrop-filter: blur(9px);
+  translate: -50% 0;
+  max-width: 1640px;
+  width: max-content;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-color: #5fcde48a;
+}
+
+#folder {
+  position: absolute;
+  left: 650px;
+  top: 505px;
+  width: 620px;
+  height: 188px;
+  background: linear-gradient(130deg,#5e4a3244,#202128dc 35%,#151823d9 75%,#6b4d3977);
+  border: 1px solid #ffc982a8;
+  border-radius: 8px 23px 22px 22px;
+  box-shadow: inset 0 3px 0 #f2e0bc55,0 24px 50px #000a,0 0 30px #ffa64b2b;
+  padding: 28px 44px;
+  backdrop-filter: blur(11px);
+}
+
+#folder:before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  left: -3px;
+  width: 215px;
+  height: 44px;
+  background: #a36c49;
+  border: 3px solid #d6a879;
+  border-bottom: 0;
+  border-radius: 19px 40px 0 0;
+}
+
+#folder b {
+  font-size: 66px;
+  display: block;
+  color: #fde9cd;
+  text-shadow: 0 0 18px #ffd09752;
+}
+
+#folder small {
+  font-size: 28px;
+  color: #ffce8d;
+}
+
+#seal {
+  position: absolute;
+  right: 35px;
+  top: 62px;
+  border: 3px solid #fde2b3;
+  border-radius: 50%;
+  width: 88px;
+  height: 88px;
+  text-align: center;
+  line-height: 80px;
+  color: #fff0d5;
+  font-size: 48px;
+}
+
+#folder::before {
+  background: linear-gradient(115deg,#40372e,#292a30);
+  border-color: #c6ab80;
+}
+
+#folder::after {
+  content: '';
+  position: absolute;
+  right: 29px;
+  top: 25px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c8f904;
+  box-shadow: 0 0 14px 3px #b2ef37;
+  opacity: var(--blink,.8);
+}
+
+#cmd b {
+  color: #38BDF8;
+}

@@ -1,4 +1,4 @@
-"""v10 source-motion proof and visual comparisons for tutorial compositions."""
+"""Source-motion proof and visual comparisons for tutorial compositions."""
 import re
 import subprocess
 
@@ -198,9 +198,33 @@ def spatial_measurements(shots, project):
     return results
 
 
+def capture_stage_backgrounds(shots, project, rendered, gate):
+    import numpy as np
+    for shot in shots:
+        if stage_mode(shot) not in RIGS | {'studio_ui'}:
+            continue
+        key = shot['id']
+        for phase in (.12,.5,.88):
+            try:
+                frame = capture_frame(shot,project,rendered,shot_span(shot)*phase,prefer_rendered=True)
+                pixels = np.asarray(frame.convert('RGB'))
+                height,width = pixels.shape[:2]
+                y,x = np.ogrid[:height,:width]
+                margin = (x<width*.035)|(x>width*.965)|(y<height*.04)|(y>height*.94)
+                luma = float((pixels[margin] @ np.array([.2126,.7152,.0722])).mean())
+                gate['backgrounds'].setdefault(key,[]).append(dict(phase=phase,luma=luma))
+                if luma>42:
+                    gate['violations'].append(dict(shot=key,phase=phase,luma=luma,reason='bright_stage_background'))
+            except (OSError,ValueError,subprocess.SubprocessError) as exc:
+                gate['violations'].append(dict(shot=key,phase=phase,reason='missing_frame_evidence',detail=str(exc)))
+    gate['ok'] = not gate['violations']
+
+
 def spatial_frame_gates(shots, duration, measured, required):
+    overflow = []
     engines = {'hyperframes_block':dict(count=0,seconds=0.),'onetake_clip':dict(count=0,seconds=0.)}
     collisions, contrast, palette, ratios, plates = [], [], {}, {}, {}
+    headers, dark, accents = [], [], {}
     for shot in shots:
         mode, key = stage_mode(shot), shot['id']
         if mode not in engines:
@@ -212,19 +236,36 @@ def spatial_frame_gates(shots, duration, measured, required):
             failure = dict(shot=key,reason='missing_frame_evidence',detail=result.get('error'))
             collisions.append(failure)
             contrast.append(failure)
+            dark.append(failure)
+            headers.append(failure)
             continue
         for frame in result['frames']:
+            for left,right in frame.get('stations',[]):
+                if left<130 or right>1790:
+                    overflow.append(dict(shot=key,phase=frame['phase'],left=left,right=right))
             if frame['overlaps']:
                 collisions.append(dict(shot=key,reason='title_card_collision',phase=frame['phase'],area=max(frame['overlaps'])))
+            for x,y,right,bottom in frame.get('titles',[]):
+                if x<760 and y<210 and bottom-y>34:
+                    headers.append(dict(shot=key,reason='ppt_slide_header_detected',phase=frame['phase'],
+                                        x=x,y=y,height=bottom-y))
             if 'samples' not in frame:
                 continue
             samples = frame['samples']
             bg = samples.get('background',{})
-            palette[key] = bg
-            if frame['exploded']:
+            palette.setdefault(key,[]).append(dict(phase=frame['phase'],**bg))
+            if required and (not bg.get('n') or bg['luma']>42):
+                dark.append(dict(shot=key,phase=frame['phase'],reason='bright_stage_background',luma=bg.get('luma')))
+            ranked = samples.get('highlights',{})
+            if ranked:
+                dominant = max(ranked,key=ranked.get)
+                if ranked[dominant]>=5:
+                    accents.setdefault(key,[]).append(int(dominant))
+            if frame['exploded'] and frame['phase']==.88:
                 for layer in ('base','skeleton','letters'):
                     value = samples.get(layer,{})
-                    delta = abs(value['luma']-bg['luma']) if value.get('n') and bg.get('n') else 0
+                    light = value.get('highlightLuma',0)
+                    delta = light-bg['luma'] if value.get('lit') and bg.get('n') else 0
                     plates.setdefault(key,{})[layer] = dict(delta=delta,**value)
                     if delta<26:
                         contrast.append(dict(shot=key,reason='low_layer_contrast',layer=layer,delta=delta))
@@ -234,9 +275,15 @@ def spatial_frame_gates(shots, duration, measured, required):
         ratios[mode] = data['seconds']/duration if duration else 0
         if required and (data['count']<minimum or ratios[mode]+1e-8<share):
             violations.append(dict(engine=mode,minimum_count=minimum,minimum_ratio=share))
-    if required and not any(bg.get('luma',0)>=110 or bg.get('chroma',0)>=70 for bg in palette.values()):
-        violations.append(dict(reason='all_dark_or_missing_palette'))
-    return dict(title_card_collision=dict(ok=not collisions,violations=collisions),
+    from collections import Counter
+    dominant = {key:Counter(bands).most_common(1)[0][0] for key,bands in accents.items()}
+    if required and len(set(dominant.values()))<2:
+        dark.append(dict(reason='insufficient_accent_hues',dominant=dominant))
+    return dict(roadmap_overview_safe_gate=dict(ok=not overflow,violations=overflow),
+                title_card_collision=dict(ok=not collisions,violations=collisions),
+                no_ppt_slide_header_gate=dict(ok=not headers,violations=headers),
+                unified_cyber_stage_and_accent_gate=dict(ok=not dark,required=required,backgrounds=palette,
+                                                         dominant_hue_bins=dominant,violations=dark),
                 low_layer_contrast=dict(ok=not contrast,plates=plates,violations=contrast),
                 dual_engine_symphony_gate=dict(ok=not violations,required=required,engines=engines,ratios=ratios,
                                               backgrounds=palette,violations=violations))

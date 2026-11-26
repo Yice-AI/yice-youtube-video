@@ -16,3 +16,5 @@ tl.fromTo(cam,{x:-45,y:15,z:-150,rx:-6,ry:9},{x:0,y:0,z:0,rx:0,ry:0,duration:sto
 tl.to(cam,{z:100,y:-14,duration:dur-stop,ease:'power4.out',onUpdate:applyCamera},stop);
 
 tl.to(q('header'),{autoAlpha:0,y:-45,duration:Math.min(.50,stop*.22),ease:'power2.in'},stop*.76);
+
+tl.fromTo(hero,{'--sweep':'180%'},{'--sweep':'-50%',duration:(dur-stop)*.65,ease:'sine.inOut'},stop+(dur-stop)*.19);

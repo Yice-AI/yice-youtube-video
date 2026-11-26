@@ -1,0 +1,43 @@
+<canvas id="field" width="1920" height="1080"></canvas>
+<header data-spatial-title>@@HUD@@</header>
+<main id="controls-world">
+  <section class="console" data-spatial-subject>
+    <small>LIVE CONTROLS</small><label>@@SLIDER@@ <output id="value"></output></label>
+    <div class="track"><div id="level"></div><i id="thumb"></i></div>
+    <label class="switch-row">@@SWITCH@@ <i id="switch"></i></label>
+  </section>
+  <section class="preview" data-spatial-subject><small>@@CANVAS@@</small><img id="art" src="@@IMAGE@@" alt=""></section>
+  <i id="pointer">↖</i>
+</main>
+<script>
+const D = @@DURATION@@;
+window.__meta = { dur: D, fps: 30, w: 1920, h: 1080, beats: [D * .16, D * .56, D * .76] };
+const camera = t => OM.camera(t, [{ t: 0, x: 910, y: 530, zoom: .94 }, { t: D * .55, x: 952, y: 540, zoom: 1 }, { t: D, x: 990, y: 528, zoom: 1.035 }]);
+window.__seek = t => {
+    const pose = camera(t), ctx = document.querySelector('#field').getContext('2d');
+    const grid = OM.lattice(pose, { depth: 1.35, spacing: 64, px: 1.3 });
+    ctx.resetTransform();
+    ctx.clearRect(0, 0, 1920, 1080);
+    ctx.setTransform(...grid.matrix);
+    ctx.fillStyle = '#34566d';
+    for (let x = grid.x0; x < grid.x1; x += grid.spacing)
+        for (let y = grid.y0; y < grid.y1; y += grid.spacing)
+            ctx.fillRect(x, y, 2, 2);
+    document.querySelector('#controls-world').style.transform = 'matrix(' + OM.view(pose).join(',') + ')';
+    const progress = OM.ease.smoother(OM.seg(t, D * .16, D * .54));
+    const spring = t < D * .56 ? 0 : OM.spring(t - D * .56, .52, 16);
+    const pct = 18 + 63 * progress, toggle = OM.seg(t, D * .72, D * .78);
+    document.querySelector('#thumb').style.left = pct + '%';
+    document.querySelector('#level').style.width = pct + '%';
+    document.querySelector('#value').textContent = Math.round(pct) + '%';
+    document.querySelector('#switch').style.setProperty('--on', toggle);
+    const art = document.querySelector('#art');
+    art.style.transform = 'perspective(900px) rotateY(' + (-9 + 12 * progress + 3 * spring) + 'deg) scale(' + (.83 + .13 * progress + .035 * spring) + ')';
+    art.style.filter = 'saturate(' + (.65 + progress * .42 + toggle * .5) + ')';
+    const p = OM.cursor(t, [{ t: 0, x: 246, y: 654 }, { t: D * .16, x: 291, y: 512 }, { t: D * .54, x: 508, y: 512 }, { t: D * .72, x: 552, y: 634 }, { t: D, x: 576, y: 650 }], [D * .16, D * .72]);
+    document.querySelector('#pointer').style.transform = 'translate(' + p.x + 'px,' + p.y + 'px) scale(' + p.s + ')';
+};
+window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.abs(b - a) * 160;
+window.__events = () => [{ t: D * .16, kind: 'tick', gain: .12 }, { t: D * .72, kind: 'pop', gain: .18 }];
+window.__ready = Promise.all([document.fonts.ready, document.querySelector('#art').decode()]).then(() => window.__seek(0));
+</script>

@@ -29,16 +29,37 @@ def caption_cuts(start, end, captions):
     return list(reversed(result))
 
 
-def draft_stage(index):
+def draft_stage(index, span=5):
     key = f'shot-{index+1:02}'
-    route = ('M1', 'M3', 'M2', 'M3', 'M2', 'M1', 'M2', 'M3', 'M2', 'M3')[index % 10]
+    beat = index % 10
+    route = ('M1', 'M3', 'M2', 'M3', 'M2', 'M1', 'M2', 'M3', 'M2', 'M3')[beat]
+    images = [f'media/{key}-{n}.png' for n in range(1,6)]
     if route == 'M1':
-        return dict(stage_mode='hyperframes_block', visual_mode=route, composition=f'blocks/{key}/index.html',
-                    semantic_binding='conceptual_explainer', visual_subject='待制作空间拆解或选择')
+        if beat == 0:
+            spec = dict(recipe='carousel_3d_select', hud='素材选择',
+                        data=dict(images=images,selected_index=0,select_at=round(max(.3,min(span-.35,span*.42)),3)))
+        else:
+            spec = dict(recipe='layer_explode_3d', hud='图层拆解',
+                        data=dict(image=images[0],boxes=[[.1,.15,.5,.1]],count=1))
+        return dict(stage_mode='hyperframes_block', visual_mode=route, spatial_spec=spec,
+                    semantic_binding='conceptual_explainer', visual_subject='待填本片真实截图与结构')
     if route == 'M3':
-        return dict(stage_mode='onetake_clip', visual_mode=route, comp=f'motion/{key}/comp.html',
-                    shutter=180, look='paper' if index % 10 in (1, 7) else 'ultramarine',
-                    semantic_binding='conceptual_explainer', visual_subject='待制作对应旁白的过程动作')
+        if beat == 1:
+            spec = dict(recipe='duplicate_laser_sweep',hud='版式检查',
+                        data=dict(cards=['开场','过程','结果'],series='布局',caption='待填实际例子'))
+        elif beat == 3:
+            spec = dict(recipe='live_control_sync',hud='实时预览',
+                        data=dict(image=images[0],slider='强度',switch='动态预览',canvas='画布'))
+        elif beat == 7:
+            spec = dict(recipe='energy_roadmap_dive',hud='操作路线',
+                        data=dict(stations=[dict(image=path,label=title) for path,title in
+                                            zip(images,('准备','制作','交付'))],target=0))
+        else:
+            spec = dict(recipe='capsule_archive_seal',hud='交付',
+                        data=dict(images=images[:3],project='项目',file='SKILL.md',command='open ./output'))
+        return dict(stage_mode='onetake_clip', visual_mode=route, onetake_spec=spec,
+                    shutter=180, look='dusk' if beat in (1, 7) else 'ember',
+                    semantic_binding='conceptual_explainer', visual_subject='待填本片真实操作与结果')
     return dict(stage_mode='fullbleed_rig', visual_mode=route, framing='fullbleed', motion='focus_push',
                 source=f'media/{key}.mp4', semantic_binding='exact_tool_capture', visual_subject='待录制满屏操作与结果')
 
@@ -102,7 +123,7 @@ def scaffold(manifest, timing, output, title, captions=None):
     shots = []
     for i,(start,cue) in enumerate(cuts):
         end = cuts[i+1][0] if i+1<len(cuts) else duration
-        stage = draft_stage(i)
+        stage = draft_stage(i,end-start)
         shot = dict(id=f'shot-{i+1:02}',act='act-1',start=start,end=end,anchor_cue_id=cue['id'],
                     spoken_topic=cue['text'],semantic_tags=['分镜草稿'],**stage)
         if end-start > (6.2 if lines else 6.5):

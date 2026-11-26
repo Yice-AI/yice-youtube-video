@@ -618,13 +618,13 @@ def shell_metrics(scores, *, precheck=False):
                                 for s in scores) > len(scores)/2)
 
 
-def capture_frame(shot, project, rendered, local, source=None):
+def capture_frame(shot, project, rendered, local, source=None, *, prefer_rendered=False):
     from io import BytesIO
     from PIL import Image
     files = [source] if source else primary_files(shot) or [shot.get('source','')]
     path = next((Path(project)/f for f in files if Path(f).suffix.lower() in VIDEO_EXTENSIONS
                  and (Path(project)/f).is_file()), None)
-    use_render = path is None
+    use_render = prefer_rendered or path is None
     at = float(shot['start'] if use_render else shot.get('media_start',0)) + local
     video = rendered if use_render else path
     if not video:
@@ -899,10 +899,13 @@ def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
                   cross_stage_asset_dedup_gate=cross_stage_asset_dedup_gate(timeline,project,rendered),
                   tutorial_workflow_gate=tutorial_workflow_gate(dict(timeline,capture_scores=richness['checked'])))
     if v10:
-        from audit_spatial import spatial_frame_gates, spatial_measurements, subpage_repeats, three_mode_symphony_gate
+        from audit_spatial import capture_stage_backgrounds, spatial_frame_gates, spatial_measurements, subpage_repeats, three_mode_symphony_gate
         result['quadrant_overlay_gate'] = quadrant_overlay_gate(shots,project)
         result.update(spatial_frame_gates(shots,duration,spatial_measurements(shots,project),
                                           result['tutorial_workflow_gate']['required']))
+        stage_gate = result['unified_cyber_stage_and_accent_gate']
+        if stage_gate['required']:
+            capture_stage_backgrounds(shots,project,rendered,stage_gate)
         result['three_mode_symphony_gate'] = three_mode_symphony_gate(
             timeline, duration, result['dual_engine_craft_gate']['verified_modes'],
             tutorial=result['tutorial_workflow_gate']['required'])

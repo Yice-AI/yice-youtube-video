@@ -6,7 +6,7 @@ import {createHash} from 'node:crypto';
 import {parseArgs} from 'node:util';
 import {recordBrowserFrames} from './browser-frames.mjs';
 
-const options = Object.fromEntries('project url id seconds highlight actions source scene fps theme scale'.split(' ').map(key => [key,{type:'string'}]));
+const options = Object.fromEntries('project url id seconds highlight actions source scene fps theme scale hide-selectors'.split(' ').map(key => [key,{type:'string'}]));
 const {values:args} = parseArgs({options});
 const DEFAULT_PLAYWRIGHT_MODULE = '/opt/homebrew/lib/node_modules/openclaw/node_modules/playwright-core';
 const DEFAULT_CHROME_EXECUTABLE = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -56,6 +56,15 @@ try {
       document.documentElement.append(pointer);
     },{once:true});
   },{ix:cx0,iy:cy0});
+  if (args['hide-selectors']) {
+    await page.addInitScript(selectors => {
+      addEventListener('DOMContentLoaded', () => {
+        const style=document.createElement('style');
+        style.textContent=selectors+' {visibility:hidden !important;pointer-events:none !important}';
+        document.head.append(style);
+      }, {once:true});
+    }, args['hide-selectors']);
+  }
   const response=await page.goto(args.url,{waitUntil:'domcontentloaded',timeout:30000});
   await page.waitForTimeout(700);
   if(response && !response.ok()) throw Error('网页响应 '+response.status());

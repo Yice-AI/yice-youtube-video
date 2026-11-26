@@ -1,0 +1,29 @@
+<canvas style="position:absolute;inset:0" width="1920" height="1080" id="dots">
+</canvas>
+<div class="paper">
+</div>
+<header data-spatial-title>@@HUD@@</header>
+<div id="world">@@CARDS@@<i class="laser">
+</i>
+<div class="stamp" style="left:740px;top:720px">@@LABEL@@</div>
+</div>
+<script>
+const D = @@DURATION@@, stamp = document.querySelector('.stamp');
+window.__meta = { dur: D, fps: 30, w: 1920, h: 1080, beats: [.4, D * .44, D * .76] };
+const camera = t => OM.camera(t, [{ t: 0, x: 924, y: 530, zoom: 1.03 }, { t: D * .43, x: 960, y: 535, zoom: 1 }, { t: D, x: 954, y: 546, zoom: 1.045 }]);
+window.__seek = t => {
+    drawCameraLattice(camera(t), "#414854");
+    const scan = OM.seg(t, D * .15, D * .64);
+    const laser = document.querySelector('.laser');
+    laser.style.left = (205 + 1510 * scan) + 'px';
+    laser.style.opacity = Math.sin(scan * Math.PI);
+    document.body.style.setProperty('--scan-dim', String(scan * .85));
+    document.querySelectorAll('.slidecard').forEach((el, i) => { const k = i === 0 ? .82 + .18 * OM.spring(t, .78, 9) : OM.spring(Math.max(0, t - i * .22), .7, 14); const exit = OM.seg(t, D * .73, D * .98); el.style.transform = 'translate(' + (325 + i * 386 - (1 - k) * 760 - exit * (125 + i * 55)) + 'px,' + (324 + (1 - k) * 104 + i * 49 + exit * 48) + 'px) rotate(' + ((1 - k) * -12 - i * 2.5) + 'deg)'; el.style.opacity = Math.min(1, k * 3) * (1 - exit * .45); });
+    const p = OM.spring(Math.max(0, t - D * .51), .55, 20);
+    stamp.style.transform = 'rotate(-7deg) scale(' + (1.85 - .85 * p) + ')';
+    stamp.style.opacity = Math.min(1, p * 2);
+};
+window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.max(0, Math.min(1, (D * .6 - a) * 3)) * Math.abs(b - a) * 380;
+window.__events = () => [{ t: D * .43, kind: 'tick', gain: .17 }, { t: D * .68, kind: 'pop', gain: .14 }];
+window.__ready = Promise.all([document.fonts.ready, ...Array.from(document.images, i => i.decode())]).then(() => window.__seek(0));
+</script>

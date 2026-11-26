@@ -7,3 +7,5 @@ function applyCamera() {
 applyCamera();
 tl.to(q('.bloom'), {opacity:.56,scale:1.12,duration:dur*.53,ease:'sine.inOut'},0);
 tl.to(q('.bloom'), {opacity:.26,scale:1.03,duration:dur*.47,ease:'sine.inOut'},dur*.53);
+
+tl.fromTo(q('.energy-thread'),{strokeDashoffset:1},{strokeDashoffset:-.7,duration:dur,ease:'sine.inOut'},0);

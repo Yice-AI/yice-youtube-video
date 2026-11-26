@@ -1,0 +1,53 @@
+<canvas style="position:absolute;inset:0" width="1920" height="1080" id="dots">
+</canvas>
+<div class="paper">
+</div>
+<header data-spatial-title>@@HUD@@</header>
+<div id="world">
+<div class="photo" data-spatial-subject>
+<img src="@@IMAGE@@">
+<svg class="hexlock" viewBox="0 0 1080 608">
+<defs>
+<pattern id="mesh" width="72" height="41.56" patternUnits="userSpaceOnUse">
+<path d="M12 0h24l12 20.78-12 20.78H12L0 20.78z M48 20.78h24" fill="#ff17460d" stroke="#ff486a" stroke-width="1.6"/>
+</pattern>
+<radialGradient id="halo">
+<stop stop-color="#ff3b5c" stop-opacity=".22"/>
+<stop offset="1" stop-color="#ff3b5c" stop-opacity=".02"/>
+</radialGradient>
+</defs>
+<rect width="1080" height="608" fill="url(#mesh)"/>
+<rect width="1080" height="608" fill="url(#halo)"/>
+</svg>
+</div>
+<div class="cursor">↖</div>
+<div class="stamp" style="left:520px;top:677px">
+<svg aria-hidden="true" width="25" height="28" viewBox="0 0 48 52" style="vertical-align:-5px">
+<path d="M13 23V15a11 11 0 0 1 22 0v8" fill="none" stroke="currentColor" stroke-width="5"/>
+<rect x="5" y="21" width="38" height="28" rx="4" fill="currentColor"/>
+<circle cx="24" cy="33" r="3.5" fill="#fff2db"/>
+</svg>　@@LABEL@@</div>
+</div>
+<script>
+const D = @@DURATION@@, stamp = document.querySelector('.stamp');
+window.__meta = { dur: D, fps: 30, w: 1920, h: 1080, beats: [.4, D * .44, D * .76] };
+const camera = t => OM.camera(t, [{ t: 0, x: 924, y: 530, zoom: 1.03 }, { t: D * .43, x: 960, y: 535, zoom: 1 }, { t: D, x: 954, y: 546, zoom: 1.045 }]);
+window.__seek = t => {
+    drawCameraLattice(camera(t), "#414854");
+    const hit = D * .43, movement = OM.shake(t, hit, { amp: 26, decay: 6, freq: 21 });
+    const photo = document.querySelector('.photo');
+    photo.style.transform = 'translate(' + movement.x + 'px,' + movement.y + 'px) rotate(' + movement.rot + 'rad)';
+    const since = Math.max(0, t - hit), flash = t < hit ? 0 : Math.exp(-since * 9) * Math.abs(Math.cos(since * 47));
+    photo.querySelector('.hexlock').style.opacity = t < hit ? 0 : Math.min(1, since * 8) * (.36 + flash * .64);
+    photo.style.filter = 'drop-shadow(' + flash * 15 + 'px 0 1px #ff3b5c) drop-shadow(' + (-flash * 12) + 'px 0 1px #38bdf8)';
+    const pointer = OM.cursor(t, [{ t: 0, x: 1240, y: 690 }, { t: hit, x: 635, y: 382 }, { t: D, x: 645, y: 380 }], [hit]);
+    const cursor = document.querySelector('.cursor');
+    cursor.style.transform = 'translate(' + pointer.x + 'px,' + pointer.y + 'px) scale(' + pointer.s + ')';
+    const p = OM.spring(Math.max(0, t - hit), .65, 17);
+    stamp.style.opacity = Math.min(1, p * 2);
+    stamp.style.transform = 'rotate(-3deg) scale(' + (.72 + .28 * p) + ')';
+};
+window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.max(0, Math.min(1, (D * .6 - a) * 3)) * Math.abs(b - a) * 380;
+window.__events = () => [{ t: D * .43, kind: 'tick', gain: .17 }, { t: D * .68, kind: 'pop', gain: .14 }];
+window.__ready = Promise.all([document.fonts.ready, ...Array.from(document.images, i => i.decode())]).then(() => window.__seek(0));
+</script>

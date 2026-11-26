@@ -49,33 +49,54 @@ async function measure(page, {entry,seconds}) {
         }).filter(([x,y,r,b]) => r>x && b>y);
       }
       const subjects = '[data-spatial-subject],.orbit-card,.node,.old-card,.model,[data-spatial-layer],.file-card,.slidecard,.station,.file,.locked-shot,.slots,.plan-lines';
-      const titles = rects('[data-spatial-title], header, h1');
+      const titles = rects('[data-spatial-title], header, h1, [role="heading"], .headline, .slide-title');
       const cards = rects(subjects);
       const overlaps = titles.flatMap(t => cards.map(c => Math.max(0,Math.min(c[2],t[2])-Math.max(c[0],t[0])) *
         Math.max(0,Math.min(c[3],t[3])-Math.max(c[1],t[1])))).filter(a => a>0);
-      return {phase, overlaps, cards, titles, exploded:!!document.querySelector('[data-spatial-recipe="layer_explode_3d"]')};
+      const stations = phase >= .38 && phase <= .51 ? Array.from(document.querySelectorAll('[data-overview-station]'), el => {
+        const bounds=el.getBoundingClientRect();
+        return [bounds.left,bounds.right];
+      }) : [];
+      return {phase, overlaps, cards, titles, stations, exploded:!!document.querySelector('[data-spatial-recipe="layer_explode_3d"]')};
     }, {phase,duration});
-    if (phase === 0.88) {
+    if ([0.12,0.5,0.88].includes(phase)) {
       const image = await page.screenshot();
       boxes.samples = await page.evaluate(async encoded => {
         const img = new Image(); img.src='data:image/png;base64,'+encoded; await img.decode();
         const canvas = document.createElement('canvas'); canvas.width=img.width; canvas.height=img.height;
         const ctx=canvas.getContext('2d'); ctx.drawImage(img,0,0); const data=ctx.getImageData(0,0,img.width,img.height).data;
-        const groups={};
-        for (let y=10; y<innerHeight; y+=20) for (let x=10; x<innerWidth; x+=20) {
+        const groups={}, hues={};
+        for (let y=3; y<img.height; y+=6) for (let x=3; x<img.width; x+=6) {
+          const i=4*(y*img.width+x), r=data[i], g=data[i+1], b=data[i+2];
+          const hi=Math.max(r,g,b), lo=Math.min(r,g,b), chroma=hi-lo, luma=.2126*r+.7152*g+.0722*b;
+          if (luma<135 || chroma<55) continue;
+          const hue=(360+60*(hi===r?(g-b)/chroma:hi===g?2+(b-r)/chroma:4+(r-g)/chroma))%360;
+          const band=Math.floor((hue+15)%360/30);
+          hues[band]=(hues[band] || 0)+1;
+        }
+        for (let y=5; y<innerHeight; y+=10) for (let x=5; x<innerWidth; x+=10) {
           const stack=document.elementsFromPoint(x,y);
           const layer=stack.map(el => el.closest('[data-spatial-layer]')).find(Boolean);
           const margin=x<70 || x>innerWidth-70 || y<45 || y>innerHeight-70;
           const group=layer?.dataset.spatialLayer || (margin && 'background');
           if (!group) continue;
-          const i=4*(y*img.width+x), rgb=[data[i],data[i+1],data[i+2]];
-          const g=groups[group] ||= {n:0,sum:0,chroma:0};
-          g.n++; g.sum+=rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722; g.chroma+=Math.max(...rgb)-Math.min(...rgb);
+          const i=4*(y*img.width+x), r=data[i], g=data[i+1], b=data[i+2];
+          const luma=.2126*r+.7152*g+.0722*b, chroma=Math.max(r,g,b)-Math.min(r,g,b);
+          const value=groups[group] ||= {n:0,sum:0,chroma:0,light:[]};
+          value.n++; value.sum+=luma; value.chroma+=chroma;
+          if (chroma>=55) value.light.push(luma);
         }
-        return Object.fromEntries(Object.entries(groups).map(([key,g])=>[key,{n:g.n,luma:g.sum/g.n,chroma:g.chroma/g.n}]));
+        const samples={highlights:hues};
+        for (const [key,v] of Object.entries(groups)) {
+          v.light.sort((a,b)=>b-a);
+          const bright=v.light.slice(0,Math.ceil(v.n*.10));
+          samples[key]={n:v.n,luma:v.sum/v.n,chroma:v.chroma/v.n,lit:bright.length,
+                        highlightLuma:bright.length?bright.reduce((a,b)=>a+b)/bright.length:0};
+        }
+        return samples;
       }, image.toString('base64'));
     }
-    if (witnesses.includes(phase) || boxes.overlaps.length) frames.push(boxes);
+    if (witnesses.includes(phase) || boxes.overlaps.length || boxes.titles.some(([x,y,r,b])=>x<760 && y<210 && b-y>34)) frames.push(boxes);
   }
   return frames;
 }

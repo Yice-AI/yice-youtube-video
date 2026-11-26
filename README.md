@@ -1,10 +1,10 @@
-# 一策 YouTube 视频制作 v10.0
+# 一策 YouTube 视频制作 v11.0
 
 把中文深度科技与商业视频的导演方法、素材采集、原速配音、**Onetake + HyperFrames 双擎动态视觉**、封面直出与机器审片整合在一套可复现工具链中：**`SKILL.md` 管导演路由与审美铁律，`kit/` 管采集、配音、双擎渲染、混音和成片门禁**。公开仓库只分发方法、代码与离线测试，不放私人录音、成片或凭据。
 
 先按[五拍叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)排口播、镜头形态与跨镜承接。用空间积木生成子合成，用真实录屏证明输入与输出。
 
-## 核心能力一览（v10.0）
+## 核心能力一览（v11.0）
 
 - **工具教程三段实拍**。0–5 秒展示官方复杂成品，再拍输入命令或提示词、Agent 执行，最后用 1080p 满屏多点跟焦验证成品交互。目标每镜 4–6 秒，平均不超过 6.5 秒；满屏占实录至少 70%，斜框占全片至多 15%，带框镜头不能相邻。
 - **按素材选舞台**。暖纸冲印用 `y2_vox`，数据尺和图表用 `t5_data_ruler` / `t3_finance_chart`，真实终端用 `studio_ui`，并排比较用 `triptych_cards`。Onetake 与 HyperFrames 用于连续运镜、矢量变形与状态推演，禁止在双擎内拼贴两张及以上静态截图。
@@ -37,7 +37,7 @@ env -i HOME="$HOME" PATH="$PATH" ./install.sh --check
 
 1. **初始化与视觉选型**：运行 `kit/scripts/new-episode.sh ep04` 创建剧集工程，用 `kit/scripts/visual-palette.sh` 按本期题材挑选契合的色板（或 `--from-shot` 从产品截图吸色）与动态蓝图。
 2. **配音与分镜草稿**：运行 `kit/scripts/voice.sh script.md --backend kaggle --speed 1.0 --output voice`，再用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成对齐首字时间的 30fps 骨架。
-3. **高清采集与验帧**：用 `collect-entity.sh`、`record-web-cam.sh`、`find-media.sh`、`scout-video-scenes.sh` 采集实证素材，填好 `episode-manifest.json`（高光段走 `onetake_clip`，动态机制走 `hyperframes_block`，实录优先用 `fullbleed` + `focus_push`），跑 `scout-video-scenes.sh --verify-manifest` 做首中尾帧与贴图防撞字核验。
+3. **高清采集与验帧**：用 `collect-entity.sh`、`record-web-cam.sh`、`find-media.sh`、`scout-video-scenes.sh` 采集实证素材，填好 `episode-manifest.json`（高光段填 `onetake_spec` 的配方与内容，空间机制填 `spatial_spec`，装配时自动编译，实录优先用 `fullbleed` + `focus_push`），跑 `scout-video-scenes.sh --verify-manifest` 做首中尾帧与贴图防撞字核验。
 4. **装片、终审与封面**：运行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 以两个低优先级进程导出成片与字幕，可用 `--draft` 试片，执行 `kit/scripts/audit-v3.sh --v10` 检查可见标题与主体碰撞、展开层板亮度、双擎时长与配色、节奏、画幅、空壳、双擎动效、跨镜重复、教程过程，以及既有像素与声学要求，最后用 `kit/scripts/thumbnail.sh` 生成并选定封面。
 
 完整字段契约与路由细则见 [SKILL.md](SKILL.md) 与 [references/10-双擎高阶视觉路由.md](references/10-双擎高阶视觉路由.md)。

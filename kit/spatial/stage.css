@@ -7,11 +7,11 @@ STAGE .model{position:absolute;left:185px;top:285px;width:940px;height:529px;tra
 STAGE .guide{position:absolute;width:205px;top:0;border-top:2px dashed #dcb788;transform:rotateY(-90deg);transform-origin:left center} STAGE .g2{left:100%;top:100%} STAGE .meter{position:absolute;left:1310px;top:370px;border-left:4px solid var(--accent);padding-left:34px} STAGE .meter strong{font:700 138px/1 system-ui;display:block;color:#ffc389} STAGE .meter b{font-size:38px}
 STAGE .world svg{position:absolute;inset:0;width:100%;height:100%;fill:none;stroke-linecap:round} STAGE .track{stroke:#524543;stroke-width:3} STAGE .thread{stroke:var(--accent);stroke-width:8;stroke-dasharray:1;filter:drop-shadow(0 0 10px var(--accent))}
 STAGE .node,STAGE .plan-lines,STAGE .slots{position:absolute;border:2px solid #99745b;background:linear-gradient(150deg,#352d28,#181819);border-radius:16px;box-shadow:0 24px 50px #0007} STAGE .node{width:288px;min-height:174px;padding:20px 24px} STAGE .node h2{font-size:39px;margin:7px 0} STAGE .node p{font-size:28px;color:#cbbfab}
-STAGE .old-card,STAGE .locked-shot,STAGE .file-card{position:absolute;background:#e9dec6;color:#312b27;box-shadow:0 22px 50px #0009} STAGE .old-card{width:420px;height:256px;left:0;top:384px;padding:34px;border-top:16px solid #954950} STAGE .old-card small{color:#4e4242} STAGE .old-card h2{font-size:44px} STAGE .old-card i{display:block;margin:12px 0;width:84%;height:6px;background:#9d9481} STAGE .old-card i:last-child{width:54%}
+STAGE .old-card,STAGE .locked-shot,STAGE .file-card{position:absolute;background:#1e293b;color:#e2effa;box-shadow:0 22px 50px #0009} STAGE .old-card{width:420px;height:256px;left:0;top:384px;padding:34px;border-top:16px solid #cc4a68} STAGE .old-card small{color:#aabecf} STAGE .old-card h2{font-size:44px} STAGE .old-card i{display:block;margin:12px 0;width:84%;height:6px;background:#678397} STAGE .old-card i:last-child{width:54%}
 STAGE .locked-shot{left:425px;top:248px;width:1070px;height:602px;padding:8px} STAGE .warning{position:absolute;top:650px;left:570px;padding:20px 55px;background:#8d2435;border:3px solid #f68c78;border-radius:10px;color:#fff1db;font-size:40px;font-weight:700} STAGE .pointer{position:absolute;left:1110px;top:630px;color:white;font:84px/1 system-ui;text-shadow:0 3px 10px #000}
 STAGE .plan-lines,STAGE .slots{top:275px;padding:36px;width:530px;min-height:480px} STAGE .plan-lines{left:155px} STAGE .slots{left:1160px} STAGE .slots i,STAGE .plan-lines div{height:67px;margin:16px 0;border-radius:7px} STAGE .slots i{display:block;border:2px dashed #af9069;background:#100f13} STAGE .plan-lines div{border-bottom:1px solid #75604d;font-size:34px;padding:8px 0}
-STAGE .token{position:absolute;left:195px;top:331px;padding:8px 24px;border-radius:9px;background:#f8c58b;color:#2a211d;font-size:32px} STAGE .file-card{left:700px;top:300px;width:430px;height:242px;padding:5px;border-radius:5px}
-STAGE .folder{position:absolute;left:670px;top:522px;width:595px;height:290px;border:3px solid #bd8663;border-radius:4px 24px 20px 20px;padding:43px 47px;background:linear-gradient(140deg,#724739,#412b2a);box-shadow:0 22px 55px #0009} STAGE .folder:before{content:"";position:absolute;left:-3px;top:-36px;width:215px;height:34px;background:#724739;border:3px solid #bd8663;border-bottom:0;border-radius:16px 22px 0 0} STAGE .folder h2{font:700 68px system-ui} STAGE .command{position:absolute;left:300px;top:280px;padding:16px 23px;background:#ede2c6;color:#272120;border-radius:8px;font:28px monospace}
+STAGE .token{position:absolute;left:696px;top:331px;padding:8px 24px;border-radius:9px;background:#19455a;color:#d2f8ff;font-size:32px} STAGE .file-card{left:700px;top:300px;width:430px;height:242px;padding:5px;border-radius:5px}
+STAGE .folder{position:absolute;left:670px;top:522px;width:595px;height:290px;border:3px solid #bd8663;border-radius:4px 24px 20px 20px;padding:43px 47px;background:linear-gradient(140deg,#253243,#101521);box-shadow:0 22px 55px #0009} STAGE .folder:before{content:"";position:absolute;left:-3px;top:-36px;width:215px;height:34px;background:#253243;border:3px solid #bd8663;border-bottom:0;border-radius:16px 22px 0 0} STAGE .folder h2{font:700 68px system-ui} STAGE .command{position:absolute;left:300px;top:280px;padding:16px 23px;background:#142432;color:#e6f4ff;border-radius:8px;font:28px monospace}
 STAGE .stage{position:absolute;inset:0;perspective:1800px}
 STAGE .world{transform-origin:50% 50%;transform-style:preserve-3d}
 STAGE .bloom,STAGE .film-grain{position:absolute;inset:0;pointer-events:none}
@@ -26,30 +26,53 @@ STAGE .slots i.filled{border-color:#ddbc86}
 
 STAGE .base img{position:absolute;inset:0}
 
-STAGE[data-spatial-recipe="layer_explode_3d"]{background:radial-gradient(ellipse at 39% 52%,#29303c,#171d28 56%,#0c1018)}
-STAGE .base{background:#ffe6aa;border:5px solid #fbd490;box-shadow:0 16px 46px #05080d}
-STAGE .base img:not(.face){opacity:.32}
-STAGE .skeleton{background:repeating-linear-gradient(0deg,transparent 0 38px,#267f93 39px 41px),linear-gradient(115deg,#92e0e6,#78bece);border:4px solid #c3fbff}
-STAGE .bare-box{border:2px solid #267082}
-STAGE .letters{border:4px solid #ffe0a1;background:linear-gradient(125deg,#e4b376,#f3ce98)}
-STAGE .chip{overflow:hidden;border:1px solid #cc9b59;background-color:#f6e4c2;box-shadow:0 2px 7px #53340f70}
-STAGE .chip span{display:block;width:max-content;max-width:100%;padding-left:2px;overflow:hidden;white-space:nowrap;color:#41280e;background:#fff1cb;font:700 12px/1.1 "Spatial Sans",sans-serif}
-STAGE .plate-tag{position:absolute;right:18px;bottom:8px;padding:7px 12px;background:#1a222b;color:#fff1ce;font-size:27px;white-space:nowrap;transform:translateZ(2px)}
-STAGE .letters .plate-tag{bottom:4px}
-STAGE .meter{left:1350px;width:470px}
 
-STAGE[data-spatial-action="slot_lock_fill"]{background:#e2eaf0;color:#182c42}
-STAGE[data-spatial-action="slot_lock_fill"] header{color:#172f45}
-STAGE[data-spatial-action="slot_lock_fill"] header small{color:#315b73}
-STAGE[data-spatial-action="slot_lock_fill"] .stage-light{opacity:.2}
-STAGE[data-spatial-action="slot_lock_fill"] .plan-lines{color:#23445d;background:#fffaf0;border-color:#7b9fae}
-STAGE[data-spatial-action="slot_lock_fill"] .slots{background:#274866;border-color:#799eac}
-STAGE[data-spatial-action="slot_lock_fill"] .slots i{background:#19334a;border-color:#92c6cf}
-STAGE[data-spatial-action="slot_lock_fill"] .token{background:#ffcb69;color:#29323d}
-STAGE[data-spatial-recipe="layer_explode_3d"] header{left:1340px;top:105px;max-width:535px}
+STAGE{background:radial-gradient(ellipse at 46% 53%,#161f2a,#0c1018 51%,#07090f 85%)}
+STAGE header{display:flex;align-items:center;gap:10px;top:61px;left:74px;width:max-content;height:30px;padding:0 14px;border:1px solid #99b9cf54;border-radius:18px;background:linear-gradient(110deg,#26313b9e,#0c1018c9);color:#d5e8f6;font:600 15px/1 "Spatial Sans",sans-serif;letter-spacing:1px;backdrop-filter:blur(10px);box-shadow:0 0 16px #6ca0c716}
+STAGE header::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 9px var(--accent)}
+STAGE .ambient-wires{position:absolute;inset:0;width:100%;height:100%;fill:none;pointer-events:none}
+STAGE .ambient-wires path{stroke:var(--accent);opacity:.15;stroke-width:1.3}
+STAGE .ambient-wires .energy-thread{opacity:.7;stroke-width:2;stroke-dasharray:.08 .92;filter:drop-shadow(0 0 7px var(--accent))}
+STAGE .stage-light{background-image:radial-gradient(#a6c3d45c 1px,transparent 1.7px),radial-gradient(#a67f4944 1px,transparent 2px);background-size:52px 52px,137px 137px;background-position:0 0,22px 67px}
+STAGE .bloom{background:radial-gradient(ellipse at 58% 45%,#34556f50,transparent 52%),radial-gradient(ellipse at 17% 70%,#7d342d2f,transparent 38%)}
+STAGE .orbit-card{background:linear-gradient(135deg,#8a959e66,#11151abf 16%,#1c1d22c4 80%,#a3947477);border:1px solid #d7c7a7c4;padding:5px;box-shadow:0 1px 0 #ffffff82 inset,0 -2px 0 #98785891 inset,0 13px 28px #0009,0 0 16px #e3b67521;-webkit-box-reflect:below 5px linear-gradient(transparent 89%,#ffffff13)}
+STAGE .orbit-card::after{content:'';position:absolute;inset:0;border-radius:inherit;background:linear-gradient(115deg,transparent 35%,#ffffff48 49%,transparent 60%);background-size:280% 100%;background-position:var(--sweep,180%) 0;pointer-events:none}
+STAGE .layer{border-radius:9px}
+STAGE .base{background:#14171ce0;border:2px solid #ffbd67;box-shadow:0 0 14px #ffad4859,0 12px 29px #0008}
+STAGE .base img:not(.face){opacity:.83}
+STAGE .skeleton{background:repeating-linear-gradient(0deg,transparent 0 48px,#38bdf82b 49px 50px),linear-gradient(132deg,#2581a966,#07354c5c 60%,#68b8c432);border:2px solid #79e3ff;box-shadow:inset 0 0 37px #44dbf32b,0 0 14px #38bdf86b}
+STAGE .bare-box{border:1.8px solid #49d9ff;box-shadow:0 0 5px #26cefd88}
+STAGE .letters{background:linear-gradient(125deg,#7791252b,#18313938 50%,#4fb97831);border:2px solid #c7f577;box-shadow:inset 0 0 38px #b9ff4133,0 0 14px #9aff5b45}
+STAGE .text-boxes{position:absolute;inset:0 0 55px;transform-style:preserve-3d}
+STAGE .chip{border:1px solid #c8f904ab;overflow:hidden;background-color:#122019;box-shadow:inset 2px 2px 0 #dfff62,inset -2px -2px 0 #dfff62,0 0 7px #cdfa2255}
+STAGE .chip span{display:block;width:max-content;max-width:100%;overflow:hidden;white-space:nowrap;padding-left:2px;color:#dcff72;background:#101c18ed;font:700 12px/1.1 "Spatial Sans",sans-serif}
+STAGE .letters::after{content:'';position:absolute;left:1%;right:1%;top:var(--scan-y,6%);height:1px;background:#d4ff83;box-shadow:0 0 8px 2px #a6eb5477;pointer-events:none;opacity:var(--scan-alpha,0)}
+STAGE .plate-tag{position:absolute;right:12px;bottom:5px;padding:6px 11px;background:#10171de8;color:#e2edec;border:1px solid currentColor;border-radius:4px;font:600 18px/1.1 monospace;white-space:nowrap}
+STAGE .skeleton .plate-tag{color:#76e4ff} STAGE .letters .plate-tag{color:#d8ff65} STAGE .base .plate-tag{color:#ffd18f}
+STAGE .meter{left:1340px;top:369px;width:480px;border-color:#49dcfd}
+STAGE .meter strong{font:700 145px/1 monospace;color:#a4ecff;text-shadow:0 0 24px #38bdf85c}
+STAGE .meter b{font:600 21px/1.5 monospace;letter-spacing:2px;color:#8ab5c6}
+STAGE .depth-ruler{position:absolute;left:1265px;top:300px;width:20px;height:395px;border-left:1px solid #55c9eb80;background:repeating-linear-gradient(0deg,#54bfdd8c 0 1px,transparent 1px 22px)}
+STAGE .depth-ruler small{position:absolute;top:-24px;left:-4px;color:#72dfff;font:15px monospace}
+STAGE .plan-lines,STAGE .slots{background:linear-gradient(132deg,#244c6380,#101925bf 76%);border:1px solid #65c6e58a;box-shadow:0 12px 28px #0009,inset 0 1px 0 #c2e8f94a,0 0 22px #38bdf81c;color:#c0d3de}
+STAGE .plan-lines small{position:absolute;top:12px;left:36px;font:18px monospace;color:#79dcfc}
+STAGE .plan-lines div{font:28px/1.7 monospace;color:#cde3e9;border-color:#49758a}
+STAGE .slots{transform:perspective(1000px) rotateY(-10deg) rotateZ(-1deg);background:repeating-linear-gradient(0deg,transparent 0 31px,#9edaff0a 32px 33px),linear-gradient(128deg,#152b3bd9,#0e1420d6)}
+STAGE .slots i{position:relative;color:#9beafd;background:#0d18289e;border:1px dashed #51849a}
+STAGE .slots i::after{content:'⌑';position:absolute;right:14px;top:6px;font:34px monospace;color:#c8f904;text-shadow:0 0 8px #bbff55;opacity:var(--lock-opacity,0)}
+STAGE .slot-traces{pointer-events:none}
+STAGE .data-wire{fill:none;stroke:#38bdf8;stroke-width:2;stroke-dasharray:.18 .82;filter:drop-shadow(0 0 6px #38bdf8)}
+STAGE .token{background:linear-gradient(110deg,#17323f,#12191c);color:#b1f3ff;border:1px solid #48d0ee;box-shadow:0 0 16px #38bdf84a;border-radius:20px;font:600 27px/1.35 "Spatial Sans",sans-serif}
+STAGE .token:nth-last-child(even){border-color:#ffb45f;color:#ffce8b}
 
-STAGE .text-boxes{position:absolute;inset:0 0 56px;transform-style:preserve-3d}
-STAGE[data-spatial-action="slot_lock_fill"] .slots i{position:relative}
-STAGE[data-spatial-action="slot_lock_fill"] .slots i::before,STAGE[data-spatial-action="slot_lock_fill"] .slots i::after{content:"";position:absolute;right:15px;opacity:var(--lock-opacity,0)}
-STAGE[data-spatial-action="slot_lock_fill"] .slots i::before{top:12px;width:14px;height:20px;border:3px solid #ffcd78;border-radius:9px}
-STAGE[data-spatial-action="slot_lock_fill"] .slots i::after{top:28px;right:12px;width:26px;height:18px;border-radius:3px;background:#ffcd78}
+STAGE .plan-lines div{position:relative;padding:0 3px;line-height:1.2}
+STAGE .plan-lines em{display:block;margin:2px 0 4px;color:#76a7bd;font:17px/1.1 monospace}
+STAGE .plan-lines b{color:#deedf0;font-size:23px;font-weight:600}
+STAGE .wire-rail{fill:none;stroke:#46697d;stroke-width:1.4;opacity:.65}
+STAGE .data-wire{stroke-width:2.8;filter:drop-shadow(0 0 9px #38bdf8)}
+STAGE .data-wire:nth-of-type(4n){stroke:#ffbc68;filter:drop-shadow(0 0 7px #ff8e2e)}
+
+STAGE .native-vectors rect{stroke:#52d8ff;stroke-width:1.3;fill:#2fc7ee10;vector-effect:non-scaling-stroke}
+STAGE .native-vectors{filter:drop-shadow(0 0 3px #38bdf866)}
+
+STAGE .comet{fill:#e1fbff;opacity:0;filter:drop-shadow(0 0 8px #75deff)}
