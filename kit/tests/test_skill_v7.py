@@ -674,6 +674,12 @@ def test_decode_pocket_room_floor_and_stat_badge_plate(tmp_path):
     assert 'stroke="#7aaba0"' in ''.join(stage.plates) and 'data-layout-allow-overlap' in ''.join(stage.plates)
 
 
+def test_sentence_repair_room_tone_preserves_mono_shape():
+    samples = np.resize([.001, -.001], RATE)
+    bridge = voice.room_tone(samples, RATE, RATE // 5)
+    np.testing.assert_allclose(bridge, samples[:RATE // 5])
+
+
 def test_concat_rejects_periodically_silent_room_tone(tmp_path):
     poisoned = np.r_[tone(.015,10**(-60/20),400),tone(.045,10**(-95/20),400)]
     bridge = voice.room_tone(poisoned[:,None],RATE,3*RATE,dbfs=-68.)

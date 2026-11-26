@@ -380,11 +380,12 @@ def room_tone(source, rate, frames, seed=0, dbfs=-60.):
         tiled_rms = float(np.sqrt(np.mean(tiled**2)))
         if tiled_rms > 0:
             gain = target/tiled_rms
-            quiet = np.max(np.abs(tiled),axis=1) < 10 ** (-80/20)/min(1.,gain)
+            channels = tiled.reshape(frames, -1)
+            quiet = np.max(np.abs(channels),axis=1) < 10 ** (-80/20)/min(1.,gain)
             tiled *= gain
             edges = np.flatnonzero(np.diff(np.r_[False,quiet,False]))
             block = max(1,min(frames,round(.010*rate)))
-            energy = np.r_[0.,np.cumsum(np.mean(tiled**2,axis=1),dtype=np.float64)]
+            energy = np.r_[0.,np.cumsum(np.mean(channels**2,axis=1),dtype=np.float64)]
             level = (energy[block:]-energy[:-block])/block
             if (not np.any(edges[1::2]-edges[::2]>.005*rate)
                     and np.all((level>=target**2*10**(-.3)) & (level<=target**2*10**.3))):

@@ -521,7 +521,7 @@ def explainer(shot, root, folder, run, *, force_render=False):
     if force_render or not matching_render(target,stamp,inputs,span+.35):
         pending = target.with_suffix('.pending.mp4')
         try:
-            run(['bash',str(renderer),'--spec',str(config),'--out',str(pending)],check=True)
+            run(['bash',str(renderer),'--spec',str(config),'--out',str(pending)],check=True,**render_priority())
             if probe_video(pending)+1/FPS < span+.35:
                 raise ValueError(f"解说动效未覆盖镜头时长：{shot['id']}")
             pending.replace(target)
