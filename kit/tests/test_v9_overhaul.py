@@ -38,6 +38,10 @@ def test_subtitle_band_uses_visible_pixels(tmp_path):
             assert stage.light_zones[0]==pytest.approx((2.,4.),abs=1/30)
             stage.add_captions([dict(text='跨切点',start=1.5,end=2.5)])
             assert len(stage.captions)==2 and 'caption-on-light' in stage.captions[1]
+            stage.write_project(tmp_path/'caption-review')
+            page=(tmp_path/'caption-review/index.html').read_text()
+            base=page.split('.cap span{',1)[1].split('}',1)[0]
+            assert 'background:rgba(12,18,24,.88)' in base and 'border-radius:12px' in base
         else:
             assert not stage.light_zones
 
@@ -113,7 +117,7 @@ def test_caption_boundaries_are_scaffold_anchors(tmp_path):
 
 
 def test_rhythm_and_framing_thresholds():
-    shots=[shot(str(i),i*5,i*5+5,mode='studio_ui' if i%3==0 else 'callout_rig') for i in range(20)]
+    shots=[shot(str(i),i*5,i*5+5,mode='explainer_clip' if i%3==0 else 'callout_rig') for i in range(20)]
     assert audit.pacing_and_rhythm_gate(shots,100)['ok']
     assert audit.framing_and_variety_gate(shots,100)['ok']
     shots[-1]['end']+=7
@@ -124,6 +128,19 @@ def test_rhythm_and_framing_thresholds():
         s['framing']='studio_window'
     framed=audit.framing_and_variety_gate(shots,107)
     assert not framed['ok'] and framed['max_consecutive_windowed_shots']==2
+
+
+def test_studio_density_and_adjacent_panels_are_independent():
+    shots=[shot(str(i),i,i+1,mode='explainer_clip' if i%2 else 'fullbleed_rig') for i in range(50)]
+    for i in range(0,45,5):
+        shots[i]['stage_mode']='studio_ui'
+    assert audit.framing_and_variety_gate(shots,50)['ok']
+    shots[47]['stage_mode']='studio_ui'
+    assert {v['reason'] for v in audit.framing_and_variety_gate(shots,50)['violations']} == {'studio_ui_ratio'}
+    shots[47]['stage_mode']='explainer_clip'
+    shots[5]['stage_mode']='explainer_clip'
+    shots[1]['stage_mode']='studio_ui'
+    assert {v['reason'] for v in audit.framing_and_variety_gate(shots,50)['violations']} == {'adjacent_studio_ui'}
 
 
 def test_richness_and_manifest_precheck(tmp_path,monkeypatch):

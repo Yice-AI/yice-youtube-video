@@ -552,7 +552,14 @@ def framing_and_variety_gate(shots, duration):
     callouts = [s for s in shots if stage_mode(s) == 'callout_rig']
     corners = sum({o['kind'] for o in s.get('overlays', [])} == {'corner_tag'} for s in callouts)
     corner_ratio = corners/len(callouts) if callouts else 0.
+    studio_count = sum(stage_mode(s) == 'studio_ui' for s in shots)
+    studio_ratio = studio_count / len(shots) if shots else 0.
     violations = []
+    if studio_ratio > .18:
+        violations.append(dict(reason='studio_ui_ratio', limit=.18))
+    for left, right in zip(shots, shots[1:]):
+        if stage_mode(left) == stage_mode(right) == 'studio_ui':
+            violations.append(dict(reason='adjacent_studio_ui', shots=[left['id'], right['id']]))
     for name, failed in [('fullbleed_ratio', full_ratio < .70), ('perspective_ratio', angle_ratio > .15),
                          ('corner_tag_ratio', len(callouts) >= 4 and corner_ratio > .60)]:
         if failed:
@@ -578,6 +585,7 @@ def framing_and_variety_gate(shots, duration):
     return dict(ok=not violations, fullbleed_ratio=round(full_ratio,4), perspective_ratio=round(angle_ratio,4),
                 runs=runs,capture_count=len(captures), perspective_count=sum(s.get('framing')=='perspective_3d' for s in captures),
                 max_consecutive_windowed_shots=max(map(len,window_runs),default=0),
+                studio_ui_count=studio_count, studio_ui_ratio=round(studio_ratio,4),
                 corner_tag_ratio=round(corner_ratio,4), violations=violations)
 
 

@@ -1317,7 +1317,7 @@ html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-
 .tone-invert-log .vp-inner{background:#f4f4f4;filter:invert(.92) hue-rotate(155deg) saturate(.75) contrast(1.12)}
 .plate{inset:0;z-index:6;pointer-events:none}
 .cap{width:100%;left:0;bottom:44px;text-align:center;z-index:12}
-.cap span{display:inline-block;color:#fffaf0;padding:9px 27px 13px;font-weight:750;font-size:44px;line-height:1.28;-webkit-text-stroke:1.5px rgba(12,18,17,.88);text-shadow:0 2px 6px rgba(0,0,0,.85),0 6px 22px rgba(0,0,0,.65);border-bottom:3px solid #ff745a}
+.cap span{display:inline-block;color:#fffaf0;background:rgba(12,18,24,.88);border-radius:12px;padding:9px 27px 13px;font-weight:750;font-size:44px;line-height:1.28;-webkit-text-stroke:1.5px rgba(12,18,17,.88);text-shadow:0 2px 6px rgba(0,0,0,.85),0 6px 22px rgba(0,0,0,.65);border-bottom:3px solid #ff745a}
 .cap[data-caption-style="editorial_box"] span{background:rgba(17,26,25,.94);box-shadow:0 8px 24px rgba(0,0,0,.34)}
 .cap.caption-on-light span{color:#f8fafc;border:1.5px solid rgba(255,255,255,.18);border-bottom:3px solid #ff6b4a;-webkit-text-stroke:0;text-shadow:0 2px 8px rgba(0,0,0,.45);background:rgba(13,18,26,.90);border-radius:14px;padding:9px 26px 12px}
 .caption-on-light{bottom:44px}
