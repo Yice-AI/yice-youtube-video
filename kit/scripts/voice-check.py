@@ -13,7 +13,7 @@ import soundfile as sf
 from scipy.signal import resample_poly
 
 PUNCT = set('，。！？；：、…,.!?;:')
-QUOTES = set('“”‘’"\'')
+QUOTES = set('“”‘’"\'《》「」『』（）()')
 END = set('。！？.!?')
 HOP = .01
 THRESHOLDS = dict(single_character_N=2.4, active_character_N=2., onset_character_N=1.7,

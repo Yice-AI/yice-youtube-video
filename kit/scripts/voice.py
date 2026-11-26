@@ -409,10 +409,47 @@ def preserve_room_floor(samples, rate, dbfs):
     return samples
 
 
+def _read_wav_float32_2d(path):
+    import numpy as np
+    try:
+        import soundfile as sf
+        return sf.read(path, dtype="float32", always_2d=True)
+    except ImportError:
+        with wave.open(str(path), "rb") as wf:
+            ch, sw, rate, nframes = wf.getnchannels(), wf.getsampwidth(), wf.getframerate(), wf.getnframes()
+            raw = wf.readframes(nframes)
+        if sw == 2:
+            arr = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+        elif sw == 3:
+            b = np.frombuffer(raw, dtype=np.uint8).reshape(-1, 3)
+            val = b[:, 0].astype(np.int32) | (b[:, 1].astype(np.int32) << 8) | (b[:, 2].astype(np.int8).astype(np.int32) << 16)
+            arr = val.astype(np.float32) / 8388608.0
+        elif sw == 4:
+            arr = np.frombuffer(raw, dtype="<i4").astype(np.float32) / 2147483648.0
+        else:
+            raise ValueError(f"不支持的 WAV 位深：{sw}")
+        return arr.reshape(-1, ch), rate
+
+
+def _write_wav_pcm24(target, samples, rate):
+    import numpy as np
+    try:
+        import soundfile as sf
+        sf.write(target, samples, rate, subtype="PCM_24")
+    except ImportError:
+        clipped = np.clip(samples, -1.0, 8388607.0 / 8388608.0)
+        ints = np.round(clipped * 8388608.0).astype("<i4")
+        raw = ints.view(np.uint8).reshape(-1, 4)[:, :3].tobytes()
+        with wave.open(str(target), "wb") as wf:
+            wf.setnchannels(samples.shape[1])
+            wf.setsampwidth(3)
+            wf.setframerate(int(rate))
+            wf.writeframes(raw)
+
+
 def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-68.):
     """用室温底噪连接长段，渐变衔接前导和尾音。"""
     import numpy as np
-    import soundfile as sf
 
     if not paths:
         raise ValueError("没有可拼接的句组音频")
@@ -422,7 +459,7 @@ def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-68
     original_rate = channels = None
     previous_tail = 0
     for index, path in enumerate(paths):
-        samples, rate = sf.read(path, dtype="float32", always_2d=True)
+        samples, rate = _read_wav_float32_2d(path)
         if original_rate is None:
             original_rate, channels = rate, samples.shape[1]
         if original_rate != rate or channels != samples.shape[1] or not len(samples):
@@ -482,7 +519,7 @@ def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-68
             bridge[-fade:] = bridge[-fade:]*(1-up) + piece[:fade]*up
         rendered = np.concatenate((rendered[:-tail_fade], bridge, piece[fade:]))
     preserve_room_floor(rendered,original_rate,room_tone_dbfs)
-    sf.write(target, rendered, original_rate, subtype='PCM_24')
+    _write_wav_pcm24(target, rendered, original_rate)
 
 
 def concat_wav_command(paths, output, pauses, crossfade_ms, room_tone_dbfs):
@@ -604,7 +641,7 @@ def make_transcriber(model, prompt, folder):
     def transcribe(audio):
         os.environ.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1")
         sha = hashlib.sha256(Path(audio).read_bytes()).hexdigest()
-        settings = hashlib.sha256(json.dumps(dict(model=model, prompt=prompt, temperature=0, chunk_v=6), sort_keys=True).encode()).hexdigest()[:12]
+        settings = hashlib.sha256(json.dumps(dict(model=model, prompt=prompt, temperature=0, chunk_v=9), sort_keys=True).encode()).hexdigest()[:12]
         folder.mkdir(parents=True, exist_ok=True)
         path = folder / f"{sha}-{settings}.json"
         if path.exists():
@@ -623,6 +660,7 @@ def make_transcriber(model, prompt, folder):
             y = None
         if y is None or sr <= 0 or len(y) / sr <= 26.0:
             result = mlx_whisper.transcribe(str(audio), path_or_hf_repo=model, language="zh",
+                                           condition_on_previous_text=False,
                                            initial_prompt=prompt or None, temperature=0, word_timestamps=True, verbose=False)
         else:
             import tempfile
@@ -652,6 +690,7 @@ def make_transcriber(model, prompt, folder):
                 with tempfile.NamedTemporaryFile(suffix=".wav") as tmp:
                     sf.write(tmp.name, y[start:end], sr)
                     chunk = mlx_whisper.transcribe(tmp.name, path_or_hf_repo=model, language="zh",
+                                                  condition_on_previous_text=False,
                                                   initial_prompt=prompt or None, temperature=0, word_timestamps=True, verbose=False)
                 off = start / sr
                 texts.append(chunk.get("text", ""))
@@ -672,7 +711,8 @@ def make_transcriber(model, prompt, folder):
                 if seg_rms < sil_amp and seg.get("avg_logprob", 0.0) < -1.2 and probs and max(probs) < 0.12:
                     continue
                 trimmed = []
-                word_sil = 10 ** (-38 / 20)
+                p85 = float(np.percentile(np.abs(y[sa:sb]), 85)) if sb > sa else 0.0
+                word_sil = max(10 ** (-38 / 20), p85 * (10 ** (-24 / 20)))
                 for w in words:
                     ws, we = float(w["start"]), float(w["end"])
                     if we - ws > 0.14:
@@ -680,7 +720,11 @@ def make_transcriber(model, prompt, folder):
                         while a + step < b and float(np.sqrt(np.mean(y[a:a + step] ** 2))) < word_sil:
                             a += step
                         ws = min(we - 0.05, a / sr)
-                    trimmed.append({**w, "start": ws})
+                        lo_end, hi_end = max(0, int((ws + 0.05) * sr)), min(len(y), int(we * sr))
+                        while hi_end - step > lo_end and float(np.sqrt(np.mean(y[hi_end - step:hi_end] ** 2))) < word_sil:
+                            hi_end -= step
+                        we = max(ws + 0.05, hi_end / sr)
+                    trimmed.append({**w, "start": ws, "end": we})
                 clean_segs.append({**seg, "words": trimmed})
                 clean_texts.append(seg.get("text", ""))
             result = {**result, "text": "".join(clean_texts), "segments": clean_segs}
@@ -1038,7 +1082,8 @@ def main():
     (output / "analysis").mkdir()
     write_json(output / "analysis/script-manifest.json", {"chapters": chapters})
     generate = make_generator(args.brand, output / "generation", args.reuse_candidates, args.backend, args.candidates)
-    transcribe = make_transcriber(resolve_asr_model(args.asr_model), args.asr_prompt, output / "analysis/asr")
+    asr_cache = Path(os.environ["YICE_ASR_CACHE_DIR"]) if os.environ.get("YICE_ASR_CACHE_DIR") else (output / "analysis/asr")
+    transcribe = make_transcriber(resolve_asr_model(args.asr_model), args.asr_prompt, asr_cache)
     jobs = [dict(chapter=chapter["id"], text=chapter["text"], pronunciations=chapter.get("pronunciations") or {},
                  seed=seed, chunk_mode=args.chunk_mode,
                  path=str(output / "raw" / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))

@@ -28,7 +28,8 @@ READINGS = {
         'jī': '机基积激', 'tí': '提题', 'cháng': '常长尝', 'zhuāng': '装庄妆',
         'fēng': '风封峰蜂锋', 'róu': '柔揉', 'bǎn': '版板', 'zhèn': '阵振震镇',
         'xiàn': '现线县献限宪', 'chéng': '成程城呈诚承', 'shēng': '升声生牲',
-        'gǎo': '稿搞镐',
+        'gǎo': '稿搞镐', 'lán': '蓝栏兰拦篮', 'píng': '屏平评瓶凭', 'kuài': '块快筷',
+        'shí': '实时识食石拾蚀',
     }.items() for char in group
 }
 
@@ -132,12 +133,19 @@ def audit(text, transcription, exceptions=None, threshold=.97, *, auto_homophone
         nonlocal heard
         if not intended or not recognized:
             raise ValueError('ASR 放行短语不能为空')
-        if intended == recognized or intended not in text or recognized not in heard:
+        if intended == recognized or intended not in text:
             return
-        heard = heard.replace(recognized, intended)
+        actual = recognized
+        if actual not in heard and kind == 'english_name':
+            match = re.search(re.escape(recognized), heard, flags=re.IGNORECASE)
+            if match:
+                actual = match[0]
+        if actual not in heard or actual == intended:
+            return
+        heard = heard.replace(actual, intended)
         # Keep original phrases for timestamp alignment, longest recognized first.
-        mappings[intended] = recognized
-        events.append(dict(kind=kind, intended=intended, heard=recognized, reason=reason))
+        mappings[intended] = actual
+        events.append(dict(kind=kind, intended=intended, heard=actual, reason=reason))
 
     # Match complete number+unit phrases before isolated digits (3 must not eat 30).
     expected_units = list(re.finditer('(' + NUMBER + r')(兆字节|千字节|MB|KB|兆)', text, re.I))
@@ -201,13 +209,17 @@ def audit(text, transcription, exceptions=None, threshold=.97, *, auto_homophone
         for kind, values in exceptions.items():
             if not isinstance(values, dict):
                 raise ValueError('例外类别须为 原文→ASR别写 对象')
-            records.extend((kind, intended, recognized) for intended, recognized in values.items())
+            for intended, recognized in values.items():
+                variants = recognized if isinstance(recognized, list) else [recognized]
+                records.extend((kind, intended, item) for item in variants)
     else:
         # Legacy flat mappings remain explicit, and are never silently fuzzy.
-        if any(not isinstance(key, str) or not isinstance(value, str) for key, value in exceptions.items()):
-            raise ValueError('例外短语须为字符串')
-        records = [('english_name' if re.search('[A-Za-z]', key) else 'homophone', key, value)
-                   for key, value in exceptions.items()]
+        for key, value in exceptions.items():
+            variants = value if isinstance(value, list) else [value]
+            if not isinstance(key, str) or any(not isinstance(item, str) for item in variants):
+                raise ValueError('例外短语须为字符串')
+            tag = 'english_name' if re.search('[A-Za-z]', key) else 'homophone'
+            records.extend((tag, key, item) for item in variants)
     if any(not isinstance(row[1], str) or not isinstance(row[2], str) for row in records):
         raise ValueError('例外短语须为字符串')
     for kind, intended, recognized in sorted(records, key=lambda row: -len(row[2])):

@@ -221,20 +221,32 @@ def preserve_breaths(path, alignment, destination, cache=None):
     x, rate = sf.read(path, always_2d=True)
     x = x.mean(axis=1)
     measured = pd.measure(path, alignment, cache)
-    silent = pd.runs(np.asarray(measured['db']) < -55.)
+    db = np.asarray(measured['db'])
+    silent_deep = pd.runs(db < -55.)
+    ref_quiet = float(np.percentile(db, 70)) - 20.
+    silent_nonpunct = pd.runs(db < ref_quiet)
     planned = {int(key) for key in alignment.get('planned_pauses', {})}
-    fade = round(.06 * rate)
-    ramp = (1 - np.cos(np.linspace(0, np.pi, fade))) / 2
     edits = []
     for boundary in measured['boundaries']:
-        if boundary['char_boundary'] in planned or boundary['pause_ms'] <= 1150:
+        if boundary['char_boundary'] in planned or not boundary.get('pause_interval'):
             continue
+        is_nonpunct = boundary['kind'] == 'none'
+        p_ms = boundary['pause_ms']
+        if is_nonpunct:
+            if not (p_ms > 330. or 225. <= p_ms <= 265.):
+                continue
+            target_s, fade_s, pool = .16, .02, silent_nonpunct
+        else:
+            if p_ms <= 1150.:
+                continue
+            target_s, fade_s, pool = .45, .06, silent_deep
         a, b = boundary['pause_interval']
-        intersections = [(max(a, l), min(b, r)) for l, r in silent if min(b, r) > max(a, l)]
+        intersections = [(max(a, l), min(b, r)) for l, r in pool if min(b, r) > max(a, l)]
         quiet_a, quiet_b = max(intersections, key=lambda span: span[1]-span[0], default=(0., 0.))
-        loss = round(((b-a)-.45)*rate)
+        fade = max(1, round(fade_s * rate))
+        loss = round(((quiet_b - quiet_a) - target_s) * rate)
         width = loss + fade
-        if round((quiet_b-quiet_a)*rate) < width + 2:
+        if loss <= 0 or round((quiet_b-quiet_a)*rate) < width + 2:
             continue
         # Keep the natural edge on either side of the quiet gap, especially
         # the inhalation immediately before the next utterance.
@@ -242,10 +254,53 @@ def preserve_breaths(path, alignment, destination, cache=None):
         last = first + width
         edits.append(dict(start_s=first/rate, end_s=last/rate, new_duration_s=fade/rate,
                           kind='quiet_trim', char_boundary=boundary['char_boundary'],
-                          before_ms=boundary['pause_ms'], intended_final_ms=450.))
+                          before_ms=p_ms, intended_final_ms=round(target_s*1000, 1)))
+    # Also tighten verified >=225ms deep (-28dB) internal dead-air pockets swallowed inside ASR char spans.
+    times = np.arange(len(db)) * pd.HOP
+    chars = measured['characters']
+    for boundary in measured['boundaries']:
+        if boundary['kind'] != 'none' or boundary['char_boundary'] in planned:
+            continue
+        i = boundary['index']
+        left, right = chars[i], chars[i + 1]
+        if left['sentence'] != right['sentence'] or left['charEnd'] != right['charStart']:
+            continue
+        ids = np.flatnonzero((times >= left['s']) & (times < right['e']))
+        if not len(ids):
+            continue
+        local = db[ids]
+        left_db, right_db = local[times[ids] < left['e']], local[times[ids] >= right['s']]
+        if not len(left_db) or not len(right_db):
+            continue
+        ref = min(float(left_db.max()), float(right_db.max()))
+        if ref <= -42:
+            continue
+        for lo, hi in pd.runs(local <= ref - 28.):
+            s_bin, e_bin = round(lo / pd.HOP), round(hi / pd.HOP)
+            dur_ms = (e_bin - s_bin) * pd.HOP * 1000.
+            if s_bin < 3 or len(local) - e_bin < 3 or not (225. <= dur_ms <= 600.):
+                continue
+            qa, qb = float(times[ids[0]]) + lo, float(times[ids[0]]) + hi
+            if any(not (qb <= e['start_s'] or qa >= e['end_s']) for e in edits):
+                continue
+            fade = max(1, round(.02 * rate))
+            loss = round(((qb - qa) - .16) * rate)
+            width = loss + fade
+            if loss > 0 and round((qb - qa) * rate) >= width + 2:
+                first = round((qa + qb) * rate / 2) - width // 2
+                edits.append(dict(start_s=first/rate, end_s=(first+width)/rate, new_duration_s=fade/rate,
+                                  kind='pocket_trim', char_boundary=boundary['char_boundary'],
+                                  before_ms=round(dur_ms, 1), intended_final_ms=160.))
     edits.sort(key=lambda row: row['start_s'])
+    deduped = []
+    for e in edits:
+        if not deduped or e['start_s'] >= deduped[-1]['end_s']:
+            deduped.append(e)
+    edits = deduped
     for edit in reversed(edits):
         a, b = round(edit['start_s']*rate), round(edit['end_s']*rate)
+        fade = max(1, round(edit['new_duration_s']*rate))
+        ramp = (1 - np.cos(np.linspace(0, np.pi, fade))) / 2
         crossfade = x[a:a+fade]*(1-ramp) + x[b-fade:b]*ramp
         x = np.concatenate((x[:a], crossfade, x[b:]))
     updated = copy.deepcopy(alignment)
