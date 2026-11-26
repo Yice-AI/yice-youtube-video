@@ -793,26 +793,35 @@ def ranges(text, pattern):
 def short_captions(chapter, mapped, offset):
     captions = []
     clauses = r'[^，,。！？!?；;：:、]+[，,。！？!?；;：:、]*'
+    break_words = ('所以','因为','然后','接着','这样','以及','但是','同时','或者','而且','直接','放一','有四','在','和','把','用','往','从')
     for scene, first, end in scene_text_spans(chapter):
         for a,b,_ in ranges(scene['text'],clauses):
             text = chapter['text']
             letters = [m for m in mapped if first+a <= m['charStart'] < min(end,first+b)]
             while letters:
-                count = min(22,len(letters))
-                if count<len(letters):
-                    for cut in range(count,max(12,count-8),-1):
+                full_label = text[letters[0]['charStart']:letters[-1]['charEnd']].strip()
+                if len(letters) <= 22 and len(full_label) <= 22:
+                    count = len(letters)
+                else:
+                    upper = min(22, len(letters) - 6) if len(letters) <= 28 else 20
+                    upper = max(8, upper)
+                    while upper > 8 and len(text[letters[0]['charStart']:letters[upper-1]['charEnd']].strip()) > 22:
+                        upper -= 1
+                    lower = max(7, min(upper - 1, len(letters) - 18))
+                    count = upper
+                    for cut in range(upper, lower - 1, -1):
                         i,j = letters[cut-1]['charEnd'],letters[cut]['charStart']
-                        if text[i:j] or any(text[j:].startswith(word) for word in ('所以','因为','然后','接着','这样','以及','但是','同时')):
+                        if text[i:j] or any(text[j:].startswith(word) for word in break_words):
                             count = cut
                             break
                     else:
                         def ascii_letter(index):
                             char = text[letters[index]['charStart']]
                             return char.isascii() and char.isalnum()
-                        while count>12 and ascii_letter(count-1) and ascii_letter(count):
+                        while count > lower and ascii_letter(count-1) and ascii_letter(count):
                             count -= 1
-                        if count==12 and ascii_letter(count-1) and ascii_letter(count):
-                            count = 22
+                        if ascii_letter(count-1) and ascii_letter(count):
+                            count = upper
                 window,letters = letters[:count],letters[count:]
                 label = text[window[0]['charStart']:window[-1]['charEnd']].strip()
                 start = round((offset+window[0]['s'])*1000)
