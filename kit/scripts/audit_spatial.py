@@ -229,16 +229,41 @@ def _shot_stage_look(shot):
     return None
 
 
+def _raw_stage_frame(shot, project, rendered, local):
+    from io import BytesIO
+    from pathlib import Path
+    from PIL import Image
+    from audit_v7 import VIDEO_EXTENSIONS, primary_files
+    files = primary_files(shot) or [shot.get('source', '')]
+    path = next((Path(project) / f for f in files if Path(f).suffix.lower() in VIDEO_EXTENSIONS
+                 and (Path(project) / f).is_file()), None)
+    use_render = bool(rendered) or path is None
+    at = float(shot['start'] if use_render else shot.get('media_start', 0)) + local
+    video = rendered if use_render else path
+    if not video:
+        raise ValueError('缺少可抽帧的视频')
+    cmd = ['ffmpeg', '-nostdin', '-v', 'error', '-ss', f'{at:.5f}', '-threads', '2', '-i', str(video),
+           '-frames:v', '1', '-vf', 'scale=320:-1', '-threads', '1', '-c:v', 'png', '-f', 'image2pipe', '-']
+    data = subprocess.run(cmd, check=True, capture_output=True).stdout
+    with Image.open(BytesIO(data)) as frame:
+        return frame.convert('RGB')
+
+
 def capture_stage_backgrounds(shots, project, rendered, gate):
     import numpy as np
     for shot in shots:
-        if stage_mode(shot) not in RIGS | {'studio_ui'}:
+        mode = stage_mode(shot)
+        if mode == 'studio_ui':
+            pass
+        elif mode in RIGS and shot.get('framing', 'fullbleed') != 'fullbleed':
+            pass
+        else:
             continue
         key = shot['id']
         look = _shot_stage_look(shot)
         for phase in (.12,.5,.88):
             try:
-                frame = capture_frame(shot,project,rendered,shot_span(shot)*phase,prefer_rendered=True)
+                frame = _raw_stage_frame(shot,project,rendered,shot_span(shot)*phase)
                 pixels = np.asarray(frame.convert('RGB'))
                 height,width = pixels.shape[:2]
                 y,x = np.ogrid[:height,:width]

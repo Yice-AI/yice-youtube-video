@@ -160,3 +160,49 @@ def test_roadmap_gate_checks_unclipped_projected_bounds():
     frame=dict(phase=.5,overlaps=[],stations=[[129,500],[1400,1791]])
     gate=audit_spatial.spatial_frame_gates([shot],5,{'r':dict(frames=[frame])},False)['roadmap_overview_safe_gate']
     assert not gate['ok'] and len(gate['violations'])==2
+
+
+def test_progressive_cards_strip_raw_source_and_portrait_uses_contain(tmp_path):
+    from PIL import Image
+    from kit.spatial.block import build
+    from audit_v7 import composition_material
+    portrait = tmp_path / 'sub' / 'card-vertical.png'
+    portrait.parent.mkdir()
+    Image.new('RGB', (600, 800), (245, 245, 248)).save(portrait)
+    gsap = tmp_path / 'gsap.min.js'
+    gsap.write_text('// stub')
+    out = tmp_path / 'comp'
+    entry = build({
+        'id': 'sim1',
+        'recipe': 'progressive_sim_cards',
+        'stage_look': 'cyber_glass',
+        'duration': 4.5,
+        'data': {
+            'heading': '分层验证',
+            'cards': [
+                {'at': 0.2, 'kind': 'race_bars', 'label': '对比'},
+                {'at': 0.8, 'source': 'sub/card-vertical.png', 'label': '竖卡'},
+            ],
+        },
+    }, tmp_path, out, gsap)
+    html = entry.read_text()
+    assert 'sub/card-vertical.png' not in html
+    assert 'media-aspect-box' in html
+    _, images = composition_material(entry)
+    assert images and all(p.is_file() for p in images)
+
+
+def test_capture_stage_backgrounds_skips_fullbleed_and_samples_uncropped_window(tmp_path, monkeypatch):
+    from PIL import Image, ImageDraw
+    img = Image.new('RGB', (320, 180), (14, 18, 28))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle((24, 24, 296, 144), fill=(240, 245, 255))
+    monkeypatch.setattr(audit_spatial, '_raw_stage_frame', lambda *a, **kw: img)
+    shots = [
+        {'id': 'fb_bright', 'stage_mode': 'fullbleed_rig', 'framing': 'fullbleed', 'start': 0, 'end': 3},
+        {'id': 'p3d_dark_stage', 'stage_mode': 'callout_rig', 'framing': 'perspective_3d', 'start': 3, 'end': 6},
+    ]
+    gate = {'backgrounds': {}, 'violations': [], 'ok': True}
+    audit_spatial.capture_stage_backgrounds(shots, tmp_path, tmp_path / 'ep.mp4', gate)
+    assert gate['ok'] and not gate['violations']
+    assert 'fb_bright' not in gate['backgrounds'] and 'p3d_dark_stage' in gate['backgrounds']

@@ -108,6 +108,17 @@ def build(spec, source_dir, output, gsap):
     def picture(source):
         return media_asset(source, allow_video=False)[0]
 
+    def _is_non_widescreen_raster(path):
+        if path.suffix.lower() not in {'.png', '.jpg', '.jpeg', '.webp'}:
+            return False
+        try:
+            from PIL import Image
+            with Image.open(path) as opened:
+                w, h = opened.size
+            return h > 0 and not (1.28 <= (w / h) <= 2.05)
+        except Exception:
+            return False
+
     def media_tag(source, *, cls='', style=''):
         nonlocal video_counter
         name, is_video = media_asset(source, allow_video=True)
@@ -119,6 +130,11 @@ def build(spec, source_dir, output, gsap):
                     f'data-start="0" data-duration="{duration}" '
                     f'style="width:100%;height:100%;object-fit:cover;{style}"></video>')
         style_attr = f' style="{style}"' if style else ''
+        if _is_non_widescreen_raster(assets[name]):
+            fg_cls = f'{cls} media-aspect-fg'.strip()
+            return (f'<div class="media-aspect-box">'
+                    f'<img class="media-aspect-bg" src="{name}" alt="">'
+                    f'<img class="{fg_cls}" src="{name}" alt=""{style_attr}></div>')
         return f'<img{cls_attr} src="{name}" alt=""{style_attr}>'
 
     def img(source):
@@ -310,7 +326,7 @@ def build(spec, source_dir, output, gsap):
                     f'<div class="doc-anatomy-cap"><strong>{label(card["label"])}</strong>{sub_span}</div></article>'
                 )
             anatomy_html = f'<div class="doc-anatomy-row" style="opacity:0">{"".join(cards_parts)}</div>'
-        body = (f'<div class="doc-frame" data-spatial-subject><img class="doc-painting" src="{painting_name}" alt="">'
+        body = (f'<div class="doc-frame" data-spatial-subject>{media_tag(data["image"], cls="doc-painting")}'
                 f'<div class="doc-vignette"></div></div>{plaque_html}{anatomy_html}'
                 f'<canvas class="dust-canvas" width="1920" height="1080"></canvas>')
     elif recipe == 'step_tree_focus':
@@ -425,9 +441,11 @@ def build(spec, source_dir, output, gsap):
     keep_keys = (
         'selected_index', 'select_at', 'count', 'focus_step', 'action',
         'focus_index', 'focus_at', 'modules', 'counter', 'focal_from',
-        'focal_to', 'split_at', 'branches', 'focus_sequence', 'cards', 'reveal_at',
+        'focal_to', 'split_at', 'branches', 'focus_sequence', 'reveal_at',
     )
     settings_data = {key: data[key] for key in keep_keys if key in data}
+    if 'cards' in data:
+        settings_data['cards'] = [{k: v for k, v in card.items() if k != 'source'} for card in data['cards']]
     if 'steps' in data:
         settings_data['steps'] = [{'at': step['at']} for step in data['steps']]
     settings = json.dumps(settings_data, ensure_ascii=False).replace('<', '\\u003c')
