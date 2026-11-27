@@ -56,7 +56,8 @@ MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards', 
 REAL = {'callout_rig', 'cold_open_ab', 'fullbleed_rig', 'web_cam', 'real_video', 'stock_broll', 'reference_breakdown'}
 VERIFIED_OVERLAYS = {'spotlight_box','highlighter_sweep','hand_circle'}
 MOTION_OVERLAYS = {'editorial_punch','stat_badge','strikethrough_list','verdict_stamp','corner_tag','prop_badge','reaction_cutout'} | VERIFIED_OVERLAYS
-SFX = {'marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll', 'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser', 'slap'}
+from kit.editorial.audio_mix import SFX_KINDS
+SFX = SFX_KINDS | {'slap'}
 VIDEO_EXTENSIONS = {'.mp4','.m4v','.mov','.webm'}
 IMAGE_EXTENSIONS = {'.png','.jpg','.jpeg','.webp','.svg'}
 WHITEBOARD_ICONS = {'person','cat','network','doc','chat','bulb','check','cross','screen','stack','gear','target','clock','chart'}
@@ -965,6 +966,184 @@ def semantic_match_ledger(timeline):
     return dict(ok=not (invalid or missing), checked=len(seen), missing=missing, invalid=invalid)
 
 
+
+def sfx_diversity_and_sync_gate(timeline, duration):
+    from collections import Counter
+    from kit.editorial.audio_mix import BUNDLED_SFX_MAP
+    marks = sorted((m for m in timeline.get('sound_marks', []) if m.get('kind') != 'music_drop'),
+                   key=lambda m: float(m['at']))
+    counts, violations, previous = Counter(), [], []
+    files_by_digest = {}
+    for mark in marks:
+        kind, at = mark['kind'], float(mark['at'])
+        source = mark.get('source_file') or BUNDLED_SFX_MAP.get(kind)
+        if not source:
+            violations.append(dict(at=at,reason='unknown_source'))
+            continue
+        source = files_by_digest.setdefault(mark.get('source_sha256') or source, source)
+        counts[source] += 1
+        previous.append((source, mark.get('playback_rate', 1.)))
+        if len(previous) >= 3 and previous[-1] == previous[-2] == previous[-3]:
+            violations.append(dict(at=at,reason='identical_three_in_a_row',file=source))
+        shot = next((s for s in timeline['shots'] if s['start'] <= at < s['end']), None)
+        if shot is None:
+            violations.append(dict(at=at,reason='outside_shots'))
+            continue
+        points = [0., *shot.get('visual_action_times', shot.get('beats', []))]
+        points.extend(float(row['at']) for key in ('overlays','interactions') for row in shot.get(key, []))
+        interaction_kinds = {'click':'click','soft_click':'click_soft','delete':'keypress','type':'typing',
+                             'confirm':'ping','error':'error','glitch':'glitch_1','locked':'glitch_2'}
+        if shot.get('interactions') and kind in interaction_kinds.values():
+            points = [i['at'] for i in shot['interactions'] if interaction_kinds.get(i['action'])==kind]
+        if kind in {'impact_bass_1','impact_bass_2'} and any(o['kind']=='editorial_punch' for o in shot.get('overlays',[])):
+            points = [o['at'] for o in shot['overlays'] if o['kind']=='editorial_punch']
+        if not points:
+            violations.append(dict(shot=shot['id'],at=at,reason='wrong_interaction_sound'))
+            continue
+        delta = min(abs(at-shot['start']-p) for p in points)
+        if delta > .12001 or (kind == 'shutter_whip' and shot.get('recipe') != 'triptych_curtain'):
+            violations.append(dict(shot=shot['id'],at=at,delta=round(delta,4),reason='action_mismatch'))
+    if duration >= 30:
+        if len(counts) < 6:
+            violations.append(dict(reason='fewer_than_six_files'))
+        if counts and max(counts.values()) > .28 * len(marks):
+            violations.append(dict(reason='single_file_above_28_percent'))
+    return dict(ok=not violations, count=len(marks), files=dict(counts), violations=violations)
+
+
+def chapter_voice_completeness_gate(timeline, project, duration):
+    import soundfile as sf
+    project = Path(project)
+    refs = {str(r['id']): r for r in timeline.get('chapter_reference', [])}
+    tracks = sorted(timeline.get('voice_tracks', []),key=lambda row:row.get('at',0.))
+    picture_end = min(duration, max((s['end'] for s in timeline['shots']), default=0.))
+    ends, violations = {}, []
+    for index, track in enumerate(tracks):
+        name = str(track.get('id',index+1))
+        try:
+            path = project / track['path']
+            span = sf.info(path).duration
+            end = track.get('at',0.) + span
+            ends[name] = round(end,5)
+            same_chapter = [s['end'] for s in timeline['shots'] if str(s.get('chapter',''))==name]
+            coverage = max(same_chapter) if same_chapter else picture_end
+            if index+1 < len(tracks):
+                coverage = min(coverage,tracks[index+1].get('at',picture_end))
+            if end > min(coverage,picture_end) + 1/30:
+                violations.append(dict(chapter=name,reason='voice_past_picture',end=end))
+            ref = refs.get(name)
+            if ref:
+                with path.open('rb') as source:
+                    digest = hashlib.file_digest(source,'sha256').hexdigest()
+                if abs(span-ref['duration']) > 1/30 or digest != ref['sha256']:
+                    violations.append(dict(chapter=name,reason='voice_differs_from_reference'))
+        except (OSError, RuntimeError, ValueError) as exc:
+            violations.append(dict(chapter=name,reason=str(exc)))
+    if not tracks or set(refs)-set(ends):
+        violations.append(dict(reason='missing_chapter_track'))
+    last_line = max((c['end'] for c in timeline.get('captions', [])), default=0.)
+    if last_line > picture_end + 1/30:
+        violations.append(dict(reason='last_caption_past_picture',end=last_line))
+    return dict(ok=not violations, track_ends=ends,last_caption_end=last_line,violations=violations)
+
+
+def enumerated_count_gate(shots, measured):
+    numbers = {char:i for i,char in enumerate('零一二三四五六七八九十')}
+    checked, violations = [], []
+    for shot in shots:
+        actual = measured.get(shot['id'],{}).get('frames',[])
+        recipe = shot.get('recipe') or next((f.get('recipe') for f in actual if f.get('recipe')), None)
+        expected = shot.get('expected_items')
+        numbered_recipe = recipe in {'logo_bento_stage','progressive_sim_cards','step_tree_focus','formula_pill_chain'}
+        # A showcase intro may promise five tools before the actual named list.
+        if expected is None and not numbered_recipe:
+            continue
+        claim = ''.join([shot.get('spoken_topic',''), shot.get('visual_subject',''),
+                         next((f['countClaim'] for f in actual if f.get('countClaim')), '')])
+        numerals = re.findall(r'([一二两三四五六七八九十]|\d+)(?:个(?:免费|开源)*神器|款工具|大优势|大降维打击|个步骤|步(?:工作流|流程)|步(?=第一步|$))',
+                              re.sub(r'\s+', '', claim))
+        declared = {int(n) if n.isdecimal() else 2 if n=='两' else numbers[n] for n in numerals}
+        if expected is not None:
+            declared.add(expected)
+        if not declared:
+            continue
+        expected = max(declared)
+        counts = [f.get('enumeratedItems',[]) for f in actual]
+        names = max(counts,key=lambda group:len(set(group)),default=[])
+        checked.append(dict(shot=shot['id'],expected=expected,items=names))
+        if len(declared)!=1 or len(names)!=expected or len(set(names))!=expected:
+            violations.append(checked[-1])
+    return dict(ok=not violations,checked=checked,violations=violations)
+
+
+def no_early_cli_gate(timeline, frames):
+    violations = []
+    if timeline.get('episode_kind') == 'tool_tutorial':
+        for shot in timeline['shots']:
+            if shot['start'] >= 55: continue
+            names = shot.get('source_names', []) + shot.get('files', [])
+            if (shot.get('studio_style') == 'terminal_pipeline'
+                or re.search(r'(?:^|[/ _-])(?:cli|terminal)(?:[._/-]|$)', ' '.join(names), re.I)):
+                violations.append(dict(shot=shot['id'],reason='terminal_source'))
+        for at, lines in frames:
+            if at >= 55: continue
+            for line in lines:
+                if re.search(r'^(?:[\w.-]+@[\w.-]+.*?[%$#>]\s*|(?:[$%>]\s*)?(?:npm (?:install|run)|npx\s+|pip3? install|git (?:clone|checkout)|python3?\s+\S+\.py)|last login:)',line['text'].strip(),re.I):
+                    violations.append(dict(at=at,reason='terminal_command_in_frame'))
+                    break
+    return dict(ok=not violations,violations=violations)
+
+
+def presenter_shortcut_line(shot, line):
+    """Ignore only the small, measured keyboard legend in a captured deck's corner."""
+    hint = shot.get('presenter_shortcuts') or {}
+    if not re.search(r'ESC.{0,5}索引', hint.get('text',''), re.I) or '翻页' not in hint.get('text',''):
+        return False
+    box = hint.get('box',[])
+    if len(box)!=4: return False
+    left,top,width,height = box
+    x,y,w,h = line['box']
+    return (left>=1450 and top>=990 and 0<width<=350 and 0<height<=28
+            and left-8<=x and x+w<=left+width+8 and top-5<=y and y+h<=top+height+5)
+
+
+def subtitle_safe_zone_gate(timeline, measured, frames, project=None):
+    violations = []
+    for shot in timeline['shots']:
+        key = shot['id']
+        if project is not None and shot.get('custom_layout') and shot.get('files'):
+            # Read the underlying image before captions can obscure its text.
+            files = [f for f in shot['files'] if Path(f).suffix.lower() in VIDEO_EXTENSIONS]
+            for file in files[:1]:
+                for phase in (.12,.50,.88):
+                    pos = shot.get('media_start',0.) + phase*shot_span(shot)
+                    try:
+                        rows = overlay_ocr(Path(project)/file,pos,(0,0,1920,1080),OCR)
+                    except (ValueError,OSError,subprocess.SubprocessError) as exc:
+                        violations.append(dict(shot=key,reason=str(exc)))
+                        break
+                    for row in rows:
+                        x,y,w,h = row['box']
+                        if len(normalized(row['text'])) >= 2 and y+h >= 860 and not presenter_shortcut_line(shot,row):
+                            violations.append(dict(shot=key,phase=phase,text=row['text'],bottom=round(y+h)))
+        for frame in measured.get(key,{}).get('frames', []):
+            if frame.get('unsafeCoreText'):
+                violations.append(dict(shot=key,phase=frame['phase'],text=frame['unsafeCoreText']))
+                break
+    for at, lines in frames:
+        shot = next((s for s in timeline['shots'] if s['start']<=at<s['end']),None)
+        if not shot: continue
+        overlay_words = [normalized(o.get(k,'')) for o in shot.get('overlays',[]) for k in ('label','sublabel')]
+        active_subs = [normalized(c['text']) for c in timeline.get('captions',[]) if c['start']-.04<=at<=c['end']+.04]
+        for line in lines:
+            word = normalized(line['text']);x,y,w,h = line['box']
+            if len(word)<2 or y+h < 860 or presenter_shortcut_line(shot,line) or any(word in sub for sub in active_subs):
+                continue
+            if shot.get('custom_layout') or any(word in o for o in overlay_words if o):
+                violations.append(dict(shot=shot['id'],at=at,text=line['text'],bottom=round(y+h)))
+    return dict(ok=not violations,violations=violations)
+
+
 def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
     shots = timeline['shots']
     richness = visual_richness_gate(timeline,project,rendered)
@@ -983,7 +1162,12 @@ def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
             result['case_monotony_gate'] = case_monotony_gate(shots, duration)
             result['semantic_match_ledger'] = semantic_match_ledger(timeline)
         result['quadrant_overlay_gate'] = quadrant_overlay_gate(shots,project)
-        result.update(spatial_frame_gates(shots,duration,spatial_measurements(shots,project),
+        measurements = spatial_measurements(shots,project)
+        result['enumerated_count_gate'] = enumerated_count_gate(shots,measurements)
+        result['sfx_diversity_and_sync_gate'] = sfx_diversity_and_sync_gate(timeline,duration)
+        result['chapter_voice_completeness_gate'] = chapter_voice_completeness_gate(timeline,project,duration)
+        result['subtitle_safe_zone_gate'] = subtitle_safe_zone_gate(timeline,measurements,[],project)
+        result.update(spatial_frame_gates(shots,duration,measurements,
                                           result['tutorial_workflow_gate']['required']))
         stage_gate = result['unified_cyber_stage_and_accent_gate']
         if stage_gate['required']:

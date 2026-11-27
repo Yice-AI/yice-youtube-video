@@ -1,17 +1,17 @@
-# 一策 YouTube 视频制作 v12.0
+# 一策 YouTube 视频制作 v14.0
 
 把中文深度科技与商业视频的导演方法、素材采集、原速配音、**Onetake + HyperFrames 双擎真动态视频贴图与代码造画**、封面直出与机器审片整合在一套可复现工具链中：**`SKILL.md` 管导演路由与审美铁律，`kit/` 管采集、配音、双擎渲染、混音和成片门禁**。公开仓库只分发方法、代码与离线测试，不放私人录音、成片或凭据。
 
 先按[五拍叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)排口播、镜头形态与跨镜承接，再按[一手高光素材与代码造画母法](references/02-一手高光素材与代码造画母法.md)为双擎接入真实 `.mp4` 视频贴图与代码造画配方。
 
-## 核心能力一览（v12.0）
+## 核心能力一览（v14.0）
 
 - **双擎 `.mp4 / .webm` 真动态视频贴图（告别卡片死截图）**。`kit/spatial/block.py` 原生嵌入可寻帧 `<video>` 并在离线采样前自动 seek 等待 `seeked`；`kit/onetake/scene.py` 构建期用 `ffmpeg` 预解 24fps 确定性帧序列并全量预解码，在 180° 快门模糊下实现丝滑无闪黑的动态视频对比与擦除。
-- **第 1/3 类画面 9 大高阶配方 + 双调性母版**。HyperFrames 新增 `perspective_video_fan`（3D 视频扇形墙）、`logo_bento_stage`（Bento 模块拼装）、`cutout_parallax_stage`（剪纸白边三层视差）、`documentary_ken_burns`（2.5D 纪录片推摇 + 一图拆三卡）、`step_tree_focus`（SVG 生长树焦点跳转）、`progressive_sim_cards`（1% vs 100% 渐进装置卡）、`formula_pill_chain`（因果胶囊链）；Onetake 新增 `split_wipe_compare`（中线扫描 / 45° 斜切擦除 / 双栏竞速）与 `handdrawn_sketch_stage`（离线 `sketch_brush.js` 8fps 铅笔水彩 + Riso 半调）。支持 `cyber_glass` 暗黑玻璃与 `editorial_paper` / `scroll_paper` 暖米白画布双母版贯穿全片。
-- **导演×机房锁死审美分工 + 新题三层素材兜底**。顶级模型（Gemini Neon / Claude）担任主脑导演负责定调、挑片、`image2` 提示词、填 18 套成品双擎模具与逐帧目检；Codex 仅做抓片、配音、录屏与温控压片（零自创丑页面）。新题按「① `harvest-showcase-media.sh` 扒 `*.github.io`/官网/X 一手高清 `.mp4` 高光切片 → ② 深色实操录屏 + 生长流程图/进度对比卡 → ③ `image2` 剪纸视差与 2.5D 壁画拆卡代码造画」三层漏斗兜底，彻底杜绝白底滚网页与死截图 PPT。
+- **影院暗场与瑞士亮场的高阶配方**。HyperFrames 使用 `triptych_curtain` 开场、`kinetic_title_bridge` 划线转场，以及 `perspective_video_fan`（3D 视频扇形墙）、`logo_bento_stage`（Bento 模块拼装）、`cutout_parallax_stage`（剪纸白边三层视差）、`documentary_ken_burns`（2.5D 纪录片推摇 + 一图拆三卡）、`step_tree_focus`（SVG 生长树焦点跳转）、`progressive_sim_cards`（1% vs 100% 渐进装置卡）、`formula_pill_chain`（因果胶囊链）；Onetake 新增 `split_wipe_compare`（中线扫描 / 45° 斜切擦除 / 双栏竞速）与 `handdrawn_sketch_stage`（离线 `sketch_brush.js` 8fps 铅笔水彩 + Riso 半调）。支持 `cyber_glass` 暗黑玻璃与 `editorial_paper` / `scroll_paper` 暖米白画布双母版贯穿全片。
+- **导演×机房锁死审美分工 + 新题三层素材兜底**。顶级模型（Gemini Neon / Claude）担任主脑导演负责定调、挑片、`image2` 提示词、填 20 套成品双擎模具与逐帧目检；Codex 仅做抓片、配音、录屏与温控压片（零自创丑页面）。新题按「① `harvest-showcase-media.sh` 扒 `*.github.io`/官网/X 一手高清 `.mp4` 高光切片 → ② 深色实操录屏 + 生长流程图/进度对比卡 → ③ `image2` 剪纸视差与 2.5D 壁画拆卡代码造画」三层漏斗兜底，彻底杜绝白底滚网页与死截图 PPT。
 - **工具教程三段实拍与六路净屏采集**。0–5 秒展示复杂成品或改前改后对比，跟拍输入命令与 Agent 执行，1080p 满屏多点跟焦验证交互。满屏占实录 ≥ 70%，斜框 ≤ 全片 15%。六路采集脚本覆盖 `*.github.io`/官网一手高光原片猎手（`harvest-showcase-media.sh`）、高倍率深色网页录屏、实体 SVG 提取、横屏图库、长片去重复与 Vision 抠图防撞字。
 - **原速克隆配音、精排字幕与广播级母带**。Kaggle 免费 GPU 原速配音保留自然呼吸，`captions.json` 配合深浅自适应烟熏胶囊字幕（浅底舞台自动切换），BGM 等功率余弦循环与 `-14.5 ± 0.8 LUFS` 校准。
-- **`image2` 封面直出与 `v10/v12` 机器审片**。`thumbnail.sh` 直出 3 张候选与联系表，`audit-v3.sh --v10` 执行双调性一致性、合规短题/文物角标放行、标题防碰撞、双擎动效与声学门禁。
+- **`image2` 封面直出与 `v14` 机器审片**。`thumbnail.sh` 直出 3 张候选与联系表，`audit-v3.sh --v10` 执行双调性一致性、合规短题/文物角标放行、标题防碰撞、双擎动效与声学门禁。
 
 ## 在新电脑安装与体检
 

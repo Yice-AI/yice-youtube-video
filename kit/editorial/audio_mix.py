@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import importlib.util
 import json
 import math
@@ -69,30 +70,50 @@ def action_mark(kind: str, at: float) -> dict[str, object]:
     return {"kind": kind, "at": round(float(at), 5)}
 
 
-SFX_KINDS = {
-    'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser',
-    'marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll',
-    'click', 'impact', 'chime', 'ping', 'typing', 'keypress', 'sparkle', 'whoosh_cinematic',
-}
-
 ASSETS_DIR = Path(__file__).resolve().parents[1] / 'assets'
-BUNDLED_SFX_MAP = {
-    **{kind: f'{kind}.wav' for kind in ('marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll')},
-    'pop': 'pop.mp3',
-    'click': 'click.mp3',
-    'tick': 'key-press.mp3',
-    'keypress': 'key-press.mp3',
-    'whoosh': 'whoosh-short.mp3',
-    'whoosh_cinematic': 'whoosh-cinematic.mp3',
-    'marker': 'whoosh-short.mp3',
-    'stamp': 'impact-bass-1.mp3',
-    'impact': 'impact-bass-1.mp3',
-    'chime': 'chime.mp3',
-    'ping': 'ping.mp3',
-    'typing': 'typing.mp3',
-    'sparkle': 'sparkle.mp3',
-    'riser': 'riser.mp3',
+SFX_FAMILIES = {
+    'curtain': ('shutter_whip',),
+    'punch': ('impact_bass_1', 'impact_bass_2'),
+    'warning': ('error', 'glitch_1', 'glitch_2', 'glitch_3'),
+    'wipe': ('whoosh_cinematic', 'whoosh_short', 'whoosh'),
+    'line': ('marker_stroke',),
+    'card': ('card_thock', 'click_soft', 'pop'),
+    'input': ('click', 'keypress', 'typing', 'counter_roll'),
+    'reveal': ('ping', 'chime', 'sparkle', 'notification'),
+    'build': ('riser',),
 }
+WAV_EFFECTS = {'marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll'}
+BUNDLED_SFX_MAP = {k: (k+'.wav' if k in WAV_EFFECTS else k.replace('_','-')+'.mp3')
+                   for family in SFX_FAMILIES.values() for k in family}
+BUNDLED_SFX_MAP.update(keypress='key-press.mp3', tick='key-press.mp3', marker='whoosh-short.mp3',
+                       stamp='impact-bass-1.mp3', impact='impact-bass-1.mp3')
+ACTION_SOUNDS = {'punch_hit': 'punch', 'wipe_sweep': 'wipe', 'focus_reveal': 'reveal'}
+SFX_KINDS = set(BUNDLED_SFX_MAP) | set(ACTION_SOUNDS)
+
+
+def _action_excerpt(wave, rate, kind):
+    """Align the audible gesture, including source files with seconds of leading silence."""
+    import numpy as np
+    caps = {'whoosh_cinematic': .70, 'whoosh_short': .45, 'whoosh': .45,
+            'impact_bass_1': .85, 'impact_bass_2': .85, 'error': .45,
+            'glitch_1': .55, 'glitch_2': .55, 'glitch_3': .55, 'typing': .21,
+            'keypress': .16, 'click': .16, 'click_soft': .16, 'ping': .38,
+            'chime': .75, 'sparkle': .60, 'notification': .55}
+    if kind not in caps:
+        return wave, 0.
+    hop = max(1, rate//100)
+    padded = np.pad(wave,(0,(-len(wave))%hop))
+    rms = np.sqrt(np.mean(padded.reshape(-1,hop)**2,axis=1))
+    hits = np.flatnonzero(rms >= .17*np.max(rms))
+    start = max(0, (int(hits[0])-1)*hop) if len(hits) else 0
+    if kind == 'whoosh_cinematic':
+        start = max(start, int(np.argmax(rms))*hop-round(.085*rate))
+    excerpt = wave[start:start+round(caps[kind]*rate)].copy()
+    edge = min(len(excerpt)//2, round(.004*rate))
+    fade = min(len(excerpt)//2, round(.045*rate))
+    if edge: excerpt[:edge] *= np.linspace(0,1,edge)
+    if fade: excerpt[-fade:] *= np.linspace(1,0,fade)
+    return excerpt, start/rate
 
 
 def resolve_bgm_path(path, root=Path('.')):
@@ -297,10 +318,22 @@ class EpisodeAudioMixer:
         applied = []
         library = sfx_library or {}
         sfx_cache = {}
-        for event in sound_marks:
+        offsets, digests = {}, {}
+        rotations = {}
+        pitch_indices = {}
+        for event in sorted(sound_marks, key=lambda item: float(item['at'])):
             kind, at = event['kind'],float(event['at'])
             if kind == 'music_drop':
                 continue
+            family = ACTION_SOUNDS.get(kind)
+            if family:
+                choices = SFX_FAMILIES[family]
+                index = rotations.get(family, 0)
+                # Flow nodes alternate between two clear, positive reveal sounds.
+                if family == 'reveal':
+                    choices = ('chime', 'sparkle')
+                kind = choices[index % len(choices)]
+                rotations[family] = index+1
             if kind == 'slap':
                 kind = 'stamp'
             gain = float(event.get('gain',.30))
@@ -318,17 +351,32 @@ class EpisodeAudioMixer:
             else:
                 bundled = ASSETS_DIR / 'sfx' / BUNDLED_SFX_MAP.get(kind, '')
                 if BUNDLED_SFX_MAP.get(kind) and bundled.is_file():
-                    src_key = ('bundled', bundled.name)
+                    src_key = ('bundled', bundled.name, kind)
                     if src_key not in sfx_cache:
                         w = self._read(bundled)
                         pk = float(np.max(np.abs(w))) or 1.
-                        sfx_cache[src_key] = (w / pk) * 0.95
+                        excerpt,offset = _action_excerpt(w/pk,self.rate,kind)
+                        sfx_cache[src_key] = excerpt*.95
+                        offsets[src_key] = offset
                     effect = sfx_cache[src_key]
                 else:
                     effect = self._effect(kind)
+            rate = 1.
+            if kind in SFX_FAMILIES['card']:
+                index = pitch_indices.get(kind, 0)
+                rate = (.95, 1., 1.06)[index % 3]
+                pitch_indices[kind] = index+1
+                if rate != 1.:
+                    effect = np.interp(np.arange(0,len(effect),rate),np.arange(len(effect)),effect)
+            source_file = Path(library[kind]).name if kind in library else BUNDLED_SFX_MAP[kind]
+            path = Path(library[kind]) if kind in library else ASSETS_DIR/'sfx'/source_file
+            if path not in digests and path.is_file():
+                with path.open('rb') as stream:
+                    digests[path] = hashlib.file_digest(stream,'sha256').hexdigest()
             i = round(at*self.rate); n = min(len(effect),frames-i)
             mixed[i:i+n] += gain*effect[:n]
-            applied.append({**event,'kind':kind,'at':at,'gain':gain})
+            applied.append({**event,'kind':kind,'at':at,'gain':gain,'source_file':source_file,'playback_rate':rate,
+                            'source_sha256':digests.get(path),'trim_start':round(offsets.get(src_key,0.),4) if path.is_file() else 0.})
         sf.write(output/'bed-only.wav',bed,self.rate,subtype='PCM_24')
         spec = importlib.util.spec_from_file_location('voice_master_levels',Path(__file__).parents[1]/'scripts/voice-post.py')
         post = importlib.util.module_from_spec(spec)

@@ -122,6 +122,13 @@ async function measure(page, {entry,seconds}) {
       const backdrop = root?.dataset?.onetakeRecipe === 'split_wipe_compare' ? root.querySelector('.compare-stage') : root;
       return {
         phase, overlaps, containerOverflows, cards, titles, stations,
+        countClaim: root.querySelector('header')?.innerText || '',
+        enumeratedItems: Array.from(root.querySelectorAll('.bento-item-name,.sim-label,.tree-branch,.chain-badge'))
+          .filter(visible).map(el=>el.innerText.trim()).filter(Boolean),
+        unsafeCoreText: root.dataset.stageLook === 'swiss_paper' ? Array.from(root.querySelectorAll(
+          'header,.sim-label,.bento-item-name,.bento-cat,.tree-branch,.tree-child,.display-word,.chain-badge'
+        )).filter(el=>visible(el) && el.textContent.trim() && el.getBoundingClientRect().bottom >= 860)
+          .map(el=>el.innerText.trim()) : [],
         stageLook: root?.dataset?.stageLook || null,
         recipe: root?.dataset?.spatialRecipe || root?.dataset?.onetakeRecipe || null,
         fullComparison: Array.from(root?.querySelectorAll('.compare-stage canvas') || [], canvas => {

@@ -591,7 +591,7 @@ def _spatial_sound_marks(sp_spec, span):
             add(land, mat, 0.32)
             for j, it in enumerate(mod.get('items') or []):
                 if isinstance(it, dict) and isinstance(it.get('at'), (int, float)):
-                    add('click', it['at'], 0.30)
+                    add(('click_soft' if j == 0 else 'pop') if swiss else 'click', it['at'], 0.34)
     elif recipe == 'progressive_sim_cards':
         for idx, card in enumerate(data.get('cards') or []):
             cat = float(card.get('at', 0.12 + idx * 0.65))
@@ -602,13 +602,14 @@ def _spatial_sound_marks(sp_spec, span):
     elif recipe == 'step_tree_focus':
         for idx, br in enumerate(data.get('branches') or []):
             bat = float(br.get('at', 0.12 + idx * 1.1))
-            add(land, bat, 0.32)
+            add('marker_stroke' if swiss and idx else land,
+                max(.03,bat-.16) if swiss and idx else bat, .36)
             for ch in (br.get('children') or []):
                 if isinstance(ch.get('at'), (int, float)):
-                    add('marker_stroke' if swiss else 'click', ch['at'], 0.28)
+                    add('click_soft' if swiss else 'click', ch['at'], 0.28)
         for step in (data.get('focus_sequence') or [])[1:]:
             if isinstance(step.get('at'), (int, float)):
-                add('whoosh', step['at'], 0.28)
+                add('focus_reveal' if swiss else 'whoosh', step['at'], 0.38)
     elif recipe == 'formula_pill_chain':
         add('pop', 0.04, 0.30)
         rev = float(data.get('reveal_at', span * 0.32))
@@ -777,10 +778,49 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
         if mode in {'fullbleed_rig','callout_rig'} and shot.get('framing','fullbleed') == 'fullbleed':
             del stage.light_zones[zone_count:]
             stage.light_zones.extend(caption_light_zones(folder/assets[0],start,a,b))
-        fields = ('anchor_cue_id','anchor_cue_start','anchor_text','spoken_topic','visual_subject',
+        fields = ('chapter','anchor_cue_id','anchor_cue_start','anchor_text','spoken_topic','visual_subject',
                   'camera_moves','visual_mode','look','shutter','page_region','case_tag','case_windows','stage_look','semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme','transition_in')
         row = stage.shots[-1]
         row.update({field:shot[field] for field in fields if field in shot},id=key,stage_mode=mode)
+        row['source_names'] = [Path(str(src)).name for src in shot.get('media', [])]
+        recipe_spec = shot.get('spatial_spec') or shot.get('onetake_spec') or {}
+        if recipe_spec:
+            row['recipe'] = recipe_spec.get('recipe')
+            data = recipe_spec.get('data') or {}
+            if row['recipe'] in {'triptych_curtain','kinetic_title_bridge','progressive_sim_cards','logo_bento_stage','step_tree_focus'}:
+                action_times = [0.]
+                for group in ('words','cards','modules','branches','focus_sequence'):
+                    for item in data.get(group,[]):
+                        if not isinstance(item,dict):
+                            continue
+                        if 'at' in item:
+                            action_times.append(item['at'])
+                        for child in item.get('children',[]) + item.get('items',[]):
+                            if isinstance(child,dict) and 'at' in child:
+                                action_times.append(child['at'])
+                if 'underline_at' in data:
+                    action_times.append(data['underline_at'])
+                if row['recipe']=='step_tree_focus':
+                    action_times.extend(max(.03,b['at']-.16) for b in data['branches'][1:] if 'at' in b)
+                row['visual_action_times'] = sorted(set(action_times))
+            if 'expected_items' in data:
+                row['expected_items'] = data['expected_items']
+            row['source_names'] += [Path(v).name for v in (data.get('videos') or [])]
+            row['source_names'] += [Path(data[k]).name for k in ('before','after') if isinstance(data.get(k),str)]
+            row['source_names'] += [Path(card['source']).name for card in data.get('cards',[]) if card.get('source')]
+        if 'presenter_shortcuts' in shot:
+            row['presenter_shortcuts'] = shot['presenter_shortcuts']
+        if 'custom_layout' in shot:
+            row['custom_layout'] = shot['custom_layout']
+        if 'interactions' in shot:
+            row['interactions'] = shot['interactions']
+            interaction_sounds = {'click':'click', 'soft_click':'click_soft', 'delete':'keypress', 'type':'typing',
+                                  'confirm':'ping', 'error':'error', 'glitch':'glitch_1', 'locked':'glitch_2'}
+            for act in row['interactions']:
+                rel = float(act['at'])
+                if act['action'] not in interaction_sounds or not 0 <= rel < span:
+                    raise ValueError('交互动作类型或时刻超出镜头')
+                stage.add_sound_mark(interaction_sounds[act['action']], a+rel, gain=act.get('gain',.39))
         if mode == 'hyperframes_block' and sp_recipe == 'triptych_curtain':
             row['curtain_source_hashes'] = [file_fingerprint(root / src)['sha256']
                                             for src in sp_spec['data']['videos']]
@@ -797,6 +837,8 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
             row['gif_source_hashes'] = gif_hashes
         for custom_sfx in shot.get('sound_marks', []):
             rel_at = float(custom_sfx['at'])
+            if custom_sfx['kind'] == 'shutter_whip' and row.get('recipe') != 'triptych_curtain':
+                continue
             if 0.0 <= rel_at < span:
                 stage.add_sound_mark(custom_sfx['kind'], a + rel_at, gain=custom_sfx.get('gain', 0.34))
         stage.register_visual_shot(key,a,b,before,shot.get('transition_in'))
@@ -926,6 +968,17 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
     music = audio.get('bgm',[])
     if 1<len(music)<=len(stages):
         cuts = [stages[round(i*len(stages)/len(music))][2] for i in range(1,len(music))]
+    # Place a quiet beat under the actual overlay landing when no authored drop covers it.
+    drops = list(audio.get('music_drops', []))
+    for shot in global_shots:
+        for overlay in shot.get('overlays', []):
+            if overlay['kind'] != 'editorial_punch':
+                continue
+            hit = shot['start']+overlay['at']
+            windows = [(w['start'], w['end']) if isinstance(w,dict) else w for w in drops]
+            if not any(lo <= hit <= hi for lo,hi in windows):
+                drops.append([hit, min(duration, hit+.24)])
+    audio['music_drops'] = drops
     mix = mix_episode_audio(audio,duration,output,root=root,sound_marks=marks,bgm_cuts=cuts)
     voice_files = []
     for i,row in enumerate(audio['voice_tracks']):
@@ -936,6 +989,19 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
                   for i,path in enumerate(audio.get('voice_processing_logs',[]))]
     timeline = dict(end=duration,shots=global_shots,cues=list(cues.values()),voice_tracks=voice_files,
                     voice_processing_logs=voice_logs,sound_marks=mix['sound_marks'],music_drops=audio.get('music_drops',[]))
+    timeline['captions'] = captions
+    if 'voice_manifest' in raw:
+        manifest_path = locate(root, raw.get('chapter_reference_manifest', raw['voice_manifest']))
+        canonical = read(manifest_path)
+        selected = {str(row['id']) for row in voice_files}
+        if 'chapter_reference_manifest' in raw and selected - {str(chapter['id']) for chapter in canonical['chapters']}:
+            raise ValueError('选用的章节未在原声清单中找到')
+        timeline['chapter_reference'] = []
+        for chapter in canonical['chapters']:
+            if str(chapter['id']) in selected:
+                sound = manifest_path.parent / (chapter.get('audio') or chapter['path'])
+                timeline['chapter_reference'].append(dict(id=chapter['id'],duration=sf.info(sound).duration,
+                                                          sha256=file_fingerprint(sound)['sha256']))
     if 'semantic_alignment' in raw:
         ledger = locate(root, raw['semantic_alignment'])
         timeline['semantic_alignment'] = json.loads(ledger.read_text())

@@ -1,4 +1,4 @@
-# 录屏（Codex App 实操）
+# 录屏（Codex App 实操）（v14.0）
 
 ## 首选：DeepSeek Harness 常驻录屏师（2026-11-17 起）
 

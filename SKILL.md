@@ -27,14 +27,14 @@ v14 清单为每镜填写 `case_tag`，并以 `semantic_alignment` 引用逐镜�
 
 清单声明 `episode_kind: "tool_tutorial"`。**严禁写自嗨假场景（如虚构新品发布会路演）或「第 1 个工具…第 5 个工具…」说明书式报菜名！** 动笔必须走三步老练叙事：① **普通人真痛点 + 反常识钩子**（周报述职、方案改字、不用抽卡/零订阅费，开场用 `triptych_curtain` 三列成品动态幕布，需要结论时用 `editorial_punch` 压暗背景并落下无框白字，严禁不到 3 秒硬切代码提交列表）；② **一套傻瓜选型决策树主线**（先用 `progressive_sim_cards` 立住 3 个体感优势，用 `logo_bento_stage` 按交付对象并列分类，`expected_items` 核验工具数量，实际操作步骤才用 `step_tree_focus`，把工具挂在方法论分支上当论据）；③ **字到画到的 `0.18s` 干脆动效 + 全画幅实操**（子卡片 `at` 精确绑死配音词级时间戳，急停落定不慢飘；整页 PPT/网页实录锁死 `1.00 → 1.03` 全画幅不裁边字，仅在点击局部按钮时聚焦；终端录屏角标自动避让右上角）。
 
-内置 **5 首公有领域节奏型 BGM**（`"bgm": ["builtin:forward-drive", "builtin:city-groove", "builtin:focus-minimal", "builtin:bright-step", "builtin:calm-tech"]`）与 **23 款专业真实动作音效**（`kit/assets/sfx/`），所有空间与快门配方自动按子元素落位时点触发 `pop / click / whoosh / impact / chime` 真实音效，支持重点句 `music_drops` 停顿留白。
+内置 **5 首公有领域节奏型 BGM**（`"bgm": ["builtin:forward-drive", "builtin:city-groove", "builtin:focus-minimal", "builtin:bright-step", "builtin:calm-tech"]`）与 **23 款专业真实动作音效**（`kit/assets/sfx/`），三联幕布用快门，暗场重锤用低音冲击，反例用报错或故障，擦除用掠过声，卡片用三档微音高，输入与回焦各用独立提示音，支持重点句 `music_drops` 停顿留白。
 
-目标每镜 4–6 秒，全片均值 ≤ 6.5 秒。满屏占实录时长至少 70%，斜框占全片至多 15%，带框镜头不能相邻。多贴图与视频墙配方均使用独立 3D 空间运动并通过 v10/v12 审计；平面静态拼贴仍会拦截。
+目标每镜 4–6 秒，全片均值 ≤ 6.5 秒。满屏占实录时长至少 70%，斜框占全片至多 15%，带框镜头不能相邻。多贴图与视频墙配方均使用独立 3D 空间运动并通过 v14 审计；平面静态拼贴仍会拦截。
 
 ## 制片入口
 
 0. **定题与破圈包装（动笔前必做）。** 未定题或冷启动选品时，按 [破圈选题与包装铁律](references/00-破圈选题与包装铁律.md) 执行「小号高倍黑马库 × 本人真实底牌库 × 第 1 秒视觉炸场度」三圈交叉筛选，用五维提案卡供拍板。**先定高点击标题与封面构图，第 0–5 秒直接甩最终惊艳成品立住信任。**
-1. **五拍拆稿定证据。** 依[本机 Skill 协同表](references/01-高留存叙事与三态画面铁律.md#本机-skill-协同表)用 hyperframes-creative 排证据顺序、humanizer-zh 审口播、cheat-score 查钩子。动效与物理接力优先直接填写 v12.0 内建 `spatial_spec`（13 套空间配方）与 `onetake_spec`（7 套快门配方）。每句注明要证明的事实、实际画面主体、语义绑定和首字锚点。
+1. **五拍拆稿定证据。** 依[本机 Skill 协同表](references/01-高留存叙事与三态画面铁律.md#本机-skill-协同表)用 hyperframes-creative 排证据顺序、humanizer-zh 审口播、cheat-score 查钩子。动效与物理接力优先直接填写 v14.0 内建 `spatial_spec`（13 套空间配方）与 `onetake_spec`（7 套快门配方）。每句注明要证明的事实、实际画面主体、语义绑定和首字锚点。
 2. **按主体找素材与代码造画。** 以下入口均在 `kit/scripts/`，保留素材来源和可复查的时间窗。
    - 本机实操用 `rec-demo.sh` 或常驻录屏师，保留连续操作。
    - 公开网页、文档与开源仓库用 `record-web-cam.sh` 录制深色高倍率画面。
@@ -65,7 +65,7 @@ v14 清单为每镜填写 `case_tag`，并以 `semantic_alignment` 引用逐镜�
 
 所有时间用秒。镜头 `start`、`end`、旁白 `at` 和 `firstCharTime` 以全片起点为零。`overlays[].at` 是镜内相对时间。素材路径相对清单解析。
 
-用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成 30 fps 分镜草稿（轮换 HyperFrames v12 空间配方、Onetake v12 过程配方和满屏实录）。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`aurora_indigo`、`paper_cool` 或 `paper_warm`，并按作品展示或方法拆解选择 `stage_look`。
+用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成 30 fps 分镜草稿（轮换 HyperFrames v14 空间配方、Onetake v14 过程配方和满屏实录）。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`aurora_indigo`、`paper_cool` 或 `paper_warm`，并按作品展示或方法拆解选择 `stage_look`。
 
 `gsap` 是可选覆盖项，省略时自动发现本机 GSAP。
 
@@ -114,3 +114,5 @@ v14 清单为每镜填写 `case_tag`，并以 `semantic_alignment` 引用逐镜�
 - 实测数字保留可核对底账，严禁公开屏幕出现私人本机路径、用户名、邮箱或凭据。
 
 相关参考见 [一手高光素材与代码造画母法](references/02-一手高光素材与代码造画母法.md)、[双擎高阶视觉路由](references/10-双擎高阶视觉路由.md)、[配音规则](references/voice.md)、[导演层](references/director-layer.md) 和 [审片门禁](references/review-gates.md)。
+
+影院暗场展示成品和对比，瑞士亮场承接分类与方法。主脑交片前关字幕、有声连看全章。逐项确认反例与真实操作看得懂、口播数量与同屏成品一致、没有连续三秒的死镜、前六十秒不出现终端、字幕带不压核心文字、每种声音都对应可见动作。 [交片审计](references/review-gates.md)

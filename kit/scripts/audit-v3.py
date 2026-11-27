@@ -462,14 +462,17 @@ def frame_ocr_hits(rows, second, terms, *, citation_timeline=None):
                 yield dict(seconds=second, term=term, text=row["text"])
 
 
-def scan_frames(args, duration, out, errors, *, timeline=None):
+def scan_frames(args, duration, out, errors, *, timeline=None, review_frames=None):
     from PIL import Image, ImageDraw
     source = Path(__file__).resolve().parents[1] / "tools/ocr/ocr.swift"
     binary = source.with_suffix("")
     terms = [os.getenv("USER") or getpass.getuser(), "/Users/", "Documents/Codex", "@gmail.com",
              "盲测", "片名卡", "静态截图", "本期实测底账", *args.forbid.split(",")]
     citation_timeline = timeline if getattr(args,"v7",False) else None
-    times = range(0, math.ceil(duration), 2)
+    times = list(range(0, math.ceil(duration), 2))
+    if review_frames is not None and timeline:
+        times = sorted(set(times) | {round((s['start']+s['end'])/2,4) for s in timeline['shots']
+                                     if s['start']<55 or s.get('custom_layout') or s.get('overlays')})
     canvas = Image.new("RGB", (320 * min(5, len(times)), 204 * math.ceil(len(times)/5)), "#202020")
     draw = ImageDraw.Draw(canvas)
     hits = []
@@ -487,6 +490,8 @@ def scan_frames(args, duration, out, errors, *, timeline=None):
                 canvas.paste(image, (x,y))
                 draw.text((x+8,y+183), f"{second:.1f}s", fill="white")
             rows = json.loads(run([str(binary), str(frame)]).stdout)["results"]
+            if review_frames is not None:
+                review_frames.append((second, rows))
             hits.extend(frame_ocr_hits(rows,second,terms,citation_timeline=citation_timeline))
             frame.unlink()
     canvas.save(out / "contact-sheet.jpg", quality=93)
@@ -570,7 +575,18 @@ def rendered(args, out, errors):
         result[key] = value if value is not None and math.isfinite(value) else None
         if value is None or not low <= value <= high:
             errors.append(f"{key} 超出范围或无法测量")
-    result["ocr"] = scan_frames(args, duration, out, errors,timeline=timeline)
+    if getattr(args, 'v10', False) and timeline:
+        from audit_v7 import no_early_cli_gate, subtitle_safe_zone_gate
+        frames = []
+        result["ocr"] = scan_frames(args,duration,out,errors,timeline=timeline,review_frames=frames)
+        cli = result['no_early_cli_gate'] = no_early_cli_gate(timeline,frames)
+        safe = result['subtitle_safe_zone_gate']
+        safe['violations'].extend(subtitle_safe_zone_gate(timeline,{},frames)['violations'])
+        safe['ok'] = not safe['violations']
+        for name,gate in [('no_early_cli_gate',cli),('subtitle_safe_zone_gate',safe)]:
+            if not gate['ok'] and name not in errors: errors.append(name)
+    else:
+        result["ocr"] = scan_frames(args, duration, out, errors,timeline=timeline)
     if args.v4 or args.v5 or v6 or v7:
         if timeline is None:
             errors.append("v4 需要真实 shot-timeline.json 才能做跨镜像素审计")

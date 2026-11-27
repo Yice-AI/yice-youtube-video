@@ -663,7 +663,7 @@ class EditorialStage:
                         + ''.join(txt(960, mid+118*i, line, 116, '#FFFFFF', anchor='middle', weight=900)
                                   for i, line in enumerate(lines))
                         + rect(852, mid+118*(len(lines)-1)+36, 216, 6, color) + '</g>')
-                audio = 'card_thock'
+                audio = 'punch_hit'
             elif style == 'hero_punch':
                 if not label.strip():
                     raise ValueError('重锤大字需要文字')

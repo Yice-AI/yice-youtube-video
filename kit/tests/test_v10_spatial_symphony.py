@@ -385,3 +385,87 @@ def test_physical_marks_and_marker_bed_duck(tmp_path):
     assert 20*np.log10(np.linalg.norm(after[interval])/np.linalg.norm(before[interval])) == pytest.approx(-4,abs=.02)
     assert np.array_equal(before[rate:],after[rate:])
     assert all(.62 <= mark['gain'] <= .78 for mark in result['sound_marks'])
+
+def test_v14_sound_bank_resolves_23_files_and_aligns_audible_onset(tmp_path):
+    from kit.editorial.audio_mix import ASSETS_DIR, BUNDLED_SFX_MAP, EpisodeAudioMixer, _action_excerpt
+    import numpy as np
+    import soundfile as sf
+    files = {p.name for p in (ASSETS_DIR/'sfx').iterdir() if p.suffix in {'.mp3','.wav'}}
+    assert len(files)==23 and set(BUNDLED_SFX_MAP.values())==files
+    x = np.r_[np.zeros(1000),np.ones(300),np.zeros(700)]
+    clip, offset = _action_excerpt(x,1000,'typing')
+    assert .98 <= offset <= 1 and len(clip)==210 and np.argmax(clip>.12)<25
+    rate=24000
+    voice=tmp_path/'voice.wav'
+    sf.write(voice,.15*np.sin(2*np.pi*220*np.arange(rate*5)/rate),rate)
+    events=['punch_hit','punch_hit','wipe_sweep','wipe_sweep','wipe_sweep','card_thock','card_thock','card_thock']
+    report=EpisodeAudioMixer(sample_rate=rate).mix(5,[dict(path=voice)],tmp_path/'mix',
+            sound_marks=[dict(at=.3+i*.45,kind=k,gain=.30) for i,k in enumerate(events)])
+    marks=report['sound_marks']
+    assert [m['kind'] for m in marks[:5]]==['impact_bass_1','impact_bass_2','whoosh_cinematic','whoosh_short','whoosh']
+    assert [m['playback_rate'] for m in marks[-3:]]==[.95,1.,1.06]
+    assert all(len(m['source_sha256'])==64 for m in marks)
+
+
+def test_v14_gate_rejects_unsynced_duplicate_and_mismatched_sounds():
+    from audit_v7 import sfx_diversity_and_sync_gate
+    events = ['error','click','typing','keypress','ping','chime','sparkle','whoosh']
+    shot = dict(id='s',start=0.,end=35.,beats=list(range(8)))
+    marks=[dict(kind=k,at=i) for i,k in enumerate(events)]
+    t=dict(shots=[shot],sound_marks=marks)
+    assert sfx_diversity_and_sync_gate(t,35)['ok']
+    marks[0]['at']=.14
+    assert not sfx_diversity_and_sync_gate(t,35)['ok']
+    marks[0]['at']=0
+    for i in range(3):
+        marks[i].update(source_file=f'alias{i}',source_sha256='samebytes')
+    reasons={r['reason'] for r in sfx_diversity_and_sync_gate(t,35)['violations']}
+    assert {'identical_three_in_a_row','single_file_above_28_percent'} <= reasons
+    marks[1]['playback_rate']=1.06
+    assert 'identical_three_in_a_row' not in {r['reason'] for r in sfx_diversity_and_sync_gate(t,35)['violations']}
+    assert not sfx_diversity_and_sync_gate(dict(shots=[shot],sound_marks=marks[:2]),35)['ok']
+    assert not sfx_diversity_and_sync_gate(dict(shots=[shot],sound_marks=[dict(kind='shutter_whip',at=0)]),5)['ok']
+
+
+def test_v14_visual_gates_use_visible_items_command_frames_and_text_bounds():
+    from audit_v7 import enumerated_count_gate,no_early_cli_gate,subtitle_safe_zone_gate
+    s=dict(id='s', start=0,end=58,recipe='logo_bento_stage',spoken_topic='这五个神器',custom_layout=True)
+    t=dict(episode_kind='tool_tutorial',shots=[s],captions=[dict(text='这一句是字幕',start=0,end=5)])
+    f=dict(enumeratedItems=['A','B','C','D','E'])
+    measured={'s':dict(frames=[f])}
+    assert enumerated_count_gate([s],measured)['ok']
+    assert not enumerated_count_gate([dict(s,expected_items=4)],measured)['ok']
+    board=dict(id='board',recipe='progressive_sim_cards')
+    measured_board={'board':dict(frames=[dict(countClaim='代码排版的三大\n降维打击',enumeratedItems=['甲','乙'])])}
+    assert not enumerated_count_gate([board],measured_board)['ok']
+    f['enumeratedItems'][-1]='A'
+    assert not enumerated_count_gate([s],measured)['ok']
+    for at,expect in [(54.99,False),(55.0,True)]:
+        assert no_early_cli_gate(t,[(at,[dict(text='$ npm install foo')])])['ok']==expect
+    assert not no_early_cli_gate(dict(t,shots=[dict(s,source_names=['cli-04.mp4'])]),[])['ok']
+    caption=dict(text='这一句是字幕',box=[100,930,420,55])
+    assert subtitle_safe_zone_gate(t,{},[(2,[caption])])['ok']
+    assert not subtitle_safe_zone_gate(t,{},[(2,[dict(text='核心参数',box=[200,830,310,42])])])['ok']
+    s['presenter_shortcuts'] = dict(text='翻页 · ESC 索引',box=[1610,1034,262,20])
+    hint = dict(text='ESC 索引',box=[1782,1035,82,16])
+    assert subtitle_safe_zone_gate(t,{},[(2,[hint])])['ok']
+    assert not subtitle_safe_zone_gate(t,{},[(2,[dict(hint,box=[1600,1000,82,30])])])['ok']
+    f['unsafeCoreText']=['底部参数'];f['phase']=.5
+    assert not subtitle_safe_zone_gate(t,measured,[])['ok']
+
+
+def test_v14_voice_gate_catches_cut_off_chapter_and_truncated_source(tmp_path):
+    import hashlib
+    import numpy as np
+    import soundfile as sf
+    from audit_v7 import chapter_voice_completeness_gate
+    voice=tmp_path/'track.wav';sf.write(voice,np.ones(2000)*.1,1000)
+    t=dict(shots=[dict(start=0.,end=2.)],voice_tracks=[dict(id='01',path='track.wav',at=0.)],
+           captions=[dict(end=1.97)],chapter_reference=[dict(id='01',duration=2.,
+           sha256=hashlib.sha256(voice.read_bytes()).hexdigest())])
+    assert chapter_voice_completeness_gate(t,tmp_path,2)['ok']
+    assert not chapter_voice_completeness_gate(t,tmp_path,1.5)['ok']
+    early=dict(t,shots=[dict(start=0.,end=1.5,chapter='01'),dict(start=1.5,end=3.,chapter='02')])
+    assert not chapter_voice_completeness_gate(early,tmp_path,3)['ok']
+    sf.write(voice,np.ones(1500)*.1,1000)
+    assert not chapter_voice_completeness_gate(t,tmp_path,2)['ok']

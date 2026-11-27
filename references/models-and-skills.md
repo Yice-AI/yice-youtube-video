@@ -1,8 +1,8 @@
-# 模型分工、六路素材采集与双擎调用规范（v12.0）
+# 模型分工、六路素材采集与双擎调用规范（v14.0）
 
 ## 0. 主脑导演 × 执行机房协作铁律
 
-- **主脑导演（Gemini Neon / Claude 等顶级模型）**：负责选题包装、按作品展示和讲解段落选择影院暗场、瑞士暖白画布、去 AI 腔口播定稿、审看 `showcase-candidates.jpg` 挑高光原片、撰写 `image2` 生图提示词、编写 `episode-manifest.json`（调用内建 18 套 `spatial_spec` / `onetake_spec` 模具，**禁止手写一次性简陋 HTML 页面**），并在渲染后**亲眼逐张审看关键帧与早中晚动作图墙**。
+- **主脑导演（Gemini Neon / Claude 等顶级模型）**：负责选题包装、按作品展示和讲解段落选择影院暗场、瑞士暖白画布、去 AI 腔口播定稿、审看 `showcase-candidates.jpg` 挑高光原片、撰写 `image2` 生图提示词、编写 `episode-manifest.json`（调用内建 20 套 `spatial_spec` / `onetake_spec` 模具，**禁止手写一次性简陋 HTML 页面**），并在渲染后**亲眼逐张审看关键帧与早中晚动作图墙**。
 - **执行机房（Codex / 后台命令行）**：仅执行无审美自由度的确定性任务——运行采集、配音、抠图、温控压片（`workers=2, nice=10`）与 `audit-v3.sh --v10` 门禁检查，不得擅自修改视觉样式或用白底文字截图凑数。
 
 ---

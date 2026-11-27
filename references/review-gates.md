@@ -1,4 +1,4 @@
-# v12.0 成片审计与签发
+# v14.0 成片审计与签发
 
 素材入箱时保留来源、许可或授权记录、文件哈希和实测底账。装配先运行各幕 HyperFrames `check`（及 Onetake 连续性探针），之后对实际导出成片运行统一审计：
 
@@ -6,14 +6,14 @@
 kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4
 ```
 
-## v10 / v12 双调性、三态与防碰撞门禁
+## v14 双调性、三态与防碰撞门禁
 
-v10/v12 教程须有至少 2 个 HyperFrames 镜头（占全片 ≥ 15%），以及至少 3 个 Onetake 镜头（占 ≥ 18%）。`dual_engine_symphony_gate` 检查双擎占比；`three_mode_symphony_gate` 校验 M1/M2/M3 三态比例。
+v14 教程须有至少 2 个 HyperFrames 镜头（占全片 ≥ 15%），以及至少 3 个 Onetake 镜头（占 ≥ 18%）。`dual_engine_symphony_gate` 检查双擎占比；`three_mode_symphony_gate` 校验 M1/M2/M3 三态比例。
 
-`unified_cyber_stage_and_accent_gate` 支持**整片统一双调性母版**：
+`unified_cyber_stage_and_accent_gate` 逐镜核对**暗场看作品、瑞士亮场讲逻辑**：
 - **`cyber_glass`**（默认）：合成与实录边缘亮度 `luma <= 42`，且双擎镜头需出现至少两种主高光色相（亮度 ≥ 135、色差 ≥ 55）。
 - **`editorial_paper` / `scroll_paper`**：声明暖纸母版后，边缘亮度须满足 `luma >= 185`（带锦缎边与土坡的 `scroll_paper` 须 `luma >= 115`），且 `assemble-episode.py` 自动切为深色胶囊字幕保证高对比度。
-- **`inconsistent_stage_tone`**：同一部片子中途严禁在暗黑玻璃与暖亮纸面之间无故乱跳底色。
+- **`inconsistent_stage_tone`**：影院暗场 `cinema_black` 展作品与对比，瑞士暖白 `swiss_paper` 讲并列选择、步骤与证据。按叙事换场，旧版单场项目仍核对调性一致。
 
 `no_ppt_slide_header_gate` 继续拦截左上角（`x < 760, y < 210`）高度超过 34 px 的丑陋说明大标题，同时**放行两类合规标题**：
 1. 编辑部单行划线短题 / 品牌胶囊（`data-title-kind="editorial_single"`，高度 ≤ 68 px）；
@@ -36,7 +36,7 @@ v10/v12 教程须有至少 2 个 HyperFrames 镜头（占全片 ≥ 15%），以
 
 | 门禁 | 验收 |
 |---|---|
-| `v7_timeline_gate` | 镜头连续，切点距首字 ≤ 0.22 秒，真视频底图占 45%–72%（v10/v12 放宽为 30%–65%）。同源视频常规使用至多两次，重叠 ≤ 0.25 秒，另可用 `callback_of` 登记一次回扣。 |
+| `v7_timeline_gate` | 镜头连续，切点距首字 ≤ 0.22 秒，真视频底图占 45%–72%（v14 放宽为 30%–65%）。同源视频常规使用至多两次，重叠 ≤ 0.25 秒，另可用 `callback_of` 登记一次回扣。 |
 | `semantic_binding_gate` | 台词主题、实际画面主体和素材标签相符。点名工具的实录须指向对应实体。 |
 | `spotlight_restraint_gate` | 局部框登记像素核验，最大 680×340，禁止跨镜复制相同坐标，数量上限为 max(3, int(总镜数 * 0.08))。 |
 | `opener_bgm_and_sfx_gate` | 0 秒起铺底乐，前 15 秒底乐 > −42 dBFS，前 45 秒至少 3 处动作音效。 |
@@ -46,3 +46,17 @@ v10/v12 教程须有至少 2 个 HyperFrames 镜头（占全片 ≥ 15%），以
 | `onetake_craft_gate` | 所有 `onetake_clip` 须具备 `.onetake-probe.json` 与 `.render.json`，无 `__seek` 报错、启用快门动态模糊（`shutter > 0`），禁止无承接硬切（除非声明 `allow_staccato`）。 |
 
 前置防线：`cutout.py` 默认拦截残次抠图；`scout-video-scenes.sh --verify-manifest` 对贴图可见期首中尾跑底层文字 OCR 防撞字。交付为 1920×1080、30fps H.264，母带 −14.5 ± 0.8 LUFS、真峰值 ≤ −1.0 dBTP。成片时长以清单末镜为准，片尾可按剧本设计 2–4 秒留白，历史项目沿用成片时长等于 episode.end 的约定。
+
+## v14.0 动态盲审与新增门禁
+
+主脑交片前关字幕、有声连看全章。逐项确认反例与真实操作看得懂、口播数量与同屏成品一致、没有连续三秒的死镜、前六十秒不出现终端、字幕带不压核心文字、每种声音都对应可见动作。
+
+| 代码门禁 | 复核依据 |
+| --- | --- |
+| `no_early_cli_gate` | 工具教程前 55 秒核对原素材名、终端舞台和成片识别到的命令行。导演连看延伸到前 60 秒。 |
+| `enumerated_count_gate` | 数量取 `expected_items` 或讲解列举的口播／标题，与实际显示的独立胶囊、卡片或步骤逐个核对。 |
+| `subtitle_safe_zone_gate` | 瑞士画布的核心文字、贴图和自建页面不得进入 y ≥ 860 区域。按文字位置与底层画面核对，排除字幕自身。自建实录登记 `custom_layout: true`。 |
+| `chapter_voice_completeness_gate` | 最后一个镜头须覆盖每章人声与最后一句字幕。节选章可用 `chapter_reference_manifest` 指向完整原声清单，核对实际声轨时长和内容。 |
+| `sfx_diversity_and_sync_gate` | 满 30 秒至少六个不同底层文件，任一文件占比不超过 28%。同文件同音高不能三连，落点距切点、贴图、子项或真实交互不超过 0.12 秒。 |
+
+三联幕布每 85 秒最多两次，六个槽位按文件内容去重。五款工具按交付对象并列显示，两步工作流跟随实际步骤。大字采用双行高对比，优势看板三框同屏，原件改字使用真实操作。
