@@ -163,6 +163,8 @@ def build(spec, source_dir, output, gsap):
         body = ''.join(f'<div class="orbit-card" data-spatial-subject>{img(src)}</div>' for src in images)
         body = f'<div class="orbit">{body}</div>'
     elif recipe == 'layer_explode_3d':
+        if 'count_at' in data:
+            number(data['count_at'], 0, duration - .18, 'count_at')
         source = picture(data['image'])
         bottom = picture(data['background_image']) if data.get('background_image') else source
         chips, borders = [], []
@@ -452,7 +454,7 @@ def build(spec, source_dir, output, gsap):
     motion = action if recipe == 'literal_action_stage' else recipe
     script = (HERE / 'camera.js').read_text() + (HERE / (motion + '.js')).read_text()
     keep_keys = (
-        'selected_index', 'select_at', 'count', 'focus_step', 'action',
+        'selected_index', 'select_at', 'count', 'count_at', 'focus_step', 'action',
         'focus_index', 'focus_at', 'counter', 'focal_from',
         'focal_to', 'split_at', 'branches', 'focus_sequence', 'reveal_at',
         'card_aspect', 'punch_at',

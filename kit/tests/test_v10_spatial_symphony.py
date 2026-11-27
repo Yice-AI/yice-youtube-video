@@ -41,6 +41,12 @@ def test_portable_recipes(tmp_path,materials,recipe,data,expected):
     assert composition_motion(p.read_text())[1] == expected
     if recipe=='layer_explode_3d':
         assert '<rect x="120.00" y="123.75" width="600.00"' in p.read_text()
+        spec['data']['count_at'] = 3.25
+        timed = build(spec, tmp_path, tmp_path/'timed', gsap).read_text()
+        assert '"count_at": 3.25' in timed
+        spec['data']['count_at'] = 4.95
+        with pytest.raises(ValueError, match='count_at'):
+            build(spec, tmp_path, tmp_path/'late', gsap)
 
     assert (p.parent/'vendor/gsap.min.js').is_file()
     assert 'paused:true' in p.read_text() and str(tmp_path) not in p.read_text()
