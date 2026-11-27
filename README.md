@@ -8,7 +8,8 @@
 
 - **双擎 `.mp4 / .webm` 真动态视频贴图（告别卡片死截图）**。`kit/spatial/block.py` 原生嵌入可寻帧 `<video>` 并在离线采样前自动 seek 等待 `seeked`；`kit/onetake/scene.py` 构建期用 `ffmpeg` 预解 24fps 确定性帧序列并全量预解码，在 180° 快门模糊下实现丝滑无闪黑的动态视频对比与擦除。
 - **第 1/3 类画面 9 大高阶配方 + 双调性母版**。HyperFrames 新增 `perspective_video_fan`（3D 视频扇形墙）、`logo_bento_stage`（Bento 模块拼装）、`cutout_parallax_stage`（剪纸白边三层视差）、`documentary_ken_burns`（2.5D 纪录片推摇 + 一图拆三卡）、`step_tree_focus`（SVG 生长树焦点跳转）、`progressive_sim_cards`（1% vs 100% 渐进装置卡）、`formula_pill_chain`（因果胶囊链）；Onetake 新增 `split_wipe_compare`（中线扫描 / 45° 斜切擦除 / 双栏竞速）与 `handdrawn_sketch_stage`（离线 `sketch_brush.js` 8fps 铅笔水彩 + Riso 半调）。支持 `cyber_glass` 暗黑玻璃与 `editorial_paper` / `scroll_paper` 暖米白画布双母版贯穿全片。
-- **工具教程三段实拍与高清净屏采集**。0–5 秒展示复杂成品或改前改后对比，跟拍输入命令与 Agent 执行，1080p 满屏多点跟焦验证交互。满屏占实录 ≥ 70%，斜框 ≤ 全片 15%。五路采集脚本覆盖高倍率网页录屏、官网原生 `<video>`/SVG 提取、横屏图库、长片去重复与 Vision 抠图防撞字。
+- **导演×机房锁死审美分工 + 新题三层素材兜底**。顶级模型（Gemini Neon / Claude）担任主脑导演负责定调、挑片、`image2` 提示词、填 18 套成品双擎模具与逐帧目检；Codex 仅做抓片、配音、录屏与温控压片（零自创丑页面）。新题按「① `harvest-showcase-media.sh` 扒 `*.github.io`/官网/X 一手高清 `.mp4` 高光切片 → ② 深色实操录屏 + 生长流程图/进度对比卡 → ③ `image2` 剪纸视差与 2.5D 壁画拆卡代码造画」三层漏斗兜底，彻底杜绝白底滚网页与死截图 PPT。
+- **工具教程三段实拍与六路净屏采集**。0–5 秒展示复杂成品或改前改后对比，跟拍输入命令与 Agent 执行，1080p 满屏多点跟焦验证交互。满屏占实录 ≥ 70%，斜框 ≤ 全片 15%。六路采集脚本覆盖 `*.github.io`/官网一手高光原片猎手（`harvest-showcase-media.sh`）、高倍率深色网页录屏、实体 SVG 提取、横屏图库、长片去重复与 Vision 抠图防撞字。
 - **原速克隆配音、精排字幕与广播级母带**。Kaggle 免费 GPU 原速配音保留自然呼吸，`captions.json` 配合深浅自适应烟熏胶囊字幕（浅底舞台自动切换），BGM 等功率余弦循环与 `-14.5 ± 0.8 LUFS` 校准。
 - **`image2` 封面直出与 `v10/v12` 机器审片**。`thumbnail.sh` 直出 3 张候选与联系表，`audit-v3.sh --v10` 执行双调性一致性、合规短题/文物角标放行、标题防碰撞、双擎动效与声学门禁。
 
@@ -34,8 +35,8 @@ env -i HOME="$HOME" PATH="$PATH" ./install.sh --check
 
 1. **初始化与母版选型**：运行 `kit/scripts/new-episode.sh ep04` 创建工程，用 `kit/scripts/visual-palette.sh` 选择色板与蓝图，确定整片使用 `cyber_glass` 或 `editorial_paper` 母版。
 2. **配音与分镜草稿**：运行 `kit/scripts/voice.sh script.md --backend kaggle --speed 1.0 --output voice`，再用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成对齐首字时间的 30fps 骨架。
-3. **高清采集、造画与验帧**：用 `collect-entity.sh`、`record-web-cam.sh`、`find-media.sh`、`image2` + `cutout.sh` 备齐真视频、截图与透明剪纸素材，填好 `episode-manifest.json`，跑 `scout-video-scenes.sh --verify-manifest` 做首中尾帧与贴图防撞字核验。
-4. **装片、终审与封面**：运行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 导出成片与字幕，执行 `kit/scripts/audit-v3.sh --v10` 终审，最后用 `kit/scripts/thumbnail.sh` 生成并选定封面。
+3. **高光采集、造画与验帧**：按三层素材漏斗运行 `harvest-showcase-media.sh`、`collect-entity.sh`、`record-web-cam.sh`、`find-media.sh` 或 `image2` + `cutout.sh` 备齐真动态 `.mp4`、截图与透明剪纸/壁画素材，由主脑导演填好 `episode-manifest.json`，跑 `scout-video-scenes.sh --verify-manifest` 做首中尾帧与贴图防撞字核验。
+4. **装片、逐帧终审与封面**：运行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 导出成片与字幕，执行 `kit/scripts/audit-v3.sh --v10` 机器门禁并由主脑导演逐张目检抽帧图墙，最后用 `kit/scripts/thumbnail.sh` 生成并选定封面。
 
 完整字段契约与路由细则见 [SKILL.md](SKILL.md) 与 [references/10-双擎高阶视觉路由.md](references/10-双擎高阶视觉路由.md)。
 

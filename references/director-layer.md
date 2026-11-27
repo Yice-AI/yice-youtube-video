@@ -1,13 +1,13 @@
-# v11.0 导演层与画面路由
+# v12.0 导演层与画面路由
 
-按旁白首字安排画面，先确定本句要证明的事实与叙事角色，再选色板与舞台。默认输出 `1920×1080`、`30fps`，支持五套主舞台主题（`obsidian`、`aurora_indigo`、`paper_cool`、`paper_warm`、`pine`）以及 `onetake` 六套电影色板（`paper`、`dusk`、`tabletop`、`ultramarine`、`riso`、`ember`）或产品截图自动吸色（`look_from_shots`），一切以贴合内容气质与视觉高级感为准。字幕统一保留 `y ≥ 900` 安全区。
+由主脑导演（Gemini Neon / Claude）定整片唯一调性母版（`cyber_glass` 或 `editorial_paper` / `scroll_paper`）、挑高光素材并填写声明式模具清单；执行机房（Codex）仅负责抓片、配音、录屏与温控渲染，严禁临时手写一次性页面。按旁白首字安排画面，默认输出 `1920×1080`、`30fps`，支持五套主舞台主题（`obsidian`、`aurora_indigo`、`paper_cool`、`paper_warm`、`pine`）以及 `onetake` 六套电影色板或产品截图自动吸色（`look_from_shots`）。字幕统一保留 `y ≥ 900` 安全区，浅底舞台自动切换烟熏深色胶囊字幕。
 
-教程前 5 秒放官方复杂成品，接着实录命令或提示词与 Agent 执行过程，长等待注明倍速。随后用满屏多点推焦拆解真实成品并验证边界。以 4–6 秒一个镜头排台词，全片均值 ≤6.5 秒，满屏占实录 ≥70%，斜框占全片 ≤15%，带框镜不相邻。跨图对照选冲印台或分栏卡，多贴图只用于有实际空间调度的合成。
+教程前 5 秒放官方复杂成品或高冲击改前/改后对比，接着实录命令或提示词与 Agent 执行过程，长等待注明倍速。随后用满屏多点推焦拆解真实成品并验证边界。以 4–6 秒一个镜头排台词，全片均值 ≤6.5 秒，满屏占实录 ≥70%，斜框占全片 ≤15%，带框镜不相邻。多贴图与 `.mp4` 真视频墙统一走内建双擎空间配方。
 
 ## 选材、选型与因果核验
 
-1. **视觉选型**：开拍前可用 `kit/scripts/visual-palette.sh` 检索本机 6 套电影色板、产品吸色、22 套 HyperFrames 动态分镜蓝图、原子动效规则、39 种 Onetake 物理原语与近 400 个 Registry 组件，详情见 [10-双擎高阶视觉路由](10-双擎高阶视觉路由.md)。
-2. **六路实证素材**：分别使用本机 `rec-demo.sh`、公开网页 `record-web-cam.sh` / `capture-web.mjs`（`30fps` 高倍率净屏）、官方原生 `<video>` 与矢量标志 `collect-entity.sh`、往期长片 `scout-video-scenes.sh`（自动剔除纯色字卡、硬切与旧烧录字幕）、免版税高清横屏图库与人物/实物抠像 `find-media.sh` / `people-add.sh` / `cutout.py`、静音原片评论拆解 `reference_breakdown`。
+1. **三层选材兜底与视觉选型**：① 有公开炫酷演示时优先跑 `kit/scripts/harvest-showcase-media.sh --rank-highlights` 抓 `*.github.io` 论文页/官网/X 一手高清 `.mp4` 切 4.5s 高光（非 16:9 自动 `blur_dark`）；② 界面朴素的工具走深色实操录屏 + `step_tree_focus` / `progressive_sim_cards`；③ 无现成视频的抽象/人文段落走 `image2` + `cutout.sh` 驱动 `cutout_parallax_stage` / `documentary_ken_burns` 或纯代码 `handdrawn_sketch_stage`（详见 [02-一手高光素材与代码造画母法](02-一手高光素材与代码造画母法.md) 与 [10-双擎高阶视觉路由](10-双擎高阶视觉路由.md)）。
+2. **七路实证与造画工具**：一手高光原片猎手 `harvest-showcase-media.sh`、本机交互 `rec-demo.sh`、公开深色网页 `record-web-cam.sh` / `capture-web.mjs`、品牌实体与 SVG 标志 `collect-entity.sh`、长片挑镜 `scout-video-scenes.sh`、高清横屏图库与 Vision 抠像 `find-media.sh` / `people-add.sh` / `cutout.sh`、`image2` 美术造画与静音原片评论拆解 `reference_breakdown`。
 3. **装片前验帧**：渲染前运行 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify`，逐镜对照首、中、尾帧和台词因果顺序（如「改前/改后」「挡住/移开」），并自动执行贴图存续期首、中、尾三点 OCR 防撞字检查，确保贴图不遮挡底层画面文字。
 
 ## 声明式分幕与十一类舞台

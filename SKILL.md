@@ -9,6 +9,16 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v12.0�
 
 先按[五拍叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)排口播、镜头形态与跨镜承接，再按[一手高光素材与代码造画母法](references/02-一手高光素材与代码造画母法.md)打通 `.mp4` 真动态视频贴图与三套代码造画配方。整片统一选用 `cyber_glass`（暗黑玻璃，13–16px 胶囊标状态）或 `editorial_paper` / `scroll_paper`（暖米白画布，自动切换深色胶囊字幕）其中之一贯穿全片。
 
+## 导演 × 机房分工与新题三层防翻车铁律
+
+1. **角色死边界（锁死审美下限，严禁手搓一次性丑页面）**
+   - **主脑导演（Gemini Neon / Claude 等顶级模型）**：独占全部审美与叙事决策——① 定整片唯一调性母版（`cyber_glass` 或 `editorial_paper` 二选一锁死到底）；② 写去 AI 腔口播稿；③ 审看 `showcase-candidates.jpg` 挑高光原片，为无现成画面的段落撰写 `image2` 生图提示词；④ 编写 `episode-manifest.json`（优先直接调用内建 11 套 `spatial_spec` + 7 套 `onetake_spec` 成品模具，**严禁让执行端临时手写简陋 HTML/CSS 页面**）；⑤ 成片产出后**必须亲眼逐张打开抽帧/动作条图片核验**，不盲信脚本 JSON 通过。
+   - **执行机房（Codex / 后台任务）**：仅承担零审美自由度的确定性苦力——运行 `harvest-showcase-media.sh` 抓片、`voice.sh` 原速配音、`record-web-cam.sh` 深色实操录屏、`cutout.sh` 抠图、`assemble-episode.sh` 温控压片（`workers=2, nice=10`）与 `audit-v3.sh --v10` 门禁检查，**严禁擅自改动色板、字号、版式或自造静态字卡凑数**。
+2. **换任何新主题的三层素材兜底漏斗（期期必有高光画面）**
+   - **第一层（有公开炫酷演示的新模型/视觉工具）**：先跑 `harvest-showcase-media.sh --rank-highlights` 无损抓取 `*.github.io` 论文项目页、官网发布站、GitHub/X 原生高清 `.mp4`（非 16:9 自动合成 `blur_dark` 同源模糊暗底），自动剔除白底文字死页并切出 4.5s 最高分动态切片，喂入 `perspective_video_fan`、`split_wipe_compare` 或 `formula_pill_chain`。
+   - **第二层（官网朴素的干货工具/命令行插件）**：严禁傻滚白底文档凑时长！只录最核心的深色真实操作闭环（输入 → 执行 → 结果交互，占 30%–55%），其余优势对比与流程拆解一律套用 `progressive_sim_cards`（`1% vs 100%` 实时进度 + 动态小窗）、`step_tree_focus`（连线逐笔生长 + 焦点在 `① → ② → ①` 动态跳转）、`layer_explode_3d` 或 `handdrawn_sketch_stage`。
+   - **第三层（零现成视频的抽象观点/故事/历史机制）**：直接启用 `image2` + 代码造画三公式——`cutout_parallax_stage`（白底生图抠图 + 4px 奶油剪纸白边 + 三层视差卷轴 + 烟尘粒子 + 实时计步）、`documentary_ken_burns`（16:9 艺术大图 2.5D 慢推摇飘金粉 + 一图拆三卡局部解剖）、`handdrawn_sketch_stage`（8fps 铅笔水彩微抖 / Riso 半调网点），凭空造出纪录片级动态画面。
+
 ## 工具教程
 
 清单声明 `episode_kind: "tool_tutorial"`。前 0–5 秒展示官方复杂成品或高冲击改前/改后结果。接着录下真实安装命令、输入提示词、提交与 Agent 执行，等待加速时标出倍速。最后用 1080p 满屏跟焦演示真实成品的点击、修改和边界验证。每个工具使用自己的输入与真实输出，禁止虚构六行提纲或留白网页代拍。

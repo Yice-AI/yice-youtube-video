@@ -6,8 +6,10 @@
 
 | 路线 | 适用画面 | 执行与交付 |
 |---|---|---|
-| 网页与文档净屏实拍 | 官方发布页、技术博客、公开仓库、文档，用页面原文支撑具体论点 | `capture-web.mjs`（`30fps`、`1.25x+` 倍率、预滚解码懒加载图、自动隐藏弹窗横幅）导出 `1920×1080` 静帧、6–8 秒滚动视频及含原文像素框的 `capture.json`（直通 `evidence_spotlight`）；交互式操作用 `record-web-cam.sh`。 |
-| AI 产品与开源实体深扒 | 产品官网首屏、原生 `<video>` 演示流、GitHub README 演示视频、官方 SVG 标志 | `collect-entity.sh` 直接下载原生 MP4/WebM 演示流并归一化为静音 `1080p 30fps`，优先提取 `.svg` 矢量标志冻结入账。 |
+| 一手高光动态原片猎手 | 学术论文 `*.github.io` 项目主页、官方 Release 演示页、公开实机推文中的高冲击对比/3D/实机视频 | `harvest-showcase-media.sh --rank-highlights` 无损抓取原生 MP4/WebM 流（拦截二创视频站域名），非 16:9 画幅自动合成 `blur_dark` 同源高斯模糊暗底，按运动能量与细节密度自动切出 `4.5s` 高光切片并输出 `showcase-candidates.jpg` 直通双擎 `.mp4` 贴图。 |
+| 网页与文档净屏实拍 | 官方发布页、技术博客、公开仓库、文档，用页面原文支撑具体论点 | `capture-web.mjs`（`30fps`、`1.25x+` 倍率、预滚解码懒加载图、自动隐藏弹窗横幅）导出 `1920×1080` 静帧、6–8 秒滚动视频及含原文像素框的 `capture.json`（直通 `evidence_spotlight`）；深色交互式操作用 `record-web-cam.sh`。 |
+| AI 产品与开源实体深扒 | 产品官网首屏、GitHub README 演示视频、官方 SVG 标志 | `collect-entity.sh` 下载官网/README 演示流并提取 `.svg` 矢量标志冻结入账（直通 `logo_bento_stage` 与角标）。 |
+| `image2` 美术与剪纸造画 | 无现成视频的抽象概念、人文历史剧场、高细节壁画/剖面拆解 | 由主脑导演撰写提示词调用 `image2.py` 生成白底独立主体（经 `cutout.sh` 抠图喂入 `cutout_parallax_stage` 三层剪纸视差）或 16:9 艺术大图（喂入 `documentary_ken_burns` 2.5D 推摇与一图拆三卡）。 |
 | 开放授权高清影像与抠像 | 真实物理特写空镜、历史公有领域资料、百科人物与实物贴图 | `find-media.sh` / `open-media.mjs` 检索 Pexels、Pixabay、Commons、Openverse，视频硬筛 `≥1920px` 横屏源；人物与实物经 `people-add.sh` / `cutout.py` 抠图并通过主体完整性校验。 |
 | 公开数据动态重绘 | 增长曲线、对比指标、架构关系 | 记录原始数据数值、单位、时间范围与来源，用 `hyperframes_block`、`onetake_clip` 或 `t3_finance_chart` 原生动态重绘，不直接搬用他人低清静态截图。 |
 
@@ -23,7 +25,7 @@
 4. GitHub / Hugging Face 仓库实证。
 5. 论文、基准榜单与权威报道。
 6. 高清免版税实拍特写（只作比喻空镜，不冒充产品实测）。
-7. `image2`（主用于 `thumbnail.sh` 封面直出，正片仅作无现实画面时的极少量概念补充）。
+7. `image2`（用于 `thumbnail.sh` 封面直出，以及无现成实拍素材时配合 `cutout_parallax_stage` / `documentary_ken_burns` 进行高审美代码造画，严禁伪造产品实测截图）。
 
 ## 底线与洁净室原则
 

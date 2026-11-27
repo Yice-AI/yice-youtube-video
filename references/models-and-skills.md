@@ -1,35 +1,41 @@
-# 模型、五路素材采集与双擎调用规范（v8.2）
+# 模型分工、六路素材采集与双擎调用规范（v12.0）
 
-## 1. 五路真实素材工具链（按优先级选用）
+## 0. 主脑导演 × 执行机房协作铁律
 
-### 第一路：Playwright 虚拟摄影师（网页 / GitHub / 文档 / Web 工具后台高清录屏）
-- **交互录屏脚本**：`$KIT/scripts/record-web-cam.sh`（底层 `record-web-cam.mjs`，复用本机 Chrome + `playwright-core`，无头后台静默运行，零个人登录态泄露），默认 `--theme dark --scale 1.5` 输出原生 `1920×1080 30fps`，同时生成 `still.png` 与 `cursor-track.json`。
-- **净屏滚动与原文取证入口**：`$KIT/scripts/capture-web.mjs`（默认 `30fps`、`scale=1.25`、`-crf 17`），开拍前自动预滚动解码懒加载图片并隐藏 Cookie 横幅、客服悬浮窗与订阅弹窗，定位指定引文像素坐标写入 `capture.json`（直通 `evidence_spotlight` 自动推近高亮）。
-
-### 第二路：官方产品实体深扒（原生 `<video>` 演示流 + 矢量 Logo + 发布动态）
-- **脚本**：`$KIT/scripts/collect-entity.sh --name '<名称>' --site <官网URL> [--github owner/repo] --out <目录>`
-- **能力**：直接识别并下载官网或 GitHub README 内嵌原生 `<video>`（含 `user-attachments` MP4/WebM）归一化为静音 `1920×1080 30fps` 视频（杜绝网页逐帧截图导致的跳帧加速），优先提取官方 `.svg` 矢量标志并冻结入账。
-
-### 第三路：CLI / 代码真实运行高分回放与本地实操录制
-- CLI / 代码输出优先采集真实运行结果 JSON，通过 `studio_ui`（支持 `data.focus_lines` 聚光高亮核心行，不硬截断长行）或 `hyperframes_block` 高对比渲染；需要连续窗口交互时使用 `$KIT/scripts/rec-demo.sh`。
-
-### 第四路：开放授权高清横屏 B-Roll 与主体完整性抠像
-- **实景视频与照片**：`$KIT/scripts/find-media.sh`（聚合 **Pexels + Pixabay + Wikimedia Commons + Openverse**），视频强制筛选 **`width >= 1920` 且横屏（`16:9`）** 的高清源，直接剔除竖屏与低清素材；检索须用具象物理特写英文词，单期 API 请求 `≤ 60` 次。
-- **长片挑镜清洗**：`$KIT/scripts/scout-video-scenes.sh` 自动剔除纯色字卡、跨镜硬切与底部含旧烧录字幕的片段。
-- **人物与实物抠图**：`$KIT/scripts/people-add.sh` / `$KIT/scripts/cutout.py` 调用本机 Apple Vision 抠图，内置主体完整性门禁（自动拒绝触碰多条画幅边界或连带大片桌面底板的残次品）。
-
-### 第五路：登录态页面 / 原生桌面软件 / AI 生成封面与兜底
-- **需登录/验证码页面**：无头采集遇到登录墙或真人验证会自动停手回报；可由用户在已登录 `ego-browser` 截取脱敏图，或用 `onetake` 的 `UIK` + `look.py from-shot` 1:1 重建高清可推近动态界面。
-- **原生独占 Mac 软件**：投递任务单至 `.scratch/youtube/dsh-inbox/` 由常驻 `Harness` 录制（Claude 桌面端仅用脱敏静态截图）。
-- **封面直出与极少量概念图**：YouTube 封面统一走 `$KIT/scripts/thumbnail.sh`（绑定 `tts-venv`，零额外劣化约束原生调用 `image2.py --role thumbnail --guard light --thumb-guard r_plus`，出 3 张候选 + `640/320/168px` 预览板 + 假时长角标警示 + `<2MB` JPG 入账）。正片内 AI 生图仅作无现实画面时的兜底（占比 `≤ 10%`）。
+- **主脑导演（Gemini Neon / Claude 等顶级模型）**：负责选题包装、选定整片唯一调性母版（`cyber_glass` 暗黑玻璃 或 `editorial_paper` / `scroll_paper` 暖米白编辑部）、去 AI 腔口播定稿、审看 `showcase-candidates.jpg` 挑高光原片、撰写 `image2` 生图提示词、编写 `episode-manifest.json`（调用内建 18 套 `spatial_spec` / `onetake_spec` 模具，**禁止手写一次性简陋 HTML 页面**），并在渲染后**亲眼逐张审看关键帧与早中晚动作图墙**。
+- **执行机房（Codex / 后台命令行）**：仅执行无审美自由度的确定性任务——运行采集、配音、抠图、温控压片（`workers=2, nice=10`）与 `audit-v3.sh --v10` 门禁检查，不得擅自修改视觉样式或用白底文字截图凑数。
 
 ---
 
-## 2. 配音、双擎视觉与母带底座
+## 1. 六路真实素材与造画工具链（按新题三层漏斗选用）
 
-- **原速克隆配音**：`$KIT/scripts/voice.sh`，正片默认 `--backend kaggle --speed 1.0`（异步轮询 + 自然呼吸保留 + 自动导出短句无句尾标点 `captions.json`）；单句离线补录可用 `--backend local --allow-slow-local`；严禁未授权调用 `--backend modal`。
-- **Onetake + HyperFrames 混合双擎舞台**：
-  - 主舞台 `$KIT/editorial/editorial.py` 支持五套主题、`perspective_3d` / `studio_window` 悬浮实录窗、环境呼吸光晕与胶片微噪点、现代立体 `triptych_cards` 及四类同步跨镜转场 `transition_in`；
-  - 高光钩子与片尾结论调用 `$KIT/scripts/render-onetake-clip.sh`（`stage_mode: "onetake_clip"`，`OM` 39 种物理运镜/弹簧/流体原语 + 6 套电影 `looks` / 截图吸色 + `probe.py` 连续变形门禁 + `180°` 真实快门动态模糊）；
-  - 多阶段机制与动态图表调用 `stage_mode: "hyperframes_block"`（直通 `hyperframes-registry` 近 400 组件与 `hyperframes-animation` 22 套蓝图，可用 `$KIT/scripts/visual-palette.sh` 一键检索）。
-- **声学母带**：`EpisodeAudioMixer` 采用 `2.5s` 等功率余弦无缝循环底乐、物理包络动作轻音效与动态人声闪避，统一校准至 `-14.5 ± 0.8 LUFS`、`≤ -1.0 dBTP`。
+### 第一路：一手高光动态原片猎手（学术 `*.github.io` / 官方发布页 / X 实机视频）
+- **脚本**：`$KIT/scripts/harvest-showcase-media.sh --urls <URL列表> [--x-query "<关键词>"] --output <目录> --rank-highlights`
+- **能力**：无损提取公开论文项目页（`*.github.io`）、官方发布博客与公开演示贴中的原生高清 `<video>` / MP4 / WebM（自动拦截第三方二创视频站域名）；非 `16:9` 竖片/方片自动合成 `blur_dark` 同源高斯模糊暗压背景；内置视觉冲击力评分器自动剔除黑屏与白底文字死页，切出 `4.5s` 高光切片并生成 `showcase-candidates.jpg`，直接喂入双擎动态视频贴图。
+
+### 第二路：Playwright 深色虚拟摄影师（Web 工具交互实操 / 文档净屏取证）
+- **交互录屏**：`$KIT/scripts/record-web-cam.sh`（默认 `--theme dark --scale 1.5`、`--hide-selectors` 隐藏干扰栏），输出原生 `1920×1080 30fps`、`still.png` 与 `cursor-track.json`。
+- **原文取证**：`$KIT/scripts/capture-web.mjs` 自动隐藏弹窗横幅并定位引文像素框写入 `capture.json`（直通 `evidence_spotlight`）。
+
+### 第三路：品牌实体与矢量标志提取
+- **脚本**：`$KIT/scripts/collect-entity.sh --name '<名称>' --site <官网URL> [--github owner/repo] --out <目录>`，优先提取官方 `.svg` 矢量标志冻结入账（直通 `logo_bento_stage` 模块舱与角标）。
+
+### 第四路：`image2` + Vision 代码造画资产管线（零现成视频题材必杀技）
+- **白底贴纸 + 剪纸视差**：由主脑导演调用 `$YICE_TOOLKIT/local/tools/image2.py` 生成干净白底独立角色/道具图，经 `$KIT/scripts/cutout.sh`（Apple Vision）抠出透明 PNG 后喂入 `cutout_parallax_stage`（自动加 4px 奶油剪纸白边、三层视差卷轴与粒子烟尘）。
+- **16:9 艺术大图 + 2.5D 纪录片拆卡**：调用 `image2.py --aspect 16:9` 生成高细节岩彩/手稿/剖面大图，喂入 `documentary_ken_burns`（阻尼慢推摇 + 金粉微尘 + `split_at` 一图拆三张局部特写竖卡）。
+
+### 第五路：CLI / 本地实操录制与开放授权高清图库
+- CLI 输出与真实运行实操使用 `studio_ui`（`data.focus_lines`）或 `$KIT/scripts/rec-demo.sh`；开放横屏实拍与人物抠像使用 `$KIT/scripts/find-media.sh`、`scout-video-scenes.sh`、`people-add.sh`。
+
+### 第六路：封面直出与登录墙兜底
+- 封面统一走 `$KIT/scripts/thumbnail.sh`（调用 `image2.py` 出 3 张候选 + 联系表 + `<2MB` JPG 入账）；遇到登录墙/验证码如实回报，改用脱敏截图或 `onetake` `UIK` 动态界面重建。
+
+---
+
+## 2. 配音、双擎 `.mp4` 真视频贴图与母带底座
+
+- **原速克隆配音**：`$KIT/scripts/voice.sh`（默认 `--backend kaggle --speed 1.0` 或本机离线 MLX，保留自然呼吸与短句 `captions.json`；严禁未授权调用 Modal）。
+- **HyperFrames + Onetake 双擎声明式模具**：
+  - `hyperframes_block`（11 套内建 `spatial_spec`）：原生嵌入可寻帧 `<video>`，涵盖 `perspective_video_fan`、`logo_bento_stage`、`cutout_parallax_stage`、`documentary_ken_burns`、`step_tree_focus`、`progressive_sim_cards`、`formula_pill_chain`、`carousel_3d_select`、`layer_explode_3d`、`roadmap_thread_camera`、`literal_action_stage`；
+  - `onetake_clip`（7 套内建 `onetake_spec`）：视频源自动预解 24fps 确定性帧序列配合 `180°` 真实快门模糊，涵盖 `split_wipe_compare`（`center_scan` / `diagonal_wipe` / `quad_race`）、`handdrawn_sketch_stage`（8fps 铅笔水彩微抖 / Riso 半调）、`duplicate_laser_sweep`、`bitmap_lock_glitch`、`energy_roadmap_dive`、`live_control_sync`、`capsule_archive_seal`。
+- **声学母带与终审**：`EpisodeAudioMixer` 校准至 `-14.5 ± 0.8 LUFS`、`≤ -1.0 dBTP`；浅底舞台自动切 `caption-on-light` 烟熏深色胶囊字幕；终审运行 `$KIT/scripts/audit-v3.sh --v10`。
