@@ -384,14 +384,14 @@ def test_physical_marks_and_marker_bed_duck(tmp_path):
     interval = slice(int(.52*rate),int(.64*rate))
     assert 20*np.log10(np.linalg.norm(after[interval])/np.linalg.norm(before[interval])) == pytest.approx(-4,abs=.02)
     assert np.array_equal(before[rate:],after[rate:])
-    assert all(.62 <= mark['gain'] <= .78 for mark in result['sound_marks'])
+    assert all(mark['gain'] == .30 for mark in result['sound_marks'])
 
-def test_v14_sound_bank_resolves_23_files_and_aligns_audible_onset(tmp_path):
+def test_v14_sound_bank_resolves_27_files_and_aligns_audible_onset(tmp_path):
     from kit.editorial.audio_mix import ASSETS_DIR, BUNDLED_SFX_MAP, EpisodeAudioMixer, _action_excerpt
     import numpy as np
     import soundfile as sf
     files = {p.name for p in (ASSETS_DIR/'sfx').iterdir() if p.suffix in {'.mp3','.wav'}}
-    assert len(files)==23 and set(BUNDLED_SFX_MAP.values())==files
+    assert len(files)==27 and set(BUNDLED_SFX_MAP.values())==files
     x = np.r_[np.zeros(1000),np.ones(300),np.zeros(700)]
     clip, offset = _action_excerpt(x,1000,'typing')
     assert .98 <= offset <= 1 and len(clip)==210 and np.argmax(clip>.12)<25
@@ -411,11 +411,11 @@ def test_v14_gate_rejects_unsynced_duplicate_and_mismatched_sounds():
     from audit_v7 import sfx_diversity_and_sync_gate
     events = ['error','click','typing','keypress','ping','chime','sparkle','whoosh']
     shot = dict(id='s',start=0.,end=35.,beats=list(range(8)))
-    marks=[dict(kind=k,at=i) for i,k in enumerate(events)]
+    marks=[dict(kind=k,at=i,gain=.6 if k=='whoosh' else .32) for i,k in enumerate(events)]
     t=dict(shots=[shot],sound_marks=marks)
-    assert sfx_diversity_and_sync_gate(t,35)['ok']
+    assert sfx_diversity_and_sync_gate(t,8)['ok']
     marks[0]['at']=.14
-    assert not sfx_diversity_and_sync_gate(t,35)['ok']
+    assert not sfx_diversity_and_sync_gate(t,8)['ok']
     marks[0]['at']=0
     for i in range(3):
         marks[i].update(source_file=f'alias{i}',source_sha256='samebytes')
@@ -425,6 +425,32 @@ def test_v14_gate_rejects_unsynced_duplicate_and_mismatched_sounds():
     assert 'identical_three_in_a_row' not in {r['reason'] for r in sfx_diversity_and_sync_gate(t,35)['violations']}
     assert not sfx_diversity_and_sync_gate(dict(shots=[shot],sound_marks=marks[:2]),35)['ok']
     assert not sfx_diversity_and_sync_gate(dict(shots=[shot],sound_marks=[dict(kind='shutter_whip',at=0)]),5)['ok']
+
+
+def test_foley_density_silence_and_gain_tiers():
+    from audit_v7 import sfx_diversity_and_sync_gate
+    sounds = ['page_flip','ui_lock_bonk','paper_slap','zoom_swoosh','click','typing']
+    beats = list(range(30))
+    shot = dict(id='s',start=0,end=30,beats=beats)
+    marks = [dict(kind=sounds[i%6],at=i,gain=.63 if i%6==3 else .34) for i in beats]
+    def check(rows):
+        return sfx_diversity_and_sync_gate(dict(shots=[shot],sound_marks=rows),30)
+    assert check(marks)['ok']
+    for subset in (marks[4:], marks[:-4], marks[:5]+marks[9:]):
+        assert 'long_sfx_gap' in {v['reason'] for v in check(subset)['violations']}
+    edge = [dict(m,at=m['at']+.011) if i==4 else m for i,m in enumerate(marks) if i not in (1,2,3)]
+    edge[0]=dict(edge[0],at=.40)
+    assert check(edge)['max_sfx_gap']==pytest.approx(3.611)
+    assert 'long_sfx_gap' in {v['reason'] for v in check(edge)['violations']}
+    doubled = [dict(m) for m in marks[:15] for _ in range(2)]
+    gate=check(doubled)
+    assert gate['audible_action_points']==15
+    assert 'sfx_density_below_minimum' in {v['reason'] for v in gate['violations']}
+    gate=check([dict(marks[0],gain=.10),*marks[1:]])
+    assert gate['audible_action_points']==29
+    assert 'inaudible_sfx_padding' in {v['reason'] for v in gate['violations']}
+    gate=check([dict(marks[0],gain=.7),*marks[1:3],dict(marks[3],gain=.4),*marks[4:]])
+    assert sum(v['reason']=='sfx_gain_tier' for v in gate['violations'])==2
 
 
 def test_v14_visual_gates_use_visible_items_command_frames_and_text_bounds():

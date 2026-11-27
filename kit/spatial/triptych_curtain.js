@@ -6,3 +6,6 @@ all('.display-word').forEach((word, i) => {
   tl.fromTo(word, { y: 26, opacity: 0, scale: 1.07 },
     { y: 0, opacity: 1, scale: 1, duration: .14, ease: 'expo.out' }, data.words[i].at);
 });
+
+const rule = q('.curtain-rule');
+if (rule) tl.fromTo(rule, {scaleX:0}, {scaleX:1,duration:.20,ease:'power2.out'}, data.underline_at);

@@ -23,7 +23,7 @@ KIT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(KIT.parent))
 from audit_v7 import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, probe_video, semantic_binding_gate
 from workspace import ONETAKE_FILES, ONETAKE_FONTS, composition_files, resolve_gsap_runtime, resolve_hyperframes_command, resolve_onetake, render_workers, render_priority
-from kit.editorial.audio_mix import mix_episode_audio
+from kit.editorial.audio_mix import INTERACTION_SOUNDS, mix_episode_audio
 from kit.editorial.editorial import EditorialStage, EXPLAINER_THEMES, FONT_FILES, PALETTES, evidence_box
 from kit.onetake.scene import build as build_onetake_scene
 from kit.spatial.block import build as build_spatial_scene
@@ -569,7 +569,7 @@ def _spatial_sound_marks(sp_spec, span):
     def add(kind, rel_t, gain=0.32):
         t = float(rel_t)
         if 0.0 <= t < span - 0.04:
-            key_gains = {'marker_stroke': .74, 'card_thock': .70, 'shutter_whip': .68, 'counter_roll': .66}
+            key_gains = {'marker_stroke': .74, 'card_thock': .40 if recipe in {'logo_bento_stage','step_tree_focus'} else .70, 'shutter_whip': .68, 'counter_roll': .38, 'whoosh': .60}
             cues.append((round(t, 4), kind, key_gains.get(kind, gain)))
 
     swiss = (sp_spec.get('stage_look') or data.get('stage_look')) == 'swiss_paper'
@@ -578,6 +578,11 @@ def _spatial_sound_marks(sp_spec, span):
         add('marker_stroke', data['underline_at'])
     elif recipe == 'triptych_curtain':
         add('shutter_whip', 0.02)
+        for i,word in enumerate(data.get('words',[])):
+            if word.get('sound',True) and (i==0 or word.get('line')!=data['words'][i-1].get('line')):
+                cues.append((round(word['at']+.12,4), 'impact_bass_2' if i==0 else 'card_thock', .38))
+        if 'underline_at' in data:
+            add('marker_stroke',data['underline_at'])
     elif recipe == 'perspective_video_fan':
         add('whoosh', 0.04, 0.30)
         focus_at = float(data.get('focus_at', span * 0.42))
@@ -591,12 +596,16 @@ def _spatial_sound_marks(sp_spec, span):
             add(land, mat, 0.32)
             for j, it in enumerate(mod.get('items') or []):
                 if isinstance(it, dict) and isinstance(it.get('at'), (int, float)):
-                    add(('click_soft' if j == 0 else 'pop') if swiss else 'click', it['at'], 0.34)
+                    add('click_soft' if swiss else 'click', it['at'], 0.34)
+        for focus in data.get('focus_sequence',[]):
+            add('click_soft',focus['at'],.32)
     elif recipe == 'progressive_sim_cards':
         for idx, card in enumerate(data.get('cards') or []):
             cat = float(card.get('at', 0.12 + idx * 0.65))
             if card.get('reveal', True):
                 add(land, cat, 0.34)
+            for at in card.get('panel_accents',[]):
+                add('click_soft',at,.31)
             if card.get('kind') == 'race_bars':
                 add('counter_roll' if swiss else 'chime', cat + 0.36, 0.26)
     elif recipe == 'step_tree_focus':
@@ -607,9 +616,10 @@ def _spatial_sound_marks(sp_spec, span):
             for ch in (br.get('children') or []):
                 if isinstance(ch.get('at'), (int, float)):
                     add('click_soft' if swiss else 'click', ch['at'], 0.28)
-        for step in (data.get('focus_sequence') or [])[1:]:
+        focus_steps = data.get('focus_sequence') or []
+        for prev,step in zip(focus_steps,focus_steps[1:]):
             if isinstance(step.get('at'), (int, float)):
-                add('focus_reveal' if swiss else 'whoosh', step['at'], 0.38)
+                add(('click_soft' if prev['index']==step['index'] else 'focus_reveal') if swiss else 'whoosh', step['at'], .38)
     elif recipe == 'formula_pill_chain':
         add('pop', 0.04, 0.30)
         rev = float(data.get('reveal_at', span * 0.32))
@@ -638,7 +648,7 @@ def _spatial_sound_marks(sp_spec, span):
 
     deduped, last_by_kind = [], {}
     for t, kind, gain in sorted(cues):
-        if t - last_by_kind.get(kind, -9.0) >= 0.14:
+        if t - last_by_kind.get(kind, -9.0) >= (.035 if recipe=='logo_bento_stage' else .14):
             deduped.append((kind, t, gain))
             last_by_kind[kind] = t
     return deduped
@@ -795,6 +805,8 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
                             continue
                         if 'at' in item:
                             action_times.append(item['at'])
+                        action_times.extend(item.get('panel_accents',[]))
+                        if group=='words': action_times.append(item.get('at',0)+.12)
                         for child in item.get('children',[]) + item.get('items',[]):
                             if isinstance(child,dict) and 'at' in child:
                                 action_times.append(child['at'])
@@ -814,13 +826,11 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
             row['custom_layout'] = shot['custom_layout']
         if 'interactions' in shot:
             row['interactions'] = shot['interactions']
-            interaction_sounds = {'click':'click', 'soft_click':'click_soft', 'delete':'keypress', 'type':'typing',
-                                  'confirm':'ping', 'error':'error', 'glitch':'glitch_1', 'locked':'glitch_2'}
             for act in row['interactions']:
                 rel = float(act['at'])
-                if act['action'] not in interaction_sounds or not 0 <= rel < span:
+                if act['action'] not in INTERACTION_SOUNDS or not 0 <= rel < span:
                     raise ValueError('交互动作类型或时刻超出镜头')
-                stage.add_sound_mark(interaction_sounds[act['action']], a+rel, gain=act.get('gain',.39))
+                stage.add_sound_mark(INTERACTION_SOUNDS[act['action']], a+rel, gain=act.get('gain',.39))
         if mode == 'hyperframes_block' and sp_recipe == 'triptych_curtain':
             row['curtain_source_hashes'] = [file_fingerprint(root / src)['sha256']
                                             for src in sp_spec['data']['videos']]

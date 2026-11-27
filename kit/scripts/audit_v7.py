@@ -969,13 +969,18 @@ def semantic_match_ledger(timeline):
 
 def sfx_diversity_and_sync_gate(timeline, duration):
     from collections import Counter
-    from kit.editorial.audio_mix import BUNDLED_SFX_MAP
+    from kit.editorial.audio_mix import BUNDLED_SFX_MAP, INTERACTION_SOUNDS
     marks = sorted((m for m in timeline.get('sound_marks', []) if m.get('kind') != 'music_drop'),
                    key=lambda m: float(m['at']))
     counts, violations, previous = Counter(), [], []
-    files_by_digest = {}
+    files_by_digest, audible_frames, deltas = {}, {}, []
     for mark in marks:
         kind, at = mark['kind'], float(mark['at'])
+        gain = float(mark.get('gain',.32))
+        if not isfinite(gain) or gain < .24:
+            violations.append(dict(at=at,reason='inaudible_sfx_padding',gain=gain))
+            continue
+        audible_frames.setdefault(round(at*30),at)
         source = mark.get('source_file') or BUNDLED_SFX_MAP.get(kind)
         if not source:
             violations.append(dict(at=at,reason='unknown_source'))
@@ -991,24 +996,42 @@ def sfx_diversity_and_sync_gate(timeline, duration):
             continue
         points = [0., *shot.get('visual_action_times', shot.get('beats', []))]
         points.extend(float(row['at']) for key in ('overlays','interactions') for row in shot.get(key, []))
-        interaction_kinds = {'click':'click','soft_click':'click_soft','delete':'keypress','type':'typing',
-                             'confirm':'ping','error':'error','glitch':'glitch_1','locked':'glitch_2'}
-        if shot.get('interactions') and kind in interaction_kinds.values():
-            points = [i['at'] for i in shot['interactions'] if interaction_kinds.get(i['action'])==kind]
+        if shot.get('interactions') and kind in INTERACTION_SOUNDS.values():
+            points = [i['at'] for i in shot['interactions'] if INTERACTION_SOUNDS.get(i['action'])==kind]
+            if not points:
+                points = shot.get('visual_action_times',[])
+        in_punch = any(o['kind']=='editorial_punch' for o in shot.get('overlays',[]))
+        primary = kind in {'marker_stroke','shutter_whip','whoosh_cinematic','whoosh_short','whoosh','zoom_swoosh'} or (
+            kind.startswith('impact_bass_') and in_punch)
+        detail = kind in {'page_flip','click','click_soft','keypress','typing','counter_roll','ui_lock_bonk','paper_slap'}
+        if shot.get('recipe') in {'logo_bento_stage','step_tree_focus'} and kind in {'card_thock','pop'}:
+            detail = True
+        if (primary and not .55 <= gain <= .74) or (detail and not .28 <= gain <= .44):
+            violations.append(dict(at=at,reason='sfx_gain_tier',kind=kind,gain=gain))
         if kind in {'impact_bass_1','impact_bass_2'} and any(o['kind']=='editorial_punch' for o in shot.get('overlays',[])):
             points = [o['at'] for o in shot['overlays'] if o['kind']=='editorial_punch']
         if not points:
             violations.append(dict(shot=shot['id'],at=at,reason='wrong_interaction_sound'))
             continue
         delta = min(abs(at-shot['start']-p) for p in points)
+        deltas.append(delta)
         if delta > .12001 or (kind == 'shutter_whip' and shot.get('recipe') != 'triptych_curtain'):
             violations.append(dict(shot=shot['id'],at=at,delta=round(delta,4),reason='action_mismatch'))
+    times = sorted({0., duration, *audible_frames.values()})
+    max_gap = max((b-a for a,b in zip(times,times[1:])),default=0.)
+    density = len(audible_frames)/duration if duration else 0.
     if duration >= 30:
+        if density < .72:
+            violations.append(dict(reason='sfx_density_below_minimum',density=round(density,4)))
+        if max_gap > 3.60001:
+            violations.append(dict(reason='long_sfx_gap',seconds=round(max_gap,4)))
         if len(counts) < 6:
             violations.append(dict(reason='fewer_than_six_files'))
         if counts and max(counts.values()) > .28 * len(marks):
             violations.append(dict(reason='single_file_above_28_percent'))
-    return dict(ok=not violations, count=len(marks), files=dict(counts), violations=violations)
+    return dict(ok=not violations,count=len(marks),audible_action_points=len(audible_frames),
+                density=round(density,4),max_sfx_gap=round(max_gap,4),
+                max_sync_error=round(max(deltas,default=0.),5),files=dict(counts),violations=violations)
 
 
 def chapter_voice_completeness_gate(timeline, project, duration):

@@ -562,8 +562,8 @@ def test_reference_breakdown_and_restraint_offline(tmp_path):
     assert all(word in html for word in ('画面引用 · Johnny Harris','镜头 #01','平均镜长','1.25 秒','#101b1b42','#172322eb'))
     assert 'drop-shadow' not in html and 'y="353.0"' in html
     assert "textContent:'镜头 #03',immediateRender:false},2.50000)" in ''.join(stage.scripts)
-    assert dict(kind='pop',at=4.15,gain=.10) in stage.sound_events()
-    assert dict(kind='tick',at=2.5,gain=.10) in stage.sound_events()
+    assert dict(kind='pop',at=4.15,gain=.30) in stage.sound_events()
+    assert dict(kind='tick',at=2.5,gain=.30) in stage.sound_events()
     assert spotlight_restraint_gate(stage.shots)['ok']
     props = dict(shots[0],stage_mode='fullbleed_rig',visual_subject='书和笔',semantic_tags=['书和笔'],semantic_binding='physical_prop')
     assert semantic_binding_gate([props])['ok']

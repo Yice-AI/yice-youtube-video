@@ -26,7 +26,7 @@ See `manifest.json` for per-file metadata (duration, energy character, recommend
 
 ## License
 
-All files are distributed under the [Pixabay Content License](https://pixabay.com/service/license-summary/), which permits:
+The imported MP3 files are distributed under the [Pixabay Content License](https://pixabay.com/service/license-summary/), which permits:
 
 - Commercial and non-commercial use
 - Modification and remixing
@@ -34,4 +34,4 @@ All files are distributed under the [Pixabay Content License](https://pixabay.co
 
 without any attribution requirement.
 
-v14 的 marker_stroke、card_thock、shutter_whip 和 counter_roll 为项目原创的 48 kHz 物理拟音。使用带通噪声、短瞬态和衰减共振合成，无第三方采样。
+v14 的 marker_stroke、card_thock、shutter_whip、counter_roll、page_flip、ui_lock_bonk、paper_slap 和 zoom_swoosh 为项目原创的 48 kHz 物理拟音。使用带通噪声、短瞬态和衰减共振合成，无第三方采样。

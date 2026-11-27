@@ -269,3 +269,7 @@ STAGE[data-stage-look="swiss_paper"] .bento-col:first-child .bento-box{backgroun
 STAGE[data-stage-look="swiss_paper"] .bento-col .bento-item{background:#fff;box-shadow:none;color:#111215}
 STAGE[data-stage-look="swiss_paper"] > header.bento-brand{display:flex;left:96px;top:70px}
 STAGE[data-spatial-recipe="triptych_curtain"] .curtain-wall::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 32%,#0007 100%),rgba(0,0,0,.62)}
+
+STAGE .curtain-rule{display:block;position:absolute;left:12%;right:12%;height:7px;bottom:-20px;background:#ff4d1c;transform-origin:left}
+STAGE .panel-accents,STAGE .panel-accents i{position:absolute;inset:0;pointer-events:none}
+STAGE .panel-accents i{bottom:auto;border:5px solid #ff4d1c;opacity:0}

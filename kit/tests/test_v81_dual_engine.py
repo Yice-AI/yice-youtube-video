@@ -183,7 +183,7 @@ class DualEngineTests(unittest.TestCase):
                 self.assertTrue(any("tl.to('#visual-left'" in line and '},2.00000)' in line for line in stage.scripts))
                 self.assertTrue(any("tl.fromTo('#visual-right'" in line and '},2.00000)' in line for line in stage.scripts))
                 self.assertEqual(stage.shots[0]['end'],stage.shots[1]['start'])
-                self.assertIn(dict(kind='whoosh',at=2.0,gain=.12),list(stage.sound_events()))
+                self.assertIn(dict(kind='whoosh',at=2.0,gain=.60),list(stage.sound_events()))
 
 
 if __name__ == '__main__':

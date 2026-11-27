@@ -422,7 +422,7 @@ class EditorialStage:
             self.scripts.append(f"tl.set('#{plate} .ref-cut-counter',"
                                 f"{{textContent:'镜头 #{index:02d}',immediateRender:false}},{start+point:.5f});")
             if point:
-                self.add_sound_mark('tick',start+point,gain=.10)
+                self.add_sound_mark('tick',start+point,gain=.30)
         return row['id']
 
     def add_sound_mark(self, kind, at, *, gain=None):
@@ -505,7 +505,7 @@ class EditorialStage:
                 f"repeat:1,yoyo:true,ease:'sine.inOut'}},{start:.5f});",
                 f"tl.set('{both}',{{filter:'none'}},{start+duration:.5f});",
             ))
-        self.add_sound_mark('whoosh',start,gain=.12)
+        self.add_sound_mark('whoosh',start,gain=.60)
 
     def render_visual_layers(self):
         groups = self.visual_layers()
@@ -662,7 +662,7 @@ class EditorialStage:
                         + rect(0, 0, 1920, 1080, f'url(#{shade})') + '<g class="punch-slam">'
                         + ''.join(txt(960, mid+118*i, line, 116, '#FFFFFF', anchor='middle', weight=900)
                                   for i, line in enumerate(lines))
-                        + rect(852, mid+118*(len(lines)-1)+36, 216, 6, color) + '</g>')
+                        + rect(852, mid+118*(len(lines)-1)+36, 216, 6, color, 'class="punch-rule"') + '</g>')
                 audio = 'punch_hit'
             elif style == 'hero_punch':
                 if not label.strip():
@@ -779,6 +779,12 @@ class EditorialStage:
                 self.scripts.append(f"tl.fromTo('#{plate} .punch-slam',{{scale:1.12,opacity:0}},"
                                     f"{{scale:1,opacity:1,duration:{min(snap,hold):.5f},"
                                     f"transformOrigin:'960px 460px',ease:'expo.out',immediateRender:false}},{begin:.5f});")
+            if style == 'editorial_punch':
+                delay = min(.15, hold/3)
+                self.scripts.append(f"tl.fromTo('#{plate} .punch-rule',{{scaleX:0}},"
+                                    f"{{scaleX:1,transformOrigin:'center',duration:.18}},{begin+delay:.5f});")
+                self.add_sound_mark('marker_stroke',begin+delay,gain=.58)
+                beats.append(at+delay)
             if style in {'prop_badge','reaction_cutout'}:
                 ease = 'back.out(1.4)' if foreground else 'back.out(1.35)'
                 self.scripts.append(f"tl.fromTo('#{plate} .cutout-hit',{{scale:1.18,rotation:4,y:-9,opacity:0}},"
@@ -788,7 +794,7 @@ class EditorialStage:
                     self.scripts.append(f"tl.to('#{plate} .cutout-hit',{{x:{8 if side=='left' else -8},y:-8,rotation:.8,"
                                         f"duration:{(hold-.34)/2:.5f},repeat:1,yoyo:true,ease:'sine.inOut'}},{begin+.34:.5f});")
             if style!='corner_tag' or not overlay.get('silent'):
-                self.add_sound_mark(audio,begin,gain=.10 if style=='corner_tag' else None)
+                self.add_sound_mark(audio,begin,gain=.30 if style=='corner_tag' else None)
             beats.append(at)
         shot['beats'] = sorted(set(beats))
         if nle_windows:

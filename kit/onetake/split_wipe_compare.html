@@ -144,7 +144,7 @@ window.__seek = t => {
 };
 
 window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.abs(b - a) * 260;
-window.__events = () => [{ t: D * 0.22, kind: 'wipe_sweep', gain: .46 }];
+window.__events = () => [{ t: D * 0.22, kind: 'wipe_sweep', gain: .64 }];
 window.__ready = Promise.all([document.fonts.ready, loadMediaSlot(CFG.before), loadMediaSlot(CFG.after)])
   .then(([, a, b]) => { beforeSlot = a; afterSlot = b; window.__seek(0); });
 </script>

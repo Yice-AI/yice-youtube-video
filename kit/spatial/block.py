@@ -175,6 +175,9 @@ def build(spec, source_dir, output, gsap):
                 if Path(source).suffix.lower() not in VIDEO_EXTS:
                     raise ValueError('开场幕布每一列都需要动态视频')
                 panels.append(f'<div class="curtain-panel">{media_tag(source, loop=True)}</div>')
+            if 'underline_at' in data:
+                number(data['underline_at'],0,duration-.2,'幕布划线时间')
+                lettering += '<i class="curtain-rule"></i>'
             body = f'<div class="curtain-wall">{"".join(panels)}</div><div class="curtain-title">{lettering}</div>'
         else:
             number(duration, 1.2, 1.8, '划线过场时长')
@@ -271,6 +274,10 @@ def build(spec, source_dir, output, gsap):
         body = f'<div class="{stage_cls}">{"".join(cards_html)}</div>'
     elif recipe == 'logo_bento_stage':
         modules = items('modules', 2, 4)
+        for focus in data.get('focus_sequence', []):
+            if type(focus.get('index')) is not int or not 0 <= focus['index'] < len(modules):
+                raise ValueError('工具分类强调序号超出范围')
+            number(focus['at'], 0, duration-.40, '工具分类强调时间')
         if 'expected_items' in data:
             names = [entry.get('name') if isinstance(entry, dict) else entry
                      for mod in modules for entry in mod.get('items', [])[:3]]
@@ -444,6 +451,12 @@ def build(spec, source_dir, output, gsap):
                 if data.get('board'):
                     crop += f';object-position:{x}% {y}%'
                 panel = f'<div class="sim-panel is-media">{media_tag(card["source"], style=crop, loop=True)}</div>'
+            if card.get('panel_accents'):
+                for at in card['panel_accents']:
+                    number(at,0,duration-.28,'框内证据强调时间')
+                stripes = ''.join(f'<i style="top:{100*i/len(card["panel_accents"]):.3f}%;height:{100/len(card["panel_accents"]):.3f}%"></i>'
+                                  for i in range(len(card['panel_accents'])))
+                panel = panel.removesuffix('</div>') + f'<div class="panel-accents">{stripes}</div></div>'
             cards_html.append(f'<article class="sim-card" data-spatial-subject>{panel}<div class="sim-label">{label(card["label"])}</div></article>')
         row_class = "sim-row board" if data.get("board") else "sim-row"
         body = f'<div class="{row_class}">{"".join(cards_html)}</div>'

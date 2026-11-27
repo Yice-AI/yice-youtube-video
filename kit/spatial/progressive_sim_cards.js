@@ -60,3 +60,10 @@ if (root.dataset.stageLook === 'swiss_paper' && !data.board && cards.length > 1)
     tl.to(cards, { x: shiftFor(i), duration: .18, ease: 'power3.out' }, at);
   });
 }
+
+cards.forEach((card,i) => {
+  const outlines = card.querySelectorAll('.panel-accents i');
+  (data.cards[i].panel_accents || []).forEach((at,k) => {
+    tl.fromTo(outlines[k], {opacity:1}, {opacity:0,duration:.28,immediateRender:false}, at);
+  });
+});

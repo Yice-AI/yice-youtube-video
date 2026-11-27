@@ -113,5 +113,25 @@
     "file": "counter_roll.wav",
     "duration": 0.34,
     "description": "减速齿轮与计数器棘爪"
+  },
+  "page_flip": {
+    "file": "page_flip.wav",
+    "duration": 0.3,
+    "description": "铜版纸张弯曲后迅速掠过的轻响"
+  },
+  "ui_lock_bonk": {
+    "file": "ui_lock_bonk.wav",
+    "duration": 0.31,
+    "description": "短促的双击木腔禁止操作提示"
+  },
+  "paper_slap": {
+    "file": "paper_slap.wav",
+    "duration": 0.34,
+    "description": "厚纸束拍桌，带有纸边散落的短尾音"
+  },
+  "zoom_swoosh": {
+    "file": "zoom_swoosh.wav",
+    "duration": 0.55,
+    "description": "推近和穿洞时由远及近的气流"
   }
 }

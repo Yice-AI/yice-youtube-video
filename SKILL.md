@@ -1,6 +1,6 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v14.0。用全屏三联动态幕布展示作品，用瑞士暖白画布讲方法，逐句核对实录反例、可编辑操作与跨行业案例。支持 23 款真实动作音效、5 首节奏型配乐、字幕与成片审计。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v14.0。用全屏三联动态幕布展示作品，用瑞士暖白画布讲方法，逐句核对实录反例、可编辑操作与跨行业案例。支持 27 款真实动作音效、5 首节奏型配乐、字幕与成片审计。
 ---
 
 # 一策 YouTube 视频制作 v14.0
@@ -27,7 +27,7 @@ v14 清单为每镜填写 `case_tag`，并以 `semantic_alignment` 引用逐镜�
 
 清单声明 `episode_kind: "tool_tutorial"`。**严禁写自嗨假场景（如虚构新品发布会路演）或「第 1 个工具…第 5 个工具…」说明书式报菜名！** 动笔必须走三步老练叙事：① **普通人真痛点 + 反常识钩子**（周报述职、方案改字、不用抽卡/零订阅费，开场用 `triptych_curtain` 三列成品动态幕布，需要结论时用 `editorial_punch` 压暗背景并落下无框白字，严禁不到 3 秒硬切代码提交列表）；② **一套傻瓜选型决策树主线**（先用 `progressive_sim_cards` 立住 3 个体感优势，用 `logo_bento_stage` 按交付对象并列分类，`expected_items` 核验工具数量，实际操作步骤才用 `step_tree_focus`，把工具挂在方法论分支上当论据）；③ **字到画到的 `0.18s` 干脆动效 + 全画幅实操**（子卡片 `at` 精确绑死配音词级时间戳，急停落定不慢飘；整页 PPT/网页实录锁死 `1.00 → 1.03` 全画幅不裁边字，仅在点击局部按钮时聚焦；终端录屏角标自动避让右上角）。
 
-内置 **5 首公有领域节奏型 BGM**（`"bgm": ["builtin:forward-drive", "builtin:city-groove", "builtin:focus-minimal", "builtin:bright-step", "builtin:calm-tech"]`）与 **23 款专业真实动作音效**（`kit/assets/sfx/`），三联幕布用快门，暗场重锤用低音冲击，反例用报错或故障，擦除用掠过声，卡片用三档微音高，输入与回焦各用独立提示音，支持重点句 `music_drops` 停顿留白。
+内置 **5 首公有领域节奏型 BGM**（`"bgm": ["builtin:forward-drive", "builtin:city-groove", "builtin:focus-minimal", "builtin:bright-step", "builtin:calm-tech"]`）与 **27 款专业真实动作音效**（`kit/assets/sfx/`），三联幕布用快门，暗场重锤用低音冲击，办公反例用木质锁定声或公文拍击声，翻页和镜头推拉各配专用拟音，擦除用掠过声，卡片用三档微音高，输入与回焦各用独立提示音，支持重点句 `music_drops` 停顿留白。
 
 目标每镜 4–6 秒，全片均值 ≤ 6.5 秒。满屏占实录时长至少 70%，斜框占全片至多 15%，带框镜头不能相邻。多贴图与视频墙配方均使用独立 3D 空间运动并通过 v14 审计；平面静态拼贴仍会拦截。
 

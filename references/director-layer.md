@@ -36,4 +36,4 @@
 
 影院暗场展示成品和对比，瑞士亮场承接分类与方法。主脑交片前关字幕、有声连看全章。逐项确认反例与真实操作看得懂、口播数量与同屏成品一致、没有连续三秒的死镜、前六十秒不出现终端、字幕带不压核心文字、每种声音都对应可见动作。 [交片审计](review-gates.md)
 
-真实录屏在镜头内用 `interactions: [{action, at}]` 标注鼠标按下、删除、输入、数字确认或报错的可见时刻。`action` 接受 `click / soft_click / delete / type / confirm / error / glitch / locked`。普通硬切留给配乐，快门只配三联幕布。划线配笔触，亮场卡片落位以 0.95、1.00、1.06 倍速轮换；擦除用掠过声，暗场重锤用低音，节点回焦用提示音。
+真实录屏在镜头内用 `interactions: [{action, at}]` 标注鼠标按下、删除、输入、数字确认或报错的可见时刻。`action` 接受 `click / soft_click / delete / type / confirm / error / glitch / locked / page_turn / paper_hit / camera_zoom / counter_tick / soft_impact / line_draw`。办公软件锁定配木质提示，旧公文落下配纸张拍击，翻页和镜头推拉各跟随真实画面。普通硬切留给配乐，快门只配三联幕布。划线配笔触，亮场卡片落位以 0.95、1.00、1.06 倍速轮换；擦除用掠过声，暗场重锤用低音，节点回焦用提示音。

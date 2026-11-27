@@ -62,6 +62,6 @@ window.__seek = t => {
     document.querySelector('#seal').style.transform = 'scale(' + seal.k + ') rotate(' + seal.rot + 'rad)';
 };
 window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2));
-window.__events = () => [{ t: .4, kind: 'tick', gain: .12 }, { t: DURATION * .65, kind: 'pop', gain: .17 }, { t: DURATION * .78, kind: 'stamp', gain: .17 }];
+window.__events = () => [{ t: .4, kind: 'tick', gain: .30 }, { t: DURATION * .65, kind: 'pop', gain: .32 }, { t: DURATION * .78, kind: 'stamp', gain: .40 }];
 window.__ready = Promise.all([document.fonts.ready, ...cards.map(c => c.decode())]).then(() => window.__seek(0));
 </script>

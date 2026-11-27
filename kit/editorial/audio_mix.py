@@ -81,14 +81,19 @@ SFX_FAMILIES = {
     'input': ('click', 'keypress', 'typing', 'counter_roll'),
     'reveal': ('ping', 'chime', 'sparkle', 'notification'),
     'build': ('riser',),
+    'office_foley': ('page_flip', 'ui_lock_bonk', 'paper_slap', 'zoom_swoosh'),
 }
-WAV_EFFECTS = {'marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll'}
+WAV_EFFECTS = {'marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll', *SFX_FAMILIES['office_foley']}
 BUNDLED_SFX_MAP = {k: (k+'.wav' if k in WAV_EFFECTS else k.replace('_','-')+'.mp3')
                    for family in SFX_FAMILIES.values() for k in family}
 BUNDLED_SFX_MAP.update(keypress='key-press.mp3', tick='key-press.mp3', marker='whoosh-short.mp3',
                        stamp='impact-bass-1.mp3', impact='impact-bass-1.mp3')
 ACTION_SOUNDS = {'punch_hit': 'punch', 'wipe_sweep': 'wipe', 'focus_reveal': 'reveal'}
 SFX_KINDS = set(BUNDLED_SFX_MAP) | set(ACTION_SOUNDS)
+INTERACTION_SOUNDS = {'click':'click', 'soft_click':'click_soft', 'delete':'keypress', 'type':'typing',
+                      'confirm':'ping', 'error':'error', 'glitch':'glitch_1', 'locked':'ui_lock_bonk',
+                      'page_turn':'page_flip', 'paper_hit':'paper_slap', 'camera_zoom':'zoom_swoosh',
+                      'counter_tick':'counter_roll', 'soft_impact':'impact_bass_2', 'line_draw':'marker_stroke'}
 
 
 def _action_excerpt(wave, rate, kind):
@@ -336,11 +341,9 @@ class EpisodeAudioMixer:
                 rotations[family] = index+1
             if kind == 'slap':
                 kind = 'stamp'
-            gain = float(event.get('gain',.30))
+            gain = float(event.get('gain', .66 if family in {'punch','wipe'} else .32))
             if kind not in SFX_KINDS or not 0 <= at < duration or not 0 < gain <= 1:
                 raise ValueError('音效类型、时间或增益无效')
-            if kind in {'marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll'}:
-                gain = min(.78, max(.62, gain))
             if kind in library:
                 src_key = ('custom', str(library[kind]))
                 if src_key not in sfx_cache:
@@ -362,10 +365,11 @@ class EpisodeAudioMixer:
                 else:
                     effect = self._effect(kind)
             rate = 1.
-            if kind in SFX_FAMILIES['card']:
-                index = pitch_indices.get(kind, 0)
+            if kind in (*SFX_FAMILIES['card'], 'page_flip'):
+                pitch_group = (kind, gain >= .55) if kind == 'card_thock' else kind
+                index = pitch_indices.get(pitch_group, 0)
                 rate = (.95, 1., 1.06)[index % 3]
-                pitch_indices[kind] = index+1
+                pitch_indices[pitch_group] = index+1
                 if rate != 1.:
                     effect = np.interp(np.arange(0,len(effect),rate),np.arange(len(effect)),effect)
             source_file = Path(library[kind]).name if kind in library else BUNDLED_SFX_MAP[kind]

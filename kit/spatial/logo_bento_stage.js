@@ -26,3 +26,9 @@ all('.bento-spin').forEach((mark, idx) => {
   tl.fromTo(mark, { rotation: 0 }, { rotation: idx % 2 ? -90 : 90, duration: dur, ease: 'none' }, 0);
 });
 tl.fromTo(cam, { x: 0, y: 4, z: -18, ry: 0 }, { x: 0, y: 0, z: 14, ry: 0, duration: dur, ease: 'sine.out', onUpdate: applyCamera }, 0);
+
+for (const focus of data.focus_sequence || []) {
+  const label = cols[focus.index].querySelector('.bento-cat');
+  tl.fromTo(label, {color:'#ff4d1c',scale:1.06},
+    {color:'#111215',scale:1,duration:.40,ease:'power2.out',immediateRender:false}, focus.at);
+}

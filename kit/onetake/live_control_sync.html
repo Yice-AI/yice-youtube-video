@@ -38,6 +38,6 @@ window.__seek = t => {
     document.querySelector('#pointer').style.transform = 'translate(' + p.x + 'px,' + p.y + 'px) scale(' + p.s + ')';
 };
 window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.abs(b - a) * 160;
-window.__events = () => [{ t: D * .16, kind: 'tick', gain: .12 }, { t: D * .72, kind: 'pop', gain: .18 }];
+window.__events = () => [{ t: D * .16, kind: 'tick', gain: .30 }, { t: D * .72, kind: 'pop', gain: .32 }];
 window.__ready = Promise.all([document.fonts.ready, document.querySelector('#art').decode()]).then(() => window.__seek(0));
 </script>
