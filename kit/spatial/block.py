@@ -167,6 +167,9 @@ def build(spec, source_dir, output, gsap):
         lettering = ''.join(f'<span class="display-word">{label(w["text"])}</span>' for w in words)
         header_html = ''
         if recipe == 'triptych_curtain':
+            lettering = ''.join(
+                ('<br>' if i and word.get('line', 1) != words[i-1].get('line', 1) else '')
+                + f'<span class="display-word">{label(word["text"])}</span>' for i, word in enumerate(words))
             panels = []
             for source in items('videos', 3, 3):
                 if Path(source).suffix.lower() not in VIDEO_EXTS:
@@ -268,6 +271,11 @@ def build(spec, source_dir, output, gsap):
         body = f'<div class="{stage_cls}">{"".join(cards_html)}</div>'
     elif recipe == 'logo_bento_stage':
         modules = items('modules', 2, 4)
+        if 'expected_items' in data:
+            names = [entry.get('name') if isinstance(entry, dict) else entry
+                     for mod in modules for entry in mod.get('items', [])[:3]]
+            if len(names) != data['expected_items'] or len(set(names)) != len(names) or not all(names):
+                raise ValueError('工具总数与画面上的独立工具名称不符')
         brand = data.get('brand') or {}
         if isinstance(brand, str):
             brand = {'name': brand}
@@ -433,9 +441,12 @@ def build(spec, source_dir, output, gsap):
                 zoom = number(card.get('zoom', 1), 1, 3, '卡片微距倍率')
                 x, y = (number(card.get(axis, 50), 0, 100, '微距焦点') for axis in ('focus_x', 'focus_y'))
                 crop = f'transform:scale({zoom});transform-origin:{x}% {y}%' if zoom != 1 else ''
+                if data.get('board'):
+                    crop += f';object-position:{x}% {y}%'
                 panel = f'<div class="sim-panel is-media">{media_tag(card["source"], style=crop, loop=True)}</div>'
             cards_html.append(f'<article class="sim-card" data-spatial-subject>{panel}<div class="sim-label">{label(card["label"])}</div></article>')
-        body = f'<div class="sim-row">{"".join(cards_html)}</div>'
+        row_class = "sim-row board" if data.get("board") else "sim-row"
+        body = f'<div class="{row_class}">{"".join(cards_html)}</div>'
     elif recipe == 'formula_pill_chain':
         reveal_at = number(data.get('reveal_at', round(duration * 0.35, 3)), 0.15, duration - 0.35, 'reveal_at')
         data['reveal_at'] = reveal_at
@@ -484,7 +495,7 @@ def build(spec, source_dir, output, gsap):
         'selected_index', 'select_at', 'count', 'count_at', 'focus_step', 'action',
         'focus_index', 'focus_at', 'counter', 'focal_from',
         'focal_to', 'split_at', 'branches', 'focus_sequence', 'reveal_at',
-        'card_aspect', 'punch_at', 'words', 'underline_at',
+        'card_aspect', 'punch_at', 'words', 'underline_at', 'board',
     )
     settings_data = {key: data[key] for key in keep_keys if key in data}
     if 'modules' in data:

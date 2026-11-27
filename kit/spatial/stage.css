@@ -242,20 +242,30 @@ STAGE[data-stage-look="swiss_paper"] .sim-card{max-width:none}
 STAGE[data-stage-look="swiss_paper"] .sim-panel.is-media{width:100%;height:390px;padding:0;overflow:hidden}
 STAGE .curtain-wall{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
 STAGE .curtain-panel{overflow:hidden;background:#090a0f}
-STAGE .curtain-panel::after{content:"";position:absolute;inset:0;background:#090a0f22;pointer-events:none}
 STAGE .curtain-panel{position:relative}
 STAGE :is(.curtain-title,.bridge-title){position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);white-space:nowrap;font:900 120px/1.1 "Spatial Sans",sans-serif;letter-spacing:-.045em;text-align:center}
-STAGE .curtain-title{color:white;text-shadow:0 2px 15px #0007}
+STAGE .curtain-title{font-size:116px;line-height:1.02;color:white;text-shadow:0 2px 15px #0007}
 STAGE .bridge-title{color:#111215;font-size:150px}
 STAGE .display-word{display:inline-block}
 STAGE .bridge-title svg{position:absolute;top:104%;left:0;width:100%;height:33px;fill:none;stroke:#ff4d1c;stroke-width:14;stroke-linecap:round;stroke-dasharray:1}
 STAGE[data-stage-look="swiss_paper"] .bento-box{border:2.5px solid #111215;background:#fff;border-radius:0;box-shadow:6px 7px 0 #111215}
 STAGE[data-stage-look="swiss_paper"] .bento-brand-pill{display:none}
 STAGE[data-stage-look="swiss_paper"] :is(.bento-brand-title,.bento-item-name,.bento-cat,.bento-col[data-item-count="1"] .bento-item-name){color:#111215}
-STAGE[data-stage-look="swiss_paper"] .bento-item-badge{color:#0047ff;background:#e8edff;border:0}
+STAGE[data-stage-look="swiss_paper"] .bento-grid{left:150px;right:150px;gap:30px}
+STAGE[data-stage-look="swiss_paper"] .bento-col{max-width:none;min-width:0}
+STAGE[data-stage-look="swiss_paper"] .bento-item-badge{display:none}
+STAGE[data-stage-look="swiss_paper"] .bento-item-name{font-size:38px;font-weight:900}
+STAGE[data-stage-look="swiss_paper"] .bento-cat{font-size:44px;font-weight:900}
+STAGE[data-stage-look="swiss_paper"] .sim-row.board{left:140px;right:140px;top:204px;height:560px;gap:24px;align-items:stretch}
+STAGE[data-stage-look="swiss_paper"] .board .sim-card{box-sizing:border-box;min-width:0;border:2.5px solid #000;background:#fff;gap:0;overflow:hidden}
+STAGE[data-stage-look="swiss_paper"] .board .sim-panel.is-media{flex:1;min-height:0;margin:0;border:0;border-bottom:2.5px solid #000;box-shadow:none}
+STAGE[data-stage-look="swiss_paper"] .board .sim-panel video{border-radius:0}
+STAGE[data-stage-look="swiss_paper"] .board .sim-label{height:92px;display:grid;place-items:center;font-size:44px;font-weight:900}
+STAGE[data-stage-look="swiss_paper"]:has(.board) .sim-heading{left:140px;right:140px;justify-content:flex-start;color:#000;font-size:62px;line-height:1.04;font-weight:900}
+STAGE[data-stage-look="swiss_paper"]:has(.board) .sim-heading span{color:#ff4d1c}
 STAGE[data-stage-look="swiss_paper"] .sim-heading{display:flex;background:none;border:0;box-shadow:none;height:auto;font-size:56px;line-height:1.1;padding:0;top:94px;left:96px}
 STAGE[data-stage-look="swiss_paper"] > header.editorial-heading{display:block;left:96px;top:94px;color:#111215;background:none;border:0;box-shadow:none;height:auto;padding:0;font-size:56px;line-height:1.1}
 STAGE[data-stage-look="swiss_paper"] .bento-col:first-child .bento-box{background:#fff;border-color:#111215;color:#111215}
 STAGE[data-stage-look="swiss_paper"] .bento-col .bento-item{background:#fff;box-shadow:none;color:#111215}
 STAGE[data-stage-look="swiss_paper"] > header.bento-brand{display:flex;left:96px;top:70px}
-STAGE[data-spatial-recipe="triptych_curtain"] .curtain-wall::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(0deg,transparent 12%,#090a0f73 50%,transparent 85%)}
+STAGE[data-spatial-recipe="triptych_curtain"] .curtain-wall::after{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 32%,#0007 100%),rgba(0,0,0,.62)}

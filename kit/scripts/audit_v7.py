@@ -927,6 +927,13 @@ def case_monotony_gate(shots, duration):
             covered = max(covered, end)
         if covered < span - .001:
             missing.append(shot['id'])
+    curtains = sorted((shot for shot in shots if 'curtain_source_hashes' in shot),
+                     key=lambda shot: shot['start'])
+    for i, shot in enumerate(curtains):
+        window = [s for s in curtains[:i+1] if shot['start'] - s['start'] < 85]
+        sources = [h for s in window for h in s['curtain_source_hashes']]
+        if len(window) > 2 or len(shot['curtain_source_hashes']) != 3 or len(sources) != len(set(sources)):
+            missing.append(shot['id'])
     shares = {key: value / duration for key, value in seconds.items()}
     overused = [key for key, share in shares.items() if share > .30 + 1e-8]
     return dict(ok=not (missing or overused), shares=shares, missing=sorted(set(missing)), overused=overused)

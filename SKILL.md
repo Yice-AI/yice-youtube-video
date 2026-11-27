@@ -19,13 +19,13 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v14.0�
    - **第二层（官网朴素的干货工具/命令行插件）**：严禁傻滚白底文档凑时长！只录最核心的深色真实操作闭环（输入 → 执行 → 结果交互，占 30%–55%），其余优势对比与流程拆解一律套用 `progressive_sim_cards`（`1% vs 100%` 实时进度 + 动态小窗）、`step_tree_focus`（连线逐笔生长 + 焦点在 `① → ② → ①` 动态跳转）、`layer_explode_3d` 或 `handdrawn_sketch_stage`。
    - **第三层（零现成视频的抽象观点/故事/历史机制）**：直接启用 `image2` + 代码造画三公式——`cutout_parallax_stage`（白底生图抠图 + 4px 奶油剪纸白边 + 三层视差卷轴 + 烟尘粒子 + 实时计步）、`documentary_ken_burns`（16:9 艺术大图 2.5D 慢推摇飘金粉 + 一图拆三卡局部解剖）、`handdrawn_sketch_stage`（8fps 铅笔水彩微抖 / Riso 半调网点），凭空造出纪录片级动态画面。
 
-亮场桥 `kinetic_title_bridge` 使用 1.2–1.8 秒、按口播触发的 `words: [{text, at}]` 与马克笔 `underline_at`。三联幕布声明 `videos` 三个本地视频；`progressive_sim_cards` 的卡片用 `source`、`zoom` 与百分比 `focus_x/focus_y` 录到局部操作。划线、厚卡落位、切幕与数字翻滚使用 `marker_stroke`、`card_thock`、`shutter_whip`、`counter_roll`。
+亮场桥 `kinetic_title_bridge` 使用 1.2–1.8 秒、按口播触发的 `words: [{text, at}]` 与马克笔 `underline_at`。三联幕布每次使用三条不同动态视频；`case_monotony_gate` 按文件内容检验 85 秒内最多两次且不复用槽位。大字用 `words[].line` 或 `editorial_punch.lines` 分成两行。三联看板用 `board: true` 保持三框自开场都在位；`progressive_sim_cards` 的卡片用 `source`、`zoom` 与百分比 `focus_x/focus_y` 录到局部操作。划线、厚卡落位、切幕与数字翻滚使用 `marker_stroke`、`card_thock`、`shutter_whip`、`counter_roll`。
 
 v14 清单为每镜填写 `case_tag`，并以 `semantic_alignment` 引用逐镜台账（`shot_id, start, end, quote, evidence, case_tag`）。同镜轮播或并列多个作品时用 `case_windows: [{tag,start,end}]` 记录镜内可见区间。审计按作品合并重叠时间并检查占比不超过 30%，逐镜核对口播、时间与画面物证。导演连看确认反例对应现场操作、开场不出现终端、每次换场有新的信息。
 
 ## 工具教程与老练叙事铁律（v14.0）
 
-清单声明 `episode_kind: "tool_tutorial"`。**严禁写自嗨假场景（如虚构新品发布会路演）或「第 1 个工具…第 5 个工具…」说明书式报菜名！** 动笔必须走三步老练叙事：① **普通人真痛点 + 反常识钩子**（周报述职、方案改字、不用抽卡/零订阅费，开场用 `triptych_curtain` 三列成品动态幕布，需要结论时用 `editorial_punch` 压暗背景并落下无框白字，严禁不到 3 秒硬切代码提交列表）；② **一套傻瓜选型决策树主线**（先用 `progressive_sim_cards` 立住 3 个体感优势，再用 `logo_bento_stage` 与 `step_tree_focus` 按交付对象分类，把工具挂在方法论分支上当论据）；③ **字到画到的 `0.18s` 干脆动效 + 全画幅实操**（子卡片 `at` 精确绑死配音词级时间戳，急停落定不慢飘；整页 PPT/网页实录锁死 `1.00 → 1.03` 全画幅不裁边字，仅在点击局部按钮时聚焦；终端录屏角标自动避让右上角）。
+清单声明 `episode_kind: "tool_tutorial"`。**严禁写自嗨假场景（如虚构新品发布会路演）或「第 1 个工具…第 5 个工具…」说明书式报菜名！** 动笔必须走三步老练叙事：① **普通人真痛点 + 反常识钩子**（周报述职、方案改字、不用抽卡/零订阅费，开场用 `triptych_curtain` 三列成品动态幕布，需要结论时用 `editorial_punch` 压暗背景并落下无框白字，严禁不到 3 秒硬切代码提交列表）；② **一套傻瓜选型决策树主线**（先用 `progressive_sim_cards` 立住 3 个体感优势，用 `logo_bento_stage` 按交付对象并列分类，`expected_items` 核验工具数量，实际操作步骤才用 `step_tree_focus`，把工具挂在方法论分支上当论据）；③ **字到画到的 `0.18s` 干脆动效 + 全画幅实操**（子卡片 `at` 精确绑死配音词级时间戳，急停落定不慢飘；整页 PPT/网页实录锁死 `1.00 → 1.03` 全画幅不裁边字，仅在点击局部按钮时聚焦；终端录屏角标自动避让右上角）。
 
 内置 **5 首公有领域节奏型 BGM**（`"bgm": ["builtin:forward-drive", "builtin:city-groove", "builtin:focus-minimal", "builtin:bright-step", "builtin:calm-tech"]`）与 **23 款专业真实动作音效**（`kit/assets/sfx/`），所有空间与快门配方自动按子元素落位时点触发 `pop / click / whoosh / impact / chime` 真实音效，支持重点句 `music_drops` 停顿留白。
 

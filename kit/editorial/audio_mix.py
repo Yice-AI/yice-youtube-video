@@ -274,6 +274,25 @@ class EpisodeAudioMixer:
             bed[start-out:start] *= floor+(1-floor)*(.5+.5*np.cos(np.linspace(0,np.pi,out)))
             bed[start:end] *= floor
             bed[end:end+back] *= floor+(1-floor)*(.5-.5*np.cos(np.linspace(0,np.pi,back)))
+        sound_marks = list(sound_marks)
+        marker_ducks = []
+        envelope = np.ones(frames, dtype='float32')
+        floor = 10**(-4/20)
+        for mark in sound_marks:
+            if mark['kind'] != 'marker_stroke':
+                continue
+            at = float(mark['at'])
+            hit = round(at*self.rate)
+            if not 0 <= hit < frames:
+                continue
+            start = max(0, hit-round(.025*self.rate))
+            hold = min(frames, hit+round(.16*self.rate))
+            end = min(frames, hold+round(.14*self.rate))
+            curve = np.concatenate((np.linspace(1, floor, hit-start, endpoint=False),
+                                    np.full(hold-hit, floor), np.linspace(floor, 1, end-hold)))
+            envelope[start:end] = np.minimum(envelope[start:end], curve)
+            marker_ducks.append(dict(at=at, gain_db=-4))
+        bed *= envelope
         mixed = voice+bed
         applied = []
         library = sfx_library or {}
@@ -287,6 +306,8 @@ class EpisodeAudioMixer:
             gain = float(event.get('gain',.30))
             if kind not in SFX_KINDS or not 0 <= at < duration or not 0 < gain <= 1:
                 raise ValueError('音效类型、时间或增益无效')
+            if kind in {'marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll'}:
+                gain = min(.78, max(.62, gain))
             if kind in library:
                 src_key = ('custom', str(library[kind]))
                 if src_key not in sfx_cache:
@@ -318,7 +339,7 @@ class EpisodeAudioMixer:
             levels = post.normalize_lufs(raw,output/'mix.wav',self.target_lufs)
         if abs(levels['measured_lufs']-self.target_lufs) > .8 or levels['true_peak_dbtp'] > -1.:
             raise ValueError('母带响度或真峰值未达标')
-        report = {**levels,'sound_marks':applied,'mix':'mix.wav','bed':'bed-only.wav'}
+        report = {**levels,'sound_marks':applied,'marker_bed_ducks':marker_ducks,'mix':'mix.wav','bed':'bed-only.wav'}
         (output/'audio-mix-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
         return report
 

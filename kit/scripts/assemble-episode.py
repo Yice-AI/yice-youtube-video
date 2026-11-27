@@ -569,7 +569,8 @@ def _spatial_sound_marks(sp_spec, span):
     def add(kind, rel_t, gain=0.32):
         t = float(rel_t)
         if 0.0 <= t < span - 0.04:
-            cues.append((round(t, 4), kind, gain))
+            key_gains = {'marker_stroke': .74, 'card_thock': .70, 'shutter_whip': .68, 'counter_roll': .66}
+            cues.append((round(t, 4), kind, key_gains.get(kind, gain)))
 
     swiss = (sp_spec.get('stage_look') or data.get('stage_look')) == 'swiss_paper'
     land = 'card_thock' if swiss else 'pop'
@@ -594,7 +595,8 @@ def _spatial_sound_marks(sp_spec, span):
     elif recipe == 'progressive_sim_cards':
         for idx, card in enumerate(data.get('cards') or []):
             cat = float(card.get('at', 0.12 + idx * 0.65))
-            add(land, cat, 0.34)
+            if card.get('reveal', True):
+                add(land, cat, 0.34)
             if card.get('kind') == 'race_bars':
                 add('counter_roll' if swiss else 'chime', cat + 0.36, 0.26)
     elif recipe == 'step_tree_focus':
@@ -779,6 +781,9 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
                   'camera_moves','visual_mode','look','shutter','page_region','case_tag','case_windows','stage_look','semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme','transition_in')
         row = stage.shots[-1]
         row.update({field:shot[field] for field in fields if field in shot},id=key,stage_mode=mode)
+        if mode == 'hyperframes_block' and sp_recipe == 'triptych_curtain':
+            row['curtain_source_hashes'] = [file_fingerprint(root / src)['sha256']
+                                            for src in sp_spec['data']['videos']]
         if mode == 'hyperframes_block' and sp_look:
             row['stage_look'] = sp_look
         if mode == 'onetake_clip' and shot.get('onetake_spec', {}).get('stage_look') == 'cinema_black':

@@ -8,7 +8,15 @@ if (heading) {
 cards.forEach((card, i) => {
   const cfg = (data.cards || [])[i] || {};
   const at = typeof cfg.at === 'number' ? cfg.at : 0.12 + i * 0.65;
-  tl.fromTo(card,
+  if (data.board) {
+    if (cfg.reveal !== false) {
+      const panel = card.querySelector('.sim-panel');
+      tl.fromTo(panel, { filter: 'saturate(.4) brightness(.8)', scale: .96 },
+        { filter: 'saturate(1) brightness(1)', scale: 1, duration: .24, ease: 'expo.out' }, at);
+      tl.fromTo(card.querySelector('.sim-label'), { color: '#ff4d1c', x: 10 },
+        { color: '#111215', x: 0, duration: .45, ease: 'power2.out', immediateRender: false }, at);
+    }
+  } else tl.fromTo(card,
     { y: 26, z: -40, scale: 0.9, opacity: 0 },
     { y: 0, z: 0, scale: 1, opacity: 1, duration: 0.2, ease: 'expo.out' },
     at);
@@ -42,7 +50,7 @@ cards.forEach((card, i) => {
 tl.fromTo(cam, { x: 0, y: 4, z: -14, ry: 0 }, { x: 0, y: 0, z: 12, ry: 0, duration: dur, ease: 'sine.out', onUpdate: applyCamera }, 0);
 
 // Keep the revealed evidence centered until the next card needs its column.
-if (root.dataset.stageLook === 'swiss_paper' && cards.length > 1) {
+if (root.dataset.stageLook === 'swiss_paper' && !data.board && cards.length > 1) {
   const row = q('.sim-row');
   const shiftFor = i => row.clientWidth / 2 - (cards[0].offsetLeft + cards[i].offsetLeft + cards[i].offsetWidth) / 2;
   tl.set(cards, { x: shiftFor(0) }, 0);

@@ -647,16 +647,22 @@ class EditorialStage:
                 body = group('rise',body)
                 audio = 'pop'
             elif style == 'editorial_punch':
-                if not label.strip() or _text_units(label) > 18:
-                    raise ValueError('影院结论需使用一行短标题')
+                lines = overlay.get('lines', [label])
+                if not isinstance(lines, list) or not 1 <= len(lines) <= 2 or any(
+                        not isinstance(line, str) or not line.strip() or _text_units(line) > 15 for line in lines):
+                    raise ValueError('影院结论需要一至两行短标题')
                 color = overlay.get('accent', '#FF4D1C')
                 if color not in {'#FF4D1C', '#0047FF'}:
                     raise ValueError('影院结论强调色须为信号橙或克莱因蓝')
-                size = min(112, max(96, int(1710 / max(1, _text_units(label)))))
-                body = (rect(0, 0, 1920, 1080, 'rgba(9,10,15,0.58)')
-                        + '<g class="punch-slam">'
-                        + txt(960, 570, label, size, '#FFFFFF', anchor='middle', weight=900)
-                        + rect(852, 608, 216, 6, color) + '</g>')
+                mid = 570 if len(lines) == 1 else 517
+                shade = f'punch-shade-{len(self.plates)}-{index}'
+                body = (rect(0, 0, 1920, 1080, 'rgba(0,0,0,0.62)')
+                        + f'<defs><radialGradient id="{shade}"><stop offset="35%" stop-opacity="0"/>'
+                          '<stop offset="100%" stop-opacity=".44"/></radialGradient></defs>'
+                        + rect(0, 0, 1920, 1080, f'url(#{shade})') + '<g class="punch-slam">'
+                        + ''.join(txt(960, mid+118*i, line, 116, '#FFFFFF', anchor='middle', weight=900)
+                                  for i, line in enumerate(lines))
+                        + rect(852, mid+118*(len(lines)-1)+36, 216, 6, color) + '</g>')
                 audio = 'card_thock'
             elif style == 'hero_punch':
                 if not label.strip():

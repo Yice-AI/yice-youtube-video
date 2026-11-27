@@ -319,3 +319,69 @@ def test_multi_case_wall_counts_visible_time_once_per_case():
     assert gate['ok'] and gate['shares']=={'甲':.3,'乙':.2}
     wall['case_windows'][0]['start']=.8
     assert case_monotony_gate([wall],10)['missing']==['wall']
+
+def test_curtains_use_distinct_sources_in_each_85_second_window(tmp_path):
+    from importlib import import_module
+    from audit_v7 import case_monotony_gate
+    fingerprint = import_module('assemble-episode').file_fingerprint
+    def wall(at, names):
+        hashes = []
+        for index, name in enumerate(names):
+            path = tmp_path / f'{at}-{index}.mp4'
+            path.write_bytes(name.encode())
+            hashes.append(fingerprint(path)['sha256'])
+        return dict(id=str(at), start=at, end=at+2, case_tag=str(at), curtain_source_hashes=hashes)
+    a, b, c = wall(0, 'abc'), wall(14, 'def'), wall(50, 'ghi')
+    assert case_monotony_gate([a, b], 85)['ok']
+    assert not case_monotony_gate([a, wall(14, 'cde')], 85)['ok']
+    assert not case_monotony_gate([a, b, c], 85)['ok']
+    assert case_monotony_gate([a, b, wall(85, 'abc')], 90)['ok']
+
+
+def test_director_two_lines_and_bento_count(tmp_path, materials):
+    from kit.spatial.block import build
+    from kit.editorial.editorial import EditorialStage
+    _, gsap = materials
+    video = tmp_path/'wall.mp4'
+    video.write_bytes(b'fixture')
+    spec = dict(id='intro', duration=3, recipe='triptych_curtain',
+                data=dict(videos=[video.name]*3, words=[dict(text='第一行',at=0,line=1),
+                                                        dict(text='第二行',at=.2,line=2)]))
+    page = build(spec,tmp_path,tmp_path/'intro',gsap).read_text()
+    assert '第一行</span><br><span class="display-word">第二行' in page
+    spec.update(recipe='progressive_sim_cards',data=dict(board=True,cards=[
+        dict(source=video.name,label=str(i),at=i*.4) for i in range(3)]))
+    page = build(spec,tmp_path,tmp_path/'board',gsap).read_text()
+    assert 'class="sim-row board"' in page and '"board": true' in page
+    stage = EditorialStage('intro',duration=3)
+    stage.add_callout_rig(0,3,video.name,overlays=[dict(kind='editorial_punch',at=.1,lines=['全程 0 元','订阅费'])])
+    plate = ''.join(stage.plates)
+    assert '全程 0 元' in plate and '订阅费' in plate and 'radialGradient' in plate
+    spec.update(recipe='logo_bento_stage', data=dict(expected_items=5, modules=[
+        dict(category='文件',items=['A']),dict(category='投屏',items=['B','C']),dict(category='短片',items=['D','E'])]))
+    assert build(spec,tmp_path,tmp_path/'five',gsap).is_file()
+    spec['data']['modules'][-1]['items'].pop()
+    with pytest.raises(ValueError,match='工具总数'):
+        build(spec,tmp_path,tmp_path/'four',gsap)
+
+
+def test_physical_marks_and_marker_bed_duck(tmp_path):
+    import numpy as np
+    import soundfile as sf
+    from kit.editorial.audio_mix import EpisodeAudioMixer
+    rate = 24000
+    t = np.arange(rate*3)/rate
+    tone = tmp_path/'tone.wav'
+    sf.write(tone,.17*np.sin(2*np.pi*300*t),rate)
+    mixer = EpisodeAudioMixer(sample_rate=rate)
+    kwargs = dict(duration=3,voice_tracks=[dict(path=tone)],bgm=[tone])
+    mixer.mix(output=tmp_path/'plain',**kwargs)
+    names = ['marker_stroke','card_thock','shutter_whip','counter_roll']
+    result = mixer.mix(output=tmp_path/'marks',sound_marks=[
+        dict(kind=k,at=.5+i*.5,gain=.30) for i,k in enumerate(names)],**kwargs)
+    before,_ = sf.read(tmp_path/'plain/bed-only.wav')
+    after,_ = sf.read(tmp_path/'marks/bed-only.wav')
+    interval = slice(int(.52*rate),int(.64*rate))
+    assert 20*np.log10(np.linalg.norm(after[interval])/np.linalg.norm(before[interval])) == pytest.approx(-4,abs=.02)
+    assert np.array_equal(before[rate:],after[rate:])
+    assert all(.62 <= mark['gain'] <= .78 for mark in result['sound_marks'])
