@@ -4,6 +4,7 @@ import json
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -171,7 +172,7 @@ def resolve_gsap_runtime(explicit=None, *, root=None, environ=None):
     return None
 
 
-def load_environment(environ=None):
+def load_environment(environ=None, *, kaggle_voice=False):
     environ = os.environ if environ is None else environ
     home = Path(environ.get("HOME", str(Path.home()))).expanduser()
     config = home / ".config/yice-video/env"
@@ -205,11 +206,20 @@ def load_environment(environ=None):
     workspace = path(environ.get("YICE_WORKSPACE") or values.get("YICE_WORKSPACE") or home / "Documents/Codex/个人IP")
     toolkit = path(environ.get("YICE_TOOLKIT") or values.get("YICE_TOOLKIT") or workspace / "claude-code-video-toolkit")
     dotenv = toolkit / ".env"
-    endpoints = {f"MODAL_{service}_ENDPOINT_URL" for service in ("QWEN3_TTS", "FLUX2", "MUSIC_GEN", "LTX2")} | {"KAGGLE_TTS_ENDPOINT_URL", "KAGGLE_TTS_TOKEN"}
+    kaggle_keys = {"KAGGLE_TTS_ENDPOINT_URL", "KAGGLE_TTS_TOKEN"}
+    endpoints = {f"MODAL_{service}_ENDPOINT_URL" for service in ("QWEN3_TTS", "FLUX2", "MUSIC_GEN", "LTX2")} | kaggle_keys
     stock_keys = {"PEXELS_API_KEY", "PIXABAY_API_KEY"}
-    for env_file, allowed in ((dotenv, endpoints | stock_keys), (home / ".config/yice-video/stock.env", stock_keys)):
-        if env_file.is_file():
-            for line in env_file.read_text(encoding="utf-8").splitlines():
+    private = home / ".config/yice-youtube-video/kaggle-tts.env"
+    files = [(dotenv, endpoints | stock_keys), (home / ".config/yice-video/stock.env", stock_keys)]
+    if kaggle_voice:
+        files.insert(0, (private, kaggle_keys))
+    for env_file, allowed in files:
+        if not env_file.is_file():
+            continue
+        with env_file.open(encoding="utf-8") as assignments:
+            if env_file == private and stat.S_IMODE(os.fstat(assignments.fileno()).st_mode) != 0o600:
+                continue
+            for line in assignments:
                 key, sep, raw = line.strip().removeprefix("export ").partition("=")
                 if sep and key.strip() in allowed:
                     parts = shlex.split(raw, comments=True)
@@ -281,7 +291,7 @@ def main():
                "review.py": ("YICE_REVIEW_PYTHON", "tts-venv")}
     if len(sys.argv) < 2 or sys.argv[1] not in runners:
         raise SystemExit('内部入口：workspace.py ' + '|'.join(runners) + ' [参数]')
-    workspace, toolkit = load_environment()
+    workspace, toolkit = load_environment(kaggle_voice=sys.argv[1] in {"voice.py", "voice-repair.py"})
     variable, venv = runners[sys.argv[1]]
     python = os.environ.get(variable) or str(toolkit / "local" / venv / "bin/python")
     env = {**os.environ, "YICE_WORKSPACE": str(workspace), "YICE_TOOLKIT": str(toolkit)}

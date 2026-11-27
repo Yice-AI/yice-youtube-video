@@ -1,6 +1,6 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v13.0。大众真痛点方法论树口播、0.18s 逐词卡点干脆动效、16:9 横屏 3D 视频墙、自适应防爆框门禁、内置 21 款真实动作音效与 5 首公有领域节奏型 BGM 曲库。适用于旁白、真实录屏、分镜、成片和返修。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v13.0。大众真痛点方法论树口播、0.18s 逐词卡点干脆动效、16:9 横屏 3D 视频墙、自适应防爆框门禁、内置 19 款真实动作音效与 5 首公有领域节奏型 BGM 曲库。适用于旁白、真实录屏、分镜、成片和返修。
 ---
 
 # 一策 YouTube 视频制作 v13.0
@@ -23,7 +23,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v13.0�
 
 清单声明 `episode_kind: "tool_tutorial"`。**严禁写自嗨假场景（如虚构新品发布会路演）或「第 1 个工具…第 5 个工具…」说明书式报菜名！** 动笔必须走三步老练叙事：① **普通人真痛点 + 反常识钩子**（周报述职、方案改字、不用抽卡/零订阅费，前 10–12 秒给足两段 `≥ 5s` 完整 16:9 高光成品 + `hero_punch` 毛玻璃大字重锤，严禁不到 3 秒硬切代码提交列表）；② **一套傻瓜选型决策树主线**（先用 `progressive_sim_cards` 立住 3 个体感优势，再用 `logo_bento_stage` 与 `step_tree_focus` 按交付对象分类，把工具挂在方法论分支上当论据）；③ **字到画到的 `0.18s` 干脆动效 + 全画幅实操**（子卡片 `at` 精确绑死配音词级时间戳，急停落定不慢飘；整页 PPT/网页实录锁死 `1.00 → 1.03` 全画幅不裁边字，仅在点击局部按钮时聚焦；终端录屏角标自动避让右上角）。
 
-内置 **5 首公有领域节奏型 BGM**（`"bgm": ["builtin:forward-drive", "builtin:city-groove", "builtin:focus-minimal", "builtin:bright-step", "builtin:calm-tech"]`）与 **21 款专业真实动作音效**（`kit/assets/sfx/`），所有空间与快门配方自动按子元素落位时点触发 `pop / click / whoosh / impact / chime` 真实音效，支持重点句 `music_drops` 停顿留白。
+内置 **5 首公有领域节奏型 BGM**（`"bgm": ["builtin:forward-drive", "builtin:city-groove", "builtin:focus-minimal", "builtin:bright-step", "builtin:calm-tech"]`）与 **19 款专业真实动作音效**（`kit/assets/sfx/`），所有空间与快门配方自动按子元素落位时点触发 `pop / click / whoosh / impact / chime` 真实音效，支持重点句 `music_drops` 停顿留白。
 
 目标每镜 4–6 秒，全片均值 ≤ 6.5 秒。满屏占实录时长至少 70%，斜框占全片至多 15%，带框镜头不能相邻。多贴图与视频墙配方均使用独立 3D 空间运动并通过 v10/v12 审计；平面静态拼贴仍会拦截。
 

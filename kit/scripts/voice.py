@@ -19,7 +19,7 @@ from pathlib import Path
 
 from workspace import load_environment, load_voice_reference, valid_whisper_directory
 
-WORKSPACE, TOOLKIT = load_environment()
+WORKSPACE, TOOLKIT = load_environment(kaggle_voice=True)
 
 
 def write_json(path, data):

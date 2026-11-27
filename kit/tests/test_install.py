@@ -81,6 +81,31 @@ class EnvironmentTests(unittest.TestCase):
                 load_environment({'HOME': tmp})
             self.assertFalse(marker.exists())
 
+    def test_private_kaggle_config_is_voice_only_and_respects_exported_values(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            private = home / '.config/yice-youtube-video/kaggle-tts.env'
+            private.parent.mkdir(parents=True)
+            private.write_text('KAGGLE_TTS_TOKEN=private\nKAGGLE_TTS_ENDPOINT_URL=private-url\n'
+                               'PEXELS_API_KEY=unrelated\n')
+            private.chmod(0o600)
+            (home / '.env').write_text('KAGGLE_TTS_ENDPOINT_URL=legacy-url\n')
+            base = {'HOME': tmp, 'YICE_TOOLKIT': tmp}
+            env = {**base, 'KAGGLE_TTS_TOKEN': 'explicit'}
+            load_environment(env, kaggle_voice=True)
+            self.assertEqual(env['KAGGLE_TTS_TOKEN'], 'explicit')
+            self.assertEqual(env['KAGGLE_TTS_ENDPOINT_URL'], 'private-url')
+            self.assertNotIn('PEXELS_API_KEY', env)
+            for mode, voice, expected in ((0o600, True, 'private'), (0o600, False, None),
+                                          (0o644, True, None)):
+                with self.subTest(mode=mode, voice=voice):
+                    private.chmod(mode)
+                    env = dict(base)
+                    load_environment(env, kaggle_voice=voice)
+                    self.assertEqual(env.get('KAGGLE_TTS_TOKEN'), expected)
+                    if expected is None:
+                        self.assertEqual(env['KAGGLE_TTS_ENDPOINT_URL'], 'legacy-url')
+
     def test_stock_keys_respect_exported_environment_and_file_order(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)

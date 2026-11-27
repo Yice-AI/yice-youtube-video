@@ -20,6 +20,8 @@ bash kit/scripts/voice.sh episode/script.md --output episode/voice \
   --anchors episode/anchors.json --seeds 42,43
 ```
 
+Kaggle 配音凭据可保存在 `$HOME/.config/yice-youtube-video/kaggle-tts.env`，每行填写一个 `KAGGLE_TTS_ENDPOINT_URL` 或 `KAGGLE_TTS_TOKEN` 赋值。配音入口只读取权限为 `0600` 的该文件。显式环境变量优先，其次读取该文件，再读取工具包的 `.env`。
+
 v7.2 默认 `long_paragraph` 按中文句末分为优先 65–115 字的自然段。已授权 Kaggle 用异步提交和轮询，配音保持 `1.000×` 原速。`natural_v7` 保留自然呼吸，拼缝以 −68 dBFS 室温底噪托底并用半余弦过渡。历史制品如需复现 `1.08` 提速及超过 `250ms` 的呼吸缩到 `150ms`，使用 `--profile legacy --speed 1.08`。
 
 `--skip-post` 只跳过初始后期，检测及后续修复仍正常运行。内部生成子进程仅输出原音，可装配清单由完整检测流程签发。
