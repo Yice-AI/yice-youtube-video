@@ -12,10 +12,14 @@ TEMPLATE=Path(__file__).parents[1]/'template'
 class AutoSfxTests(unittest.TestCase):
     def test_skill_reports_bundled_audio_file_count(self):
         kit = TEMPLATE.parent
-        count = len(list((kit / 'assets/sfx').glob('*.mp3')))
+        folder = kit / 'assets/sfx'
+        audio_files = {f.name for f in folder.iterdir() if f.suffix in {'.mp3', '.wav'}}
+        listed = {entry['file'] for entry in json.loads((folder/'manifest.json').read_text()).values()}
+        self.assertEqual(listed, audio_files, '请在音效清单登记所有已打包的录音')
+        count = len(audio_files)
         descriptions = re.findall(r'(\d+) 款(?:专业)?真实动作音效', (kit.parent / 'SKILL.md').read_text())
         self.assertTrue(descriptions, '请在 Skill 说明中标明内置音效数量')
-        self.assertEqual(set(descriptions), {str(count)}, '请按内置 MP3 文件数更新 Skill 说明')
+        self.assertEqual(set(descriptions), {str(count)}, '请按内置音效文件数更新 Skill 说明')
 
     def node(self,body,data=None):
         code=f"import fs from 'node:fs';import path from 'node:path';import {{execFileSync}} from 'node:child_process';import * as s from {json.dumps((TEMPLATE/'auto-sfx.mjs').as_uri())};import * as audio from {json.dumps((TEMPLATE/'audio.mjs').as_uri())};const input=JSON.parse(fs.readFileSync(0,'utf8'));"+body

@@ -17,7 +17,7 @@ def composition_motion(source, declared=None):
     recipe = re.search(r'<[a-zA-Z][^<>]*?\sdata-spatial-recipe=[\'"]([\w-]+)', source)
     process_recipes = (
         'literal_action_stage', 'roadmap_thread_camera',
-        'step_tree_focus', 'progressive_sim_cards', 'formula_pill_chain',
+        'step_tree_focus', 'progressive_sim_cards', 'formula_pill_chain', 'kinetic_title_bridge',
     )
     process = recipe and recipe[1] in process_recipes
     native_action = re.search(r'OM\.(?:shake|spring|gather|morphRect|zoomThrough)\(|SKETCH\.', scripts)
@@ -202,7 +202,7 @@ def spatial_measurements(shots, project):
     return results
 
 
-LIGHT_STAGE_LOOKS = {'editorial_paper', 'paper'}
+LIGHT_STAGE_LOOKS = {'editorial_paper', 'paper', 'swiss_paper'}
 SCROLL_STAGE_LOOKS = {'scroll_paper'}
 ULTRAMARINE_STAGE_LOOKS = {'ultramarine'}
 
@@ -325,6 +325,16 @@ def spatial_frame_gates(shots, duration, measured, required):
                 tone_families[key] = 'light'
                 if required and (not bg.get('n') or bg['luma'] < 185):
                     dark.append(dict(shot=key,phase=frame['phase'],reason='dim_editorial_paper_background',luma=bg.get('luma')))
+            elif effective_look == 'cinema_black' and frame.get('recipe') == 'split_wipe_compare':
+                tone_families[key] = 'dark'
+                if frame.get('backdrop') != 'rgb(9, 10, 15)' or frame.get('fullComparison') != [True, True]:
+                    dark.append(dict(shot=key,phase=frame['phase'],reason='incomplete_cinema_comparison'))
+            elif effective_look == 'cinema_black' and frame.get('recipe') == 'triptych_curtain':
+                tone_families[key] = 'dark'
+                columns = frame.get('curtainColumns', [])
+                if (frame.get('backdrop') != 'rgb(9, 10, 15)' or len(columns) != 3
+                        or any(not c['decoded'] or c['width'] < 637 or c['height'] < 1077 for c in columns)):
+                    dark.append(dict(shot=key, phase=frame['phase'], reason='incomplete_cinema_curtain'))
             elif effective_look in SCROLL_STAGE_LOOKS:
                 tone_families[key] = 'light'
                 if required and (not bg.get('n') or bg['luma'] < 115):
@@ -356,7 +366,8 @@ def spatial_frame_gates(shots, duration, measured, required):
         ratios[mode] = data['seconds']/duration if duration else 0
         if required and (data['count']<minimum or ratios[mode]+1e-8<share):
             violations.append(dict(engine=mode,minimum_count=minimum,minimum_ratio=share))
-    if required and len(set(tone_families.values())) > 1:
+    editorial_mix = any(_shot_stage_look(shot) == 'swiss_paper' for shot in shots)
+    if required and len(set(tone_families.values())) > 1 and not editorial_mix:
         dark.append(dict(reason='inconsistent_stage_tone',tones=tone_families))
     from collections import Counter
     dominant = {key:Counter(bands).most_common(1)[0][0] for key,bands in accents.items()}

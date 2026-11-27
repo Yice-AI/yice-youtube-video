@@ -2,7 +2,7 @@
 
 ## 0. 主脑导演 × 执行机房协作铁律
 
-- **主脑导演（Gemini Neon / Claude 等顶级模型）**：负责选题包装、选定整片唯一调性母版（`cyber_glass` 暗黑玻璃 或 `editorial_paper` / `scroll_paper` 暖米白编辑部）、去 AI 腔口播定稿、审看 `showcase-candidates.jpg` 挑高光原片、撰写 `image2` 生图提示词、编写 `episode-manifest.json`（调用内建 18 套 `spatial_spec` / `onetake_spec` 模具，**禁止手写一次性简陋 HTML 页面**），并在渲染后**亲眼逐张审看关键帧与早中晚动作图墙**。
+- **主脑导演（Gemini Neon / Claude 等顶级模型）**：负责选题包装、按作品展示和讲解段落选择影院暗场、瑞士暖白画布、去 AI 腔口播定稿、审看 `showcase-candidates.jpg` 挑高光原片、撰写 `image2` 生图提示词、编写 `episode-manifest.json`（调用内建 18 套 `spatial_spec` / `onetake_spec` 模具，**禁止手写一次性简陋 HTML 页面**），并在渲染后**亲眼逐张审看关键帧与早中晚动作图墙**。
 - **执行机房（Codex / 后台命令行）**：仅执行无审美自由度的确定性任务——运行采集、配音、抠图、温控压片（`workers=2, nice=10`）与 `audit-v3.sh --v10` 门禁检查，不得擅自修改视觉样式或用白底文字截图凑数。
 
 ---
@@ -36,6 +36,6 @@
 
 - **原速克隆配音**：`$KIT/scripts/voice.sh`（默认 `--backend kaggle --speed 1.0` 或本机离线 MLX，保留自然呼吸与短句 `captions.json`；严禁未授权调用 Modal）。
 - **HyperFrames + Onetake 双擎声明式模具**：
-  - `hyperframes_block`（11 套内建 `spatial_spec`）：原生嵌入可寻帧 `<video>`，涵盖 `perspective_video_fan`、`logo_bento_stage`、`cutout_parallax_stage`、`documentary_ken_burns`、`step_tree_focus`、`progressive_sim_cards`、`formula_pill_chain`、`carousel_3d_select`、`layer_explode_3d`、`roadmap_thread_camera`、`literal_action_stage`；
+  - `hyperframes_block`（13 套内建 `spatial_spec`）：原生嵌入可寻帧 `<video>`，涵盖 `triptych_curtain`、`kinetic_title_bridge`、`perspective_video_fan`、`logo_bento_stage`、`cutout_parallax_stage`、`documentary_ken_burns`、`step_tree_focus`、`progressive_sim_cards`、`formula_pill_chain`、`carousel_3d_select`、`layer_explode_3d`、`roadmap_thread_camera`、`literal_action_stage`；
   - `onetake_clip`（7 套内建 `onetake_spec`）：视频源自动预解 24fps 确定性帧序列配合 `180°` 真实快门模糊，涵盖 `split_wipe_compare`（`center_scan` / `diagonal_wipe` / `quad_race`）、`handdrawn_sketch_stage`（8fps 铅笔水彩微抖 / Riso 半调）、`duplicate_laser_sweep`、`bitmap_lock_glitch`、`energy_roadmap_dive`、`live_control_sync`、`capsule_archive_seal`。
 - **声学母带与终审**：`EpisodeAudioMixer` 校准至 `-14.5 ± 0.8 LUFS`、`≤ -1.0 dBTP`；浅底舞台自动切 `caption-on-light` 烟熏深色胶囊字幕；终审运行 `$KIT/scripts/audit-v3.sh --v10`。

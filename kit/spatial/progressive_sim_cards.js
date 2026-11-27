@@ -40,3 +40,15 @@ cards.forEach((card, i) => {
 });
 
 tl.fromTo(cam, { x: 0, y: 4, z: -14, ry: 0 }, { x: 0, y: 0, z: 12, ry: 0, duration: dur, ease: 'sine.out', onUpdate: applyCamera }, 0);
+
+// Keep the revealed evidence centered until the next card needs its column.
+if (root.dataset.stageLook === 'swiss_paper' && cards.length > 1) {
+  const row = q('.sim-row');
+  const shiftFor = i => row.clientWidth / 2 - (cards[0].offsetLeft + cards[i].offsetLeft + cards[i].offsetWidth) / 2;
+  tl.set(cards, { x: shiftFor(0) }, 0);
+  cards.slice(1).forEach((card, index) => {
+    const i = index + 1;
+    const at = data.cards[i].at ?? (.12 + i * .65);
+    tl.to(cards, { x: shiftFor(i), duration: .18, ease: 'power3.out' }, at);
+  });
+}

@@ -118,10 +118,21 @@ async function measure(page, {entry,seconds}) {
           }
         }
       }
-      const root = document.querySelector('[data-composition-id]');
+      const root = document.querySelector('[data-composition-id]') || document.body;
+      const backdrop = root?.dataset?.onetakeRecipe === 'split_wipe_compare' ? root.querySelector('.compare-stage') : root;
       return {
         phase, overlaps, containerOverflows, cards, titles, stations,
         stageLook: root?.dataset?.stageLook || null,
+        recipe: root?.dataset?.spatialRecipe || root?.dataset?.onetakeRecipe || null,
+        fullComparison: Array.from(root?.querySelectorAll('.compare-stage canvas') || [], canvas => {
+          const bounds = canvas.getBoundingClientRect();
+          return bounds.width >= 1918 && bounds.height >= 1078 && canvas.width >= 1918;
+        }),
+        backdrop: backdrop ? getComputedStyle(backdrop).backgroundColor : null,
+        curtainColumns: Array.from(root?.querySelectorAll('.curtain-panel video') || [], video => {
+          const bounds = video.parentElement.getBoundingClientRect();
+          return { width: bounds.width, height: bounds.height, decoded: video.videoWidth > 0 };
+        }),
         exploded: !!document.querySelector('[data-spatial-recipe="layer_explode_3d"]')
       };
     }, {phase,duration,syncVideos});

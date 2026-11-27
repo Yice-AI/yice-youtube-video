@@ -571,7 +571,13 @@ def _spatial_sound_marks(sp_spec, span):
         if 0.0 <= t < span - 0.04:
             cues.append((round(t, 4), kind, gain))
 
-    if recipe == 'perspective_video_fan':
+    swiss = (sp_spec.get('stage_look') or data.get('stage_look')) == 'swiss_paper'
+    land = 'card_thock' if swiss else 'pop'
+    if recipe == 'kinetic_title_bridge':
+        add('marker_stroke', data['underline_at'])
+    elif recipe == 'triptych_curtain':
+        add('shutter_whip', 0.02)
+    elif recipe == 'perspective_video_fan':
         add('whoosh', 0.04, 0.30)
         focus_at = float(data.get('focus_at', span * 0.42))
         add('click', focus_at, 0.34)
@@ -581,23 +587,23 @@ def _spatial_sound_marks(sp_spec, span):
     elif recipe == 'logo_bento_stage':
         for idx, mod in enumerate(data.get('modules') or []):
             mat = float(mod.get('at', 0.12 + idx * 0.28))
-            add('pop', mat, 0.32)
+            add(land, mat, 0.32)
             for j, it in enumerate(mod.get('items') or []):
                 if isinstance(it, dict) and isinstance(it.get('at'), (int, float)):
                     add('click', it['at'], 0.30)
     elif recipe == 'progressive_sim_cards':
         for idx, card in enumerate(data.get('cards') or []):
             cat = float(card.get('at', 0.12 + idx * 0.65))
-            add('pop', cat, 0.34)
+            add(land, cat, 0.34)
             if card.get('kind') == 'race_bars':
-                add('chime', cat + 0.36, 0.26)
+                add('counter_roll' if swiss else 'chime', cat + 0.36, 0.26)
     elif recipe == 'step_tree_focus':
         for idx, br in enumerate(data.get('branches') or []):
             bat = float(br.get('at', 0.12 + idx * 1.1))
-            add('pop', bat, 0.32)
+            add(land, bat, 0.32)
             for ch in (br.get('children') or []):
                 if isinstance(ch.get('at'), (int, float)):
-                    add('click', ch['at'], 0.28)
+                    add('marker_stroke' if swiss else 'click', ch['at'], 0.28)
         for step in (data.get('focus_sequence') or [])[1:]:
             if isinstance(step.get('at'), (int, float)):
                 add('whoosh', step['at'], 0.28)
@@ -612,7 +618,7 @@ def _spatial_sound_marks(sp_spec, span):
         add('impact', sel, 0.34)
     elif recipe == 'layer_explode_3d':
         add('whoosh', span * 0.22, 0.32)
-        add('chime', span * 0.52, 0.26)
+        add('counter_roll' if 'count_at' in data else 'chime', data.get('count_at', span * 0.52), 0.26)
     elif recipe == 'roadmap_thread_camera':
         for idx, st in enumerate(data.get('steps') or []):
             add('pop', float(st.get('at', 0.15 + idx * 0.8)), 0.30)
@@ -748,7 +754,7 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
                 stage.add_sound_mark(sfx_kind, a + rel_t, gain=sfx_gain)
             sp_look = sp_spec.get('stage_look') or (sp_spec.get('data') or {}).get('stage_look')
             sp_recipe = sp_spec.get('recipe')
-            if sp_look in {'editorial_paper', 'scroll_paper', 'paper'} or (
+            if sp_look in {'swiss_paper', 'editorial_paper', 'scroll_paper', 'paper'} or (
                 sp_look is None and sp_recipe in {'cutout_parallax_stage', 'documentary_ken_burns', 'step_tree_focus', 'progressive_sim_cards', 'logo_bento_stage'}
             ):
                 stage.light_zones.append((a, b))
@@ -770,9 +776,13 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
             del stage.light_zones[zone_count:]
             stage.light_zones.extend(caption_light_zones(folder/assets[0],start,a,b))
         fields = ('anchor_cue_id','anchor_cue_start','anchor_text','spoken_topic','visual_subject',
-                  'camera_moves','visual_mode','look','shutter','page_region','semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme','transition_in')
+                  'camera_moves','visual_mode','look','shutter','page_region','case_tag','case_windows','stage_look','semantic_binding','binding','semantic_tags','spoken_entity','topic_kind','media_start','callback_of','theme','transition_in')
         row = stage.shots[-1]
         row.update({field:shot[field] for field in fields if field in shot},id=key,stage_mode=mode)
+        if mode == 'hyperframes_block' and sp_look:
+            row['stage_look'] = sp_look
+        if mode == 'onetake_clip' and shot.get('onetake_spec', {}).get('stage_look') == 'cinema_black':
+            row['stage_look'] = 'cinema_black'
         if 'overlays' in shot:
             row['overlays'] = overlays
         if auxiliary:
@@ -921,6 +931,10 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
                   for i,path in enumerate(audio.get('voice_processing_logs',[]))]
     timeline = dict(end=duration,shots=global_shots,cues=list(cues.values()),voice_tracks=voice_files,
                     voice_processing_logs=voice_logs,sound_marks=mix['sound_marks'],music_drops=audio.get('music_drops',[]))
+    if 'semantic_alignment' in raw:
+        ledger = locate(root, raw['semantic_alignment'])
+        timeline['semantic_alignment'] = json.loads(ledger.read_text())
+        write(output/'semantic-alignment.json', timeline['semantic_alignment'])
     if 'episode_kind' in raw:
         timeline['episode_kind'] = raw['episode_kind']
     if 'custom_entities' in raw:

@@ -14,10 +14,11 @@ RECIPES = (
     'carousel_3d_select', 'layer_explode_3d', 'roadmap_thread_camera', 'literal_action_stage',
     'perspective_video_fan', 'logo_bento_stage', 'cutout_parallax_stage',
     'documentary_ken_burns', 'step_tree_focus', 'progressive_sim_cards', 'formula_pill_chain',
+    'kinetic_title_bridge', 'triptych_curtain',
 )
 ACTIONS = ('bad_slides_pileup', 'dead_image_locked', 'slot_lock_fill', 'folder_pack_outro')
-LIGHT_LOOKS = {'editorial_paper', 'scroll_paper'}
-STAGE_LOOKS = {'cyber_glass', 'editorial_paper', 'scroll_paper', 'ultramarine'}
+LIGHT_LOOKS = {'editorial_paper', 'scroll_paper', 'swiss_paper'}
+STAGE_LOOKS = LIGHT_LOOKS | {'cyber_glass', 'ultramarine', 'cinema_black'}
 
 
 def number(value, low, high, name):
@@ -63,6 +64,10 @@ def _default_look(recipe, data):
         return explicit
     if recipe == 'cutout_parallax_stage':
         return 'scroll_paper'
+    if recipe == 'kinetic_title_bridge':
+        return 'swiss_paper'
+    if recipe == 'triptych_curtain':
+        return 'cinema_black'
     if recipe in ('documentary_ken_burns', 'step_tree_focus', 'progressive_sim_cards', 'logo_bento_stage'):
         return 'editorial_paper'
     if recipe == 'formula_pill_chain':
@@ -119,14 +124,15 @@ def build(spec, source_dir, output, gsap):
         except Exception:
             return False
 
-    def media_tag(source, *, cls='', style=''):
+    def media_tag(source, *, cls='', style='', loop=False):
         nonlocal video_counter
         name, is_video = media_asset(source, allow_video=True)
         cls_attr = f' class="{cls}"' if cls else ''
         if is_video:
             video_counter += 1
             vid_id = f'{ident}-v{video_counter}'
-            return (f'<video id="{vid_id}"{cls_attr} src="{name}" muted playsinline preload="auto" '
+            playback = 'loop ' if loop else ''
+            return (f'<video id="{vid_id}"{cls_attr} src="{name}" {playback}muted playsinline preload="auto" '
                     f'data-start="0" data-duration="{duration}" '
                     f'style="width:100%;height:100%;object-fit:cover;{style}"></video>')
         style_attr = f' style="{style}"' if style else ''
@@ -154,7 +160,25 @@ def build(spec, source_dir, output, gsap):
     bg_extra = ''
     overlay = ''
 
-    if recipe == 'carousel_3d_select':
+    if recipe in ('triptych_curtain', 'kinetic_title_bridge'):
+        words = items('words', 1, 8)
+        for word in words:
+            number(word['at'], 0, duration - .14, '标题入场时间')
+        lettering = ''.join(f'<span class="display-word">{label(w["text"])}</span>' for w in words)
+        header_html = ''
+        if recipe == 'triptych_curtain':
+            panels = []
+            for source in items('videos', 3, 3):
+                if Path(source).suffix.lower() not in VIDEO_EXTS:
+                    raise ValueError('开场幕布每一列都需要动态视频')
+                panels.append(f'<div class="curtain-panel">{media_tag(source, loop=True)}</div>')
+            body = f'<div class="curtain-wall">{"".join(panels)}</div><div class="curtain-title">{lettering}</div>'
+        else:
+            number(duration, 1.2, 1.8, '划线过场时长')
+            number(data['underline_at'], 0, duration - .18, '划线时间')
+            body = (f'<div class="bridge-title">{lettering}<svg viewBox="0 0 1000 35" preserveAspectRatio="none">'
+                    '<path pathLength="1" d="M5 23 Q300 9 605 14 T990 10"/></svg></div>')
+    elif recipe == 'carousel_3d_select':
         images = items('images', 5, 12)
         selected = data['selected_index']
         if type(selected) is not int or not 0 <= selected < len(images):
@@ -406,7 +430,10 @@ def build(spec, source_dir, output, gsap):
                     f'<div class="sim-bar-track"><div class="sim-bar-fill is-fast"></div></div></div></div>'
                 )
             else:
-                panel = f'<div class="sim-panel is-media">{media_tag(card["source"])}</div>'
+                zoom = number(card.get('zoom', 1), 1, 3, '卡片微距倍率')
+                x, y = (number(card.get(axis, 50), 0, 100, '微距焦点') for axis in ('focus_x', 'focus_y'))
+                crop = f'transform:scale({zoom});transform-origin:{x}% {y}%' if zoom != 1 else ''
+                panel = f'<div class="sim-panel is-media">{media_tag(card["source"], style=crop, loop=True)}</div>'
             cards_html.append(f'<article class="sim-card" data-spatial-subject>{panel}<div class="sim-label">{label(card["label"])}</div></article>')
         body = f'<div class="sim-row">{"".join(cards_html)}</div>'
     elif recipe == 'formula_pill_chain':
@@ -457,7 +484,7 @@ def build(spec, source_dir, output, gsap):
         'selected_index', 'select_at', 'count', 'count_at', 'focus_step', 'action',
         'focus_index', 'focus_at', 'counter', 'focal_from',
         'focal_to', 'split_at', 'branches', 'focus_sequence', 'reveal_at',
-        'card_aspect', 'punch_at',
+        'card_aspect', 'punch_at', 'words', 'underline_at',
     )
     settings_data = {key: data[key] for key in keep_keys if key in data}
     if 'modules' in data:

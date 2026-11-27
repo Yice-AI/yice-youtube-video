@@ -93,5 +93,25 @@
     "file": "whoosh.mp3",
     "duration": 0.57,
     "description": "Punchy whoosh/impact — fast reveal or hard transition accent. Sync to the motion."
+  },
+  "marker_stroke": {
+    "file": "marker_stroke.wav",
+    "duration": 0.25,
+    "description": "马克笔纸面摩擦，落笔与收笔"
+  },
+  "card_thock": {
+    "file": "card_thock.wav",
+    "duration": 0.23,
+    "description": "厚卡纸落桌的低频木质共振"
+  },
+  "shutter_whip": {
+    "file": "shutter_whip.wav",
+    "duration": 0.31,
+    "description": "机械快门双击与短空气声"
+  },
+  "counter_roll": {
+    "file": "counter_roll.wav",
+    "duration": 0.34,
+    "description": "减速齿轮与计数器棘爪"
   }
 }

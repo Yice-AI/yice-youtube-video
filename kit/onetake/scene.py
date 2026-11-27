@@ -153,6 +153,8 @@ def build(spec, source_dir, output):
         shared = '<script src="sketch_brush.js"></script>\n'
     body = re.sub(r'@@([A-Z_]+)@@', lambda m: values[m[1]], (HERE / f'{recipe}.html').read_text())
     entry = output / 'comp.html'
+    cinema = spec.get('stage_look') == 'cinema_black' and recipe == 'split_wipe_compare'
+    stage_attrs = ' data-stage-look="cinema_black" data-onetake-recipe="split_wipe_compare"' if cinema else ''
     entry.write_text('<!doctype html><html lang="zh"><meta charset="utf-8"><style>\n' + styles
-                     + '\n</style><body>\n' + shared + body + '\n</body></html>\n')
+                     + f'\n</style><body{stage_attrs}>\n' + shared + body + '\n</body></html>\n')
     return entry

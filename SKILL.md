@@ -1,36 +1,40 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v13.0。大众真痛点方法论树口播、0.18s 逐词卡点干脆动效、16:9 横屏 3D 视频墙、自适应防爆框门禁、内置 19 款真实动作音效与 5 首公有领域节奏型 BGM 曲库。适用于旁白、真实录屏、分镜、成片和返修。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v14.0。用全屏三联动态幕布展示作品，用瑞士暖白画布讲方法，逐句核对实录反例、可编辑操作与跨行业案例。支持 23 款真实动作音效、5 首节奏型配乐、字幕与成片审计。
 ---
 
-# 一策 YouTube 视频制作 v13.0
+# 一策 YouTube 视频制作 v14.0
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。
 
-先按[五拍叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)排口播、镜头形态与跨镜承接，再按[一手高光素材与代码造画母法](references/02-一手高光素材与代码造画母法.md)打通 `.mp4` 真动态视频贴图与三套代码造画配方。整片统一选用 `cyber_glass`（暗黑玻璃，13–16px 胶囊标状态）或 `editorial_paper` / `scroll_paper`（暖米白画布，自动切换深色胶囊字幕）其中之一贯穿全片。
+先按[五拍叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)排口播、镜头形态与跨镜承接，再按[一手高光素材与代码造画母法](references/02-一手高光素材与代码造画母法.md)打通 `.mp4` 真动态视频贴图与三套代码造画配方。作品与操作用全屏暗场，方法拆解、选型与过场切到 `swiss_paper` 暖白点阵、黑色硬框和信号橙或克莱因蓝。
 
 ## 导演 × 机房分工与新题三层防翻车铁律
 
 1. **角色死边界（锁死审美下限，严禁手搓一次性丑页面）**
-   - **主脑导演（Gemini Neon / Claude 等顶级模型）**：独占全部审美与叙事决策——① 定整片唯一调性母版（`cyber_glass` 或 `editorial_paper` 二选一锁死到底）；② 写去 AI 腔口播稿；③ 审看 `showcase-candidates.jpg` 挑高光原片，为无现成画面的段落撰写 `image2` 生图提示词；④ 编写 `episode-manifest.json`（优先直接调用内建 11 套 `spatial_spec` + 7 套 `onetake_spec` 成品模具，**严禁让执行端临时手写简陋 HTML/CSS 页面**）；⑤ 成片产出后**必须亲眼逐张打开抽帧/动作条图片核验**，不盲信脚本 JSON 通过。
+   - **主脑导演（Gemini Neon / Claude 等顶级模型）**：独占全部审美与叙事决策——① 给作品演示与方法拆解分别指定影院和瑞士编辑画布；② 写去 AI 腔口播稿；③ 审看 `showcase-candidates.jpg` 挑高光原片，为无现成画面的段落撰写 `image2` 生图提示词；④ 编写 `episode-manifest.json`（优先直接调用内建 13 套 `spatial_spec` + 7 套 `onetake_spec` 成品模具，**严禁让执行端临时手写简陋 HTML/CSS 页面**）；⑤ 成片产出后**必须亲眼逐张打开抽帧/动作条图片核验**，不盲信脚本 JSON 通过。
    - **执行机房（Codex / 后台任务）**：仅承担零审美自由度的确定性苦力——运行 `harvest-showcase-media.sh` 抓片、`voice.sh` 原速配音、`record-web-cam.sh` 深色实操录屏、`cutout.sh` 抠图、`assemble-episode.sh` 温控压片（`workers=2, nice=10`）与 `audit-v3.sh --v10` 门禁检查，**严禁擅自改动色板、字号、版式或自造静态字卡凑数**。
 2. **换任何新主题的三层素材兜底漏斗（期期必有高光画面）**
    - **第一层（有公开炫酷演示的新模型/视觉工具）**：先跑 `harvest-showcase-media.sh --rank-highlights` 无损抓取 `*.github.io` 论文项目页、官网发布站、GitHub/X 原生高清 `.mp4`（非 16:9 自动合成 `blur_dark` 同源模糊暗底），自动剔除白底文字死页并切出 4.5s 最高分动态切片，喂入 `perspective_video_fan`、`split_wipe_compare` 或 `formula_pill_chain`。
    - **第二层（官网朴素的干货工具/命令行插件）**：严禁傻滚白底文档凑时长！只录最核心的深色真实操作闭环（输入 → 执行 → 结果交互，占 30%–55%），其余优势对比与流程拆解一律套用 `progressive_sim_cards`（`1% vs 100%` 实时进度 + 动态小窗）、`step_tree_focus`（连线逐笔生长 + 焦点在 `① → ② → ①` 动态跳转）、`layer_explode_3d` 或 `handdrawn_sketch_stage`。
    - **第三层（零现成视频的抽象观点/故事/历史机制）**：直接启用 `image2` + 代码造画三公式——`cutout_parallax_stage`（白底生图抠图 + 4px 奶油剪纸白边 + 三层视差卷轴 + 烟尘粒子 + 实时计步）、`documentary_ken_burns`（16:9 艺术大图 2.5D 慢推摇飘金粉 + 一图拆三卡局部解剖）、`handdrawn_sketch_stage`（8fps 铅笔水彩微抖 / Riso 半调网点），凭空造出纪录片级动态画面。
 
-## 工具教程与老练叙事铁律（v13.0）
+亮场桥 `kinetic_title_bridge` 使用 1.2–1.8 秒、按口播触发的 `words: [{text, at}]` 与马克笔 `underline_at`。三联幕布声明 `videos` 三个本地视频；`progressive_sim_cards` 的卡片用 `source`、`zoom` 与百分比 `focus_x/focus_y` 录到局部操作。划线、厚卡落位、切幕与数字翻滚使用 `marker_stroke`、`card_thock`、`shutter_whip`、`counter_roll`。
 
-清单声明 `episode_kind: "tool_tutorial"`。**严禁写自嗨假场景（如虚构新品发布会路演）或「第 1 个工具…第 5 个工具…」说明书式报菜名！** 动笔必须走三步老练叙事：① **普通人真痛点 + 反常识钩子**（周报述职、方案改字、不用抽卡/零订阅费，前 10–12 秒给足两段 `≥ 5s` 完整 16:9 高光成品 + `hero_punch` 毛玻璃大字重锤，严禁不到 3 秒硬切代码提交列表）；② **一套傻瓜选型决策树主线**（先用 `progressive_sim_cards` 立住 3 个体感优势，再用 `logo_bento_stage` 与 `step_tree_focus` 按交付对象分类，把工具挂在方法论分支上当论据）；③ **字到画到的 `0.18s` 干脆动效 + 全画幅实操**（子卡片 `at` 精确绑死配音词级时间戳，急停落定不慢飘；整页 PPT/网页实录锁死 `1.00 → 1.03` 全画幅不裁边字，仅在点击局部按钮时聚焦；终端录屏角标自动避让右上角）。
+v14 清单为每镜填写 `case_tag`，并以 `semantic_alignment` 引用逐镜台账（`shot_id, start, end, quote, evidence, case_tag`）。同镜轮播或并列多个作品时用 `case_windows: [{tag,start,end}]` 记录镜内可见区间。审计按作品合并重叠时间并检查占比不超过 30%，逐镜核对口播、时间与画面物证。导演连看确认反例对应现场操作、开场不出现终端、每次换场有新的信息。
 
-内置 **5 首公有领域节奏型 BGM**（`"bgm": ["builtin:forward-drive", "builtin:city-groove", "builtin:focus-minimal", "builtin:bright-step", "builtin:calm-tech"]`）与 **19 款专业真实动作音效**（`kit/assets/sfx/`），所有空间与快门配方自动按子元素落位时点触发 `pop / click / whoosh / impact / chime` 真实音效，支持重点句 `music_drops` 停顿留白。
+## 工具教程与老练叙事铁律（v14.0）
+
+清单声明 `episode_kind: "tool_tutorial"`。**严禁写自嗨假场景（如虚构新品发布会路演）或「第 1 个工具…第 5 个工具…」说明书式报菜名！** 动笔必须走三步老练叙事：① **普通人真痛点 + 反常识钩子**（周报述职、方案改字、不用抽卡/零订阅费，开场用 `triptych_curtain` 三列成品动态幕布，需要结论时用 `editorial_punch` 压暗背景并落下无框白字，严禁不到 3 秒硬切代码提交列表）；② **一套傻瓜选型决策树主线**（先用 `progressive_sim_cards` 立住 3 个体感优势，再用 `logo_bento_stage` 与 `step_tree_focus` 按交付对象分类，把工具挂在方法论分支上当论据）；③ **字到画到的 `0.18s` 干脆动效 + 全画幅实操**（子卡片 `at` 精确绑死配音词级时间戳，急停落定不慢飘；整页 PPT/网页实录锁死 `1.00 → 1.03` 全画幅不裁边字，仅在点击局部按钮时聚焦；终端录屏角标自动避让右上角）。
+
+内置 **5 首公有领域节奏型 BGM**（`"bgm": ["builtin:forward-drive", "builtin:city-groove", "builtin:focus-minimal", "builtin:bright-step", "builtin:calm-tech"]`）与 **23 款专业真实动作音效**（`kit/assets/sfx/`），所有空间与快门配方自动按子元素落位时点触发 `pop / click / whoosh / impact / chime` 真实音效，支持重点句 `music_drops` 停顿留白。
 
 目标每镜 4–6 秒，全片均值 ≤ 6.5 秒。满屏占实录时长至少 70%，斜框占全片至多 15%，带框镜头不能相邻。多贴图与视频墙配方均使用独立 3D 空间运动并通过 v10/v12 审计；平面静态拼贴仍会拦截。
 
 ## 制片入口
 
 0. **定题与破圈包装（动笔前必做）。** 未定题或冷启动选品时，按 [破圈选题与包装铁律](references/00-破圈选题与包装铁律.md) 执行「小号高倍黑马库 × 本人真实底牌库 × 第 1 秒视觉炸场度」三圈交叉筛选，用五维提案卡供拍板。**先定高点击标题与封面构图，第 0–5 秒直接甩最终惊艳成品立住信任。**
-1. **五拍拆稿定证据。** 依[本机 Skill 协同表](references/01-高留存叙事与三态画面铁律.md#本机-skill-协同表)用 hyperframes-creative 排证据顺序、humanizer-zh 审口播、cheat-score 查钩子。动效与物理接力优先直接填写 v12.0 内建 `spatial_spec`（11 套空间配方）与 `onetake_spec`（7 套快门配方）。每句注明要证明的事实、实际画面主体、语义绑定和首字锚点。
+1. **五拍拆稿定证据。** 依[本机 Skill 协同表](references/01-高留存叙事与三态画面铁律.md#本机-skill-协同表)用 hyperframes-creative 排证据顺序、humanizer-zh 审口播、cheat-score 查钩子。动效与物理接力优先直接填写 v12.0 内建 `spatial_spec`（13 套空间配方）与 `onetake_spec`（7 套快门配方）。每句注明要证明的事实、实际画面主体、语义绑定和首字锚点。
 2. **按主体找素材与代码造画。** 以下入口均在 `kit/scripts/`，保留素材来源和可复查的时间窗。
    - 本机实操用 `rec-demo.sh` 或常驻录屏师，保留连续操作。
    - 公开网页、文档与开源仓库用 `record-web-cam.sh` 录制深色高倍率画面。
@@ -61,7 +65,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v13.0�
 
 所有时间用秒。镜头 `start`、`end`、旁白 `at` 和 `firstCharTime` 以全片起点为零。`overlays[].at` 是镜内相对时间。素材路径相对清单解析。
 
-用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成 30 fps 分镜草稿（轮换 HyperFrames v12 空间配方、Onetake v12 过程配方和满屏实录）。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`aurora_indigo`、`paper_cool` 或 `paper_warm`，并在双擎 spec 中统一 `stage_look`（`cyber_glass` 或 `editorial_paper` / `scroll_paper`）。
+用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成 30 fps 分镜草稿（轮换 HyperFrames v12 空间配方、Onetake v12 过程配方和满屏实录）。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`aurora_indigo`、`paper_cool` 或 `paper_warm`，并按作品展示或方法拆解选择 `stage_look`。
 
 `gsap` 是可选覆盖项，省略时自动发现本机 GSAP。
 

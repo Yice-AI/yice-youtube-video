@@ -646,6 +646,18 @@ class EditorialStage:
                     body += txt(x+24+inset,y+65,sublabel,22,MUTED,attrs='data-layout-ignore'+sub_fit)
                 body = group('rise',body)
                 audio = 'pop'
+            elif style == 'editorial_punch':
+                if not label.strip() or _text_units(label) > 18:
+                    raise ValueError('影院结论需使用一行短标题')
+                color = overlay.get('accent', '#FF4D1C')
+                if color not in {'#FF4D1C', '#0047FF'}:
+                    raise ValueError('影院结论强调色须为信号橙或克莱因蓝')
+                size = min(112, max(96, int(1710 / max(1, _text_units(label)))))
+                body = (rect(0, 0, 1920, 1080, 'rgba(9,10,15,0.58)')
+                        + '<g class="punch-slam">'
+                        + txt(960, 570, label, size, '#FFFFFF', anchor='middle', weight=900)
+                        + rect(852, 608, 216, 6, color) + '</g>')
+                audio = 'card_thock'
             elif style == 'hero_punch':
                 if not label.strip():
                     raise ValueError('重锤大字需要文字')
@@ -756,9 +768,10 @@ class EditorialStage:
                         beats.append(at+delay)
             if style == 'verdict_stamp':
                 self.add_stamp_slam(plate,begin)
-            if style == 'hero_punch':
+            if style in {'hero_punch', 'editorial_punch'}:
+                snap = .14 if style == 'editorial_punch' else .20
                 self.scripts.append(f"tl.fromTo('#{plate} .punch-slam',{{scale:1.12,opacity:0}},"
-                                    f"{{scale:1,opacity:1,duration:{min(.20,hold):.5f},"
+                                    f"{{scale:1,opacity:1,duration:{min(snap,hold):.5f},"
                                     f"transformOrigin:'960px 460px',ease:'expo.out',immediateRender:false}},{begin:.5f});")
             if style in {'prop_badge','reaction_cutout'}:
                 ease = 'back.out(1.4)' if foreground else 'back.out(1.35)'

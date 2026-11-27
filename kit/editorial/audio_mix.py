@@ -71,11 +71,13 @@ def action_mark(kind: str, at: float) -> dict[str, object]:
 
 SFX_KINDS = {
     'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser',
+    'marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll',
     'click', 'impact', 'chime', 'ping', 'typing', 'keypress', 'sparkle', 'whoosh_cinematic',
 }
 
 ASSETS_DIR = Path(__file__).resolve().parents[1] / 'assets'
 BUNDLED_SFX_MAP = {
+    **{kind: f'{kind}.wav' for kind in ('marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll')},
     'pop': 'pop.mp3',
     'click': 'click.mp3',
     'tick': 'key-press.mp3',

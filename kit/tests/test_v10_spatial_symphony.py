@@ -278,3 +278,44 @@ def test_v13_widescreen_fan_adaptive_stamp_and_bundled_audio(tmp_path):
         sound_marks=[{'kind': 'pop', 'at': 0.2}, {'kind': 'click', 'at': 0.6}, {'kind': 'impact', 'at': 1.4}],
     )
     assert len(res['sound_marks']) == 3 and abs(res['measured_lufs'] + 14.5) <= 0.8
+
+
+def test_editorial_cinema_recipes_and_local_media(tmp_path, materials):
+    from audit_v7 import case_monotony_gate, semantic_match_ledger
+    pictures, gsap = materials
+    clip = tmp_path/'example.mp4'
+    clip.write_bytes(b'video element fixture')
+    sample = dict(id='scene', duration=1.4, recipe='kinetic_title_bridge',
+                  data=dict(words=[dict(text='按交付选', at=.1)], underline_at=.3))
+    bridge = build(sample,tmp_path,tmp_path/'bridge',gsap).read_text()
+    assert 'data-stage-look="swiss_paper"' in bridge and 'strokeDashoffset' in bridge
+    sample.update(recipe='triptych_curtain',data=dict(videos=[clip.name]*3,words=[dict(text='成品',at=0)]))
+    curtain = build(sample,tmp_path,tmp_path/'curtain',gsap).read_text()
+    assert curtain.count('<video id=') == 3 and 'data-stage-look="cinema_black"' in curtain
+    sample['data']['videos'][1] = pictures[0]
+    with pytest.raises(ValueError,match='动态视频'):
+        build(sample,tmp_path,tmp_path/'invalid',gsap)
+
+    shots = [dict(id=str(i), start=i, end=i+1, anchor_cue_id=str(i), case_tag=str(i),
+                  visual_subject='双击修改数字', spoken_topic='数字能改') for i in range(4)]
+    rows = [dict(shot_id=s['id'],start=s['start'],end=s['end'],case_tag=s['case_tag'],
+                 quote=s['spoken_topic'],evidence=s['visual_subject']) for s in shots]
+    timeline = dict(shots=shots, cues=[dict(id=s['id'], text=s['spoken_topic']) for s in shots],
+                    semantic_alignment=rows)
+    assert case_monotony_gate(shots,4)['ok'] and semantic_match_ledger(timeline)['ok']
+    shots[1]['case_tag'] = '0'
+    assert not case_monotony_gate(shots,4)['ok'] and not semantic_match_ledger(timeline)['ok']
+    shots[1]['case_tag'] = '1'
+    timeline['cues'][0]['text'] = '点击后整张图片移动'
+    assert semantic_match_ledger(timeline)['invalid'] == ['0']
+
+
+def test_multi_case_wall_counts_visible_time_once_per_case():
+    from audit_v7 import case_monotony_gate
+    wall = dict(id='wall', start=0, end=3, case_tag='对照',
+                case_windows=[dict(tag='甲',start=0,end=3),dict(tag='甲',start=1,end=2),
+                              dict(tag='乙',start=1,end=3)])
+    gate = case_monotony_gate([wall],10)
+    assert gate['ok'] and gate['shares']=={'甲':.3,'乙':.2}
+    wall['case_windows'][0]['start']=.8
+    assert case_monotony_gate([wall],10)['missing']==['wall']

@@ -227,3 +227,35 @@ STAGE .chain-badge{position:absolute;left:22px;top:20px;padding:7px 16px;border-
 STAGE .media-aspect-box{position:relative;width:100%;height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#0b101b}
 STAGE .media-aspect-box img.media-aspect-bg{position:absolute;inset:-8%;width:116%;height:116%;object-fit:cover;filter:blur(26px) brightness(.38) saturate(1.15);opacity:.9;pointer-events:none}
 STAGE .media-aspect-box img.media-aspect-fg{position:relative;inset:auto;width:94%;height:92%;object-fit:contain;z-index:2;border-radius:10px;filter:drop-shadow(0 18px 40px rgba(0,0,0,.62))}
+
+/* Swiss logic scenes alternate with full-frame cinema showcases. */
+STAGE[data-stage-look="swiss_paper"] {background:radial-gradient(#11121524 1.3px,transparent 1.5px) 0 0/24px 24px,#f5f4f0;color:#111215}
+STAGE[data-stage-look="cinema_black"] {background:#090a0f;color:white}
+STAGE:is([data-stage-look="swiss_paper"],[data-stage-look="cinema_black"]) :is(.stage-light,.bloom,.ambient-wires,.film-grain,.streak){visibility:hidden}
+STAGE[data-stage-look="swiss_paper"] > header:not(.sim-heading){display:none}
+STAGE[data-stage-look="swiss_paper"] :is(.sim-panel,.tree-branch,.tree-child,.bento-module,.bento-item){border:2.5px solid #111215;border-radius:0;background:#fff;color:#111215;box-shadow:5px 6px 0 #111215}
+STAGE[data-stage-look="swiss_paper"] :is(.sim-heading,.sim-label,.bento-title,.bento-module h2){color:#111215;text-shadow:none}
+STAGE[data-stage-look="swiss_paper"] :is(.sim-heading span,.tree-branch.is-focused){color:#0047ff}
+STAGE[data-stage-look="swiss_paper"] .tree-link{stroke:#ff4d1c}
+STAGE[data-stage-look="swiss_paper"] .sim-row{left:96px;right:96px;gap:32px;align-items:center}
+STAGE[data-stage-look="swiss_paper"] .sim-card{max-width:none}
+STAGE[data-stage-look="swiss_paper"] .sim-panel.is-media{width:100%;height:390px;padding:0;overflow:hidden}
+STAGE .curtain-wall{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+STAGE .curtain-panel{overflow:hidden;background:#090a0f}
+STAGE .curtain-panel::after{content:"";position:absolute;inset:0;background:#090a0f22;pointer-events:none}
+STAGE .curtain-panel{position:relative}
+STAGE :is(.curtain-title,.bridge-title){position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);white-space:nowrap;font:900 120px/1.1 "Spatial Sans",sans-serif;letter-spacing:-.045em;text-align:center}
+STAGE .curtain-title{color:white;text-shadow:0 2px 15px #0007}
+STAGE .bridge-title{color:#111215;font-size:150px}
+STAGE .display-word{display:inline-block}
+STAGE .bridge-title svg{position:absolute;top:104%;left:0;width:100%;height:33px;fill:none;stroke:#ff4d1c;stroke-width:14;stroke-linecap:round;stroke-dasharray:1}
+STAGE[data-stage-look="swiss_paper"] .bento-box{border:2.5px solid #111215;background:#fff;border-radius:0;box-shadow:6px 7px 0 #111215}
+STAGE[data-stage-look="swiss_paper"] .bento-brand-pill{display:none}
+STAGE[data-stage-look="swiss_paper"] :is(.bento-brand-title,.bento-item-name,.bento-cat,.bento-col[data-item-count="1"] .bento-item-name){color:#111215}
+STAGE[data-stage-look="swiss_paper"] .bento-item-badge{color:#0047ff;background:#e8edff;border:0}
+STAGE[data-stage-look="swiss_paper"] .sim-heading{display:flex;background:none;border:0;box-shadow:none;height:auto;font-size:56px;line-height:1.1;padding:0;top:94px;left:96px}
+STAGE[data-stage-look="swiss_paper"] > header.editorial-heading{display:block;left:96px;top:94px;color:#111215;background:none;border:0;box-shadow:none;height:auto;padding:0;font-size:56px;line-height:1.1}
+STAGE[data-stage-look="swiss_paper"] .bento-col:first-child .bento-box{background:#fff;border-color:#111215;color:#111215}
+STAGE[data-stage-look="swiss_paper"] .bento-col .bento-item{background:#fff;box-shadow:none;color:#111215}
+STAGE[data-stage-look="swiss_paper"] > header.bento-brand{display:flex;left:96px;top:70px}
+STAGE[data-spatial-recipe="triptych_curtain"] .curtain-wall::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(0deg,transparent 12%,#090a0f73 50%,transparent 85%)}

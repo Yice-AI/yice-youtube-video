@@ -33,3 +33,5 @@ All files are distributed under the [Pixabay Content License](https://pixabay.co
 - Redistribution as part of derivative works (such as videos rendered with HyperFrames)
 
 without any attribution requirement.
+
+v14 的 marker_stroke、card_thock、shutter_whip 和 counter_roll 为项目原创的 48 kHz 物理拟音。使用带通噪声、短瞬态和衰减共振合成，无第三方采样。

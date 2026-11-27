@@ -55,8 +55,8 @@ MOTION = {'explainer_clip', 'title_sequence', 'cold_open_ab', 'triptych_cards', 
           'onetake_clip', 'hyperframes_block'}
 REAL = {'callout_rig', 'cold_open_ab', 'fullbleed_rig', 'web_cam', 'real_video', 'stock_broll', 'reference_breakdown'}
 VERIFIED_OVERLAYS = {'spotlight_box','highlighter_sweep','hand_circle'}
-MOTION_OVERLAYS = {'stat_badge','strikethrough_list','verdict_stamp','corner_tag','prop_badge','reaction_cutout'} | VERIFIED_OVERLAYS
-SFX = {'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser', 'slap'}
+MOTION_OVERLAYS = {'editorial_punch','stat_badge','strikethrough_list','verdict_stamp','corner_tag','prop_badge','reaction_cutout'} | VERIFIED_OVERLAYS
+SFX = {'marker_stroke', 'card_thock', 'shutter_whip', 'counter_roll', 'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser', 'slap'}
 VIDEO_EXTENSIONS = {'.mp4','.m4v','.mov','.webm'}
 IMAGE_EXTENSIONS = {'.png','.jpg','.jpeg','.webp','.svg'}
 WHITEBOARD_ICONS = {'person','cat','network','doc','chat','bulb','check','cross','screen','stack','gear','target','clock','chart'}
@@ -860,7 +860,7 @@ def tutorial_workflow_gate(timeline):
     vocabulary = entity_vocabulary(timeline.get('custom_entities'))
     named, process, product = set(), [], []
     checked = timeline.get('capture_scores')
-    input_markers = r'输入.{0,8}(提示词|命令)|安装命令|终端执行|命令行执行|agent.{0,8}(执行|运行|生成过程)|type.{0,8}prompt|terminal command'
+    input_markers = r'输入.{0,8}(提示词|命令)|双击.{0,8}(改字|数字|图片)|拖动.{0,6}(图片|控制点)|点击.{0,8}(改色|配色)|安装命令|终端执行|命令行执行|agent.{0,8}(执行|运行|生成过程)|type.{0,8}prompt|terminal command'
     result_markers = r'交互|点击|拖[动拽]|编辑|操作成品|演示成品|interactive|click|drag|edit'
     for shot in shots:
         key = shot['id']
@@ -891,6 +891,73 @@ def tutorial_workflow_gate(timeline):
                 process_shots=process,product_shots=product,violations=violations)
 
 
+def case_monotony_gate(shots, duration):
+    seconds, missing = defaultdict(float), []
+    for shot in shots:
+        tag, span = shot.get('case_tag'), shot_span(shot)
+        if not isinstance(tag, str) or not tag.strip():
+            missing.append(shot['id'])
+            continue
+        windows = shot.get('case_windows', [dict(tag=tag, start=0, end=span)])
+        by_case = defaultdict(list)
+        if not isinstance(windows, list) or not windows:
+            missing.append(shot['id'])
+            continue
+        for window in windows:
+            if not isinstance(window, dict):
+                missing.append(shot['id'])
+                break
+            name, start, end = (window.get(k) for k in ('tag','start','end'))
+            if (not isinstance(name, str) or not name.strip()
+                    or any(type(t) not in (int, float) or not isfinite(t) for t in (start, end))
+                    or not 0 <= start < end <= span + .001):
+                missing.append(shot['id'])
+                break
+            by_case[name].append((start, min(end,span)))
+        # Concurrent panels count once per visible case, even when two panels show the same work.
+        for name, intervals in by_case.items():
+            last = 0.
+            for start, end in sorted(intervals):
+                seconds[name] += max(0, end - max(start, last))
+                last = max(last, end)
+        covered = 0.
+        for start, end in sorted(interval for values in by_case.values() for interval in values):
+            if start > covered + .001:
+                break
+            covered = max(covered, end)
+        if covered < span - .001:
+            missing.append(shot['id'])
+    shares = {key: value / duration for key, value in seconds.items()}
+    overused = [key for key, share in shares.items() if share > .30 + 1e-8]
+    return dict(ok=not (missing or overused), shares=shares, missing=sorted(set(missing)), overused=overused)
+
+
+def semantic_match_ledger(timeline):
+    shots = {shot['id']:shot for shot in timeline['shots']}
+    rows = timeline.get('semantic_alignment')
+    cues = {cue['id']: cue.get('text') for cue in timeline.get('cues', [])}
+    seen, invalid = set(), []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict) or not isinstance(row.get('shot_id'), str):
+            invalid.append('invalid_row')
+            continue
+        key = row['shot_id']
+        shot = shots.get(key)
+        if (not shot or key in seen or row.get('quote') != shot.get('spoken_topic')
+                or row.get('quote') != cues.get(shot.get('anchor_cue_id'))
+                or row.get('case_tag') != shot.get('case_tag')
+                or row.get('case_windows') != shot.get('case_windows')
+                or row.get('evidence') != shot.get('visual_subject')
+                or not str(row.get('evidence', '')).strip()
+                or any(type(row.get(k)) not in (int, float) or not isfinite(row[k]) for k in ('start','end'))
+                or abs(row['start'] - shot['start']) > .034
+                or abs(row.get('end', -1) - shot['end']) > .034):
+            invalid.append(key)
+        seen.add(key)
+    missing = sorted(shots.keys() - seen)
+    return dict(ok=not (invalid or missing), checked=len(seen), missing=missing, invalid=invalid)
+
+
 def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
     shots = timeline['shots']
     richness = visual_richness_gate(timeline,project,rendered)
@@ -902,6 +969,12 @@ def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
                   tutorial_workflow_gate=tutorial_workflow_gate(dict(timeline,capture_scores=richness['checked'])))
     if v10:
         from audit_spatial import capture_stage_backgrounds, spatial_frame_gates, spatial_measurements, subpage_repeats, three_mode_symphony_gate
+        editorial = any('case_tag' in shot or shot.get('stage_look') in {'swiss_paper', 'cinema_black'}
+                        or any(o.get('kind') == 'editorial_punch' for o in shot.get('overlays', []))
+                        for shot in shots)
+        if 'semantic_alignment' in timeline or editorial:
+            result['case_monotony_gate'] = case_monotony_gate(shots, duration)
+            result['semantic_match_ledger'] = semantic_match_ledger(timeline)
         result['quadrant_overlay_gate'] = quadrant_overlay_gate(shots,project)
         result.update(spatial_frame_gates(shots,duration,spatial_measurements(shots,project),
                                           result['tutorial_workflow_gate']['required']))
