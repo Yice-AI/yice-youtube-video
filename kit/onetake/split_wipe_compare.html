@@ -34,7 +34,7 @@
 <script>
 const D = @@DURATION@@;
 const CFG = @@CONFIG@@;
-window.__meta = { dur: D, fps: 30, w: 1920, h: 1080, beats: [D * 0.22, D * 0.56, D * 0.82] };
+window.__meta = { dur: D, fps: 30, w: 1920, h: 1080, beats: [D * 0.22, D * 0.42, D * 0.52, D * 0.56, D * 0.72, D * 0.82] };
 
 function loadMediaSlot(spec) {
   if (spec.type === 'video') {
@@ -144,7 +144,12 @@ window.__seek = t => {
 };
 
 window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.abs(b - a) * 260;
-window.__events = () => [{ t: D * 0.22, kind: 'wipe_sweep', gain: .64 }];
+window.__events = () => [
+  { t: D * .22, kind:'wipe_sweep', gain:.64 },
+  ...(mode === 'quad_race'
+    ? [{t:D*.52,kind:'ping',gain:.34}]
+    : (mode === 'diagonal_wipe' ? [.56] : [.42,.72]).map(f => ({t:D*f,kind:'page_flip',gain:.34})))
+];
 window.__ready = Promise.all([document.fonts.ready, loadMediaSlot(CFG.before), loadMediaSlot(CFG.after)])
   .then(([, a, b]) => { beforeSlot = a; afterSlot = b; window.__seek(0); });
 </script>

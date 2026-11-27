@@ -76,6 +76,7 @@ SFX_FAMILIES = {
     'punch': ('impact_bass_1', 'impact_bass_2'),
     'warning': ('error', 'glitch_1', 'glitch_2', 'glitch_3'),
     'wipe': ('whoosh_cinematic', 'whoosh_short', 'whoosh'),
+    'camera': ('zoom_swoosh', 'whoosh_short', 'whoosh'),
     'line': ('marker_stroke',),
     'card': ('card_thock', 'click_soft', 'pop'),
     'input': ('click', 'keypress', 'typing', 'counter_roll'),
@@ -88,11 +89,11 @@ BUNDLED_SFX_MAP = {k: (k+'.wav' if k in WAV_EFFECTS else k.replace('_','-')+'.mp
                    for family in SFX_FAMILIES.values() for k in family}
 BUNDLED_SFX_MAP.update(keypress='key-press.mp3', tick='key-press.mp3', marker='whoosh-short.mp3',
                        stamp='impact-bass-1.mp3', impact='impact-bass-1.mp3')
-ACTION_SOUNDS = {'punch_hit': 'punch', 'wipe_sweep': 'wipe', 'focus_reveal': 'reveal'}
+ACTION_SOUNDS = {'punch_hit': 'punch', 'wipe_sweep': 'wipe', 'camera_sweep': 'camera', 'focus_reveal': 'reveal'}
 SFX_KINDS = set(BUNDLED_SFX_MAP) | set(ACTION_SOUNDS)
-INTERACTION_SOUNDS = {'click':'click', 'soft_click':'click_soft', 'delete':'keypress', 'type':'typing',
+INTERACTION_SOUNDS = {'click':'click', 'soft_click':'click_soft', 'delete':'keypress', 'key_press':'keypress', 'type':'typing',
                       'confirm':'ping', 'error':'error', 'glitch':'glitch_1', 'locked':'ui_lock_bonk',
-                      'page_turn':'page_flip', 'paper_hit':'paper_slap', 'camera_zoom':'zoom_swoosh',
+                      'page_turn':'page_flip', 'page_flip':'page_flip', 'paper_hit':'paper_slap', 'paper_slap':'paper_slap', 'camera_zoom':'zoom_swoosh',
                       'counter_tick':'counter_roll', 'soft_impact':'impact_bass_2', 'line_draw':'marker_stroke'}
 
 

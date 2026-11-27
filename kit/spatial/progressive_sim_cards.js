@@ -62,6 +62,11 @@ if (root.dataset.stageLook === 'swiss_paper' && !data.board && cards.length > 1)
 }
 
 cards.forEach((card,i) => {
+  const pages = card.querySelectorAll('.sim-page');
+  (data.cards[i].pages || []).forEach((page,k) => {
+    tl.set(pages[k], {visibility:'visible'}, page.at);
+    if (k) tl.set(pages[k-1], {visibility:'hidden'}, page.at);
+  });
   const outlines = card.querySelectorAll('.panel-accents i');
   (data.cards[i].panel_accents || []).forEach((at,k) => {
     tl.fromTo(outlines[k], {opacity:1}, {opacity:0,duration:.28,immediateRender:false}, at);

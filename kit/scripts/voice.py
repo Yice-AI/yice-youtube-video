@@ -55,11 +55,14 @@ def extract_pronunciations(text):
     return pairs
 
 
+_TECH_LINE = re.compile(r"([一二两三四五六七八九十百千几多每单])行(代码|命令|安装|文字|提纲|脚本|指令|配置)")
+
+
 def apply_pronunciations(text, pronunciations=None):
     result = text
     for surface, reading in sorted((pronunciations or {}).items(), key=lambda item: -len(item[0])):
         result = result.replace(surface, reading)
-    return result
+    return _TECH_LINE.sub(r'\1航\2', result)
 
 
 def spoken(text):
@@ -194,12 +197,20 @@ def chapter_chunks(text, mode='long_paragraph'):
     if mode == 'whole_chapter':
         return [text]
 
+    clauses = re.split(r'(?<=[；;])(?=.)', text)
+    if len(clauses) > 1:
+        return [chunk for clause in clauses for chunk in chapter_chunks(clause, mode)]
     min_chars, max_chars, maximum = 65, 115, 5
     boundaries = [0, *(match.end() for match in re.finditer(r'[。！？]+[”’"）)]*', text))]
     if boundaries[-1] != len(text):
         boundaries.append(len(text))
-    if any(end - start > max_chars for start, end in zip(boundaries, boundaries[1:])):
-        raise ValueError('单句超过 115 字，请在自然停顿处补句末标点')
+    clause_ends = []
+    for start,end in zip(boundaries,boundaries[1:]):
+        if end-start>max_chars:
+            clause_ends.extend(start+m.end() for m in re.finditer(r'[，；：,;]+',text[start:end]))
+    boundaries=sorted(set(boundaries+clause_ends))
+    if any(end-start>max_chars for start,end in zip(boundaries,boundaries[1:])):
+        raise ValueError('单句超过 115 字，请在自然停顿处补标点')
 
     # Prefer the fewest short groups, then the fewest cuts.
     last = len(boundaries) - 1
@@ -448,7 +459,7 @@ def _write_wav_pcm24(target, samples, rate):
             wf.writeframes(raw)
 
 
-def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-68.):
+def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-68., safe_tail_ms=0):
     """用室温底噪连接长段，渐变衔接前导和尾音。"""
     import numpy as np
 
@@ -519,6 +530,11 @@ def _concat_wavs(paths, target, crossfade_ms=60, pauses=None, room_tone_dbfs=-68
             up = (1-np.cos(np.linspace(0, np.pi, fade)))[:, None] / 2
             bridge[-fade:] = bridge[-fade:]*(1-up) + piece[:fade]*up
         rendered = np.concatenate((rendered[:-tail_fade], bridge, piece[fade:]))
+    if safe_tail_ms:
+        missing = max(0, round(original_rate * safe_tail_ms / 1000) - tail_count)
+        if missing:
+            pad = room_tone(piece, original_rate, missing, dbfs=room_tone_dbfs)
+            rendered = np.concatenate((rendered, pad))
     preserve_room_floor(rendered,original_rate,room_tone_dbfs)
     _write_wav_pcm24(target, rendered, original_rate)
 
@@ -564,7 +580,7 @@ def generate_modal_job(job, brand, backend="modal"):
         path.write_bytes(data)
         raw.append(path)
     pauses = {int(k): v for k, v in job.get("pauses", {}).items()}
-    _concat_wavs(raw, target, pauses=pauses)
+    _concat_wavs(raw, target, pauses=pauses, safe_tail_ms=180)
     write_json(folder / "chunks.json", dict(texts=chunks, pauses=pauses, temperature=temperature, backend=backend, chunk_mode=mode))
     if not target.is_file() or target.stat().st_size <= 44:
         raise RuntimeError(f"{backend} 未生成有效 WAV：{target}")
@@ -604,6 +620,7 @@ def make_generator(brand, folder, reuse=None, backend="modal", candidates=3):
                 if hashlib.sha256(source.read_bytes()).hexdigest() != previous["sha256"]:
                     raise ValueError("候选缓存哈希不匹配")
                 shutil.copy2(source, target)
+                job['reused_sha256'] = previous['sha256']
                 chunk_dir = source.with_suffix(".chunks")
                 if chunk_dir.is_dir():
                     shutil.copytree(chunk_dir, target.with_suffix(".chunks"))
@@ -637,6 +654,94 @@ def resolve_asr_model(explicit=None):
     return "mlx-community/whisper-large-v3-turbo"
 
 
+def transcribe_in_sections(y, sr, recognize):
+    """在低能量停顿切章，恢复每个词在原音中的绝对时间。"""
+    import numpy as np
+    import soundfile as sf
+    hop, start, total = max(1, int(0.02 * sr)), 0, len(y)
+    segments, texts = [], []
+    while start < total:
+        remaining = total - start
+        if remaining / sr <= 25.0:
+            end = total
+        else:
+            lo, hi = start + int(15.8 * sr), min(total - hop, start + int(18.8 * sr))
+            quiet = [float(np.sqrt(np.mean(y[p:p + hop] ** 2))) < 10 ** (-45 / 20) for p in range(lo, hi, hop)]
+            best_len, best_mid, run_start = 0, None, None
+            for idx, is_q in enumerate(quiet + [False]):
+                if is_q and run_start is None:
+                    run_start = idx
+                elif not is_q and run_start is not None:
+                    if idx - run_start > best_len:
+                        best_len = idx - run_start
+                        best_mid = lo + ((run_start + idx) * hop) // 2
+                    run_start = None
+            if best_mid is not None and best_len >= 4:
+                end = best_mid
+            else:
+                rms = [float(np.sqrt(np.mean(y[p:p + hop * 2] ** 2))) for p in range(lo, hi, hop * 2)]
+                end = lo + int(np.argmin(rms)) * hop * 2 if rms else start + int(21.0 * sr)
+        with tempfile.NamedTemporaryFile(suffix=".wav") as tmp:
+            sf.write(tmp.name, y[start:end], sr)
+            chunk = recognize(tmp.name)
+        off = start / sr
+        texts.append(chunk.get("text", ""))
+        for seg in chunk.get("segments", []):
+            words = [dict(w, start=w["start"] + off, end=w["end"] + off) for w in seg.get("words", [])]
+            segments.append(dict(seg, start=seg["start"] + off, end=seg["end"] + off, words=words))
+        start = end
+    return dict(text="".join(texts), segments=segments)
+
+
+def kaggle_transcriber(folder):
+    endpoint = os.environ.get('KAGGLE_TTS_ENDPOINT_URL','').removesuffix('/').removesuffix('/tts')
+    token = os.environ.get('KAGGLE_TTS_TOKEN')
+    if urlsplit(endpoint).scheme != 'https' or not urlsplit(endpoint).hostname or not token:
+        raise ValueError('Kaggle 云端听写需要已配置的 HTTPS 端点与服务凭据')
+    folder=Path(folder)
+    def recognize(part):
+        pcm = Path(part).read_bytes()
+        digest = hashlib.sha256(pcm).hexdigest()
+        cached = folder / (digest + '-kaggle-section.json')
+        if cached.is_file():
+            return json.loads(cached.read_text())['transcript']
+        body = json.dumps({'audio':base64.b64encode(pcm).decode('ascii')}).encode()
+        request = urllib.request.Request(endpoint+'/asr',data=body,headers={
+            'Content-Type':'application/json','Authorization':'Bearer '+token})
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(request,timeout=150) as response:
+                    result=json.load(response)
+                break
+            except (urllib.error.URLError,OSError) as exc:
+                code = getattr(exc, 'code', None)
+                if attempt == 2 or code not in (None, 429, 502, 503, 504, 524):
+                    raise ValueError(f'Kaggle 云端听写失败（{code or type(exc).__name__}）') from None
+                time.sleep(2 ** attempt)
+        if not isinstance(result.get('segments'),list) or not result.get('text'):
+            raise ValueError('Kaggle 听写缺少逐词时间或文本')
+        folder.mkdir(parents=True,exist_ok=True)
+        write_json(cached,dict(sha256=digest,transcript=result))
+        return result
+
+    def transcribe(audio):
+        import soundfile as sf
+        sha=hashlib.sha256(Path(audio).read_bytes()).hexdigest()
+        path=folder/(sha+'-kaggle-large-v3.json')
+        if path.is_file():
+            return json.loads(path.read_text())['transcript']
+        if sf.info(audio).duration <= 25:
+            result = recognize(audio)
+        else:
+            samples, rate = sf.read(audio)
+            mono = samples.mean(axis=1) if samples.ndim > 1 else samples
+            result = transcribe_in_sections(mono, rate, recognize)
+        folder.mkdir(parents=True,exist_ok=True)
+        write_json(path,dict(sha256=sha,model='kaggle-large-v3',transcript=result))
+        return result
+    return transcribe
+
+
 def make_transcriber(model, prompt, folder):
     folder = Path(folder)
     def transcribe(audio):
@@ -664,42 +769,11 @@ def make_transcriber(model, prompt, folder):
                                            condition_on_previous_text=False,
                                            initial_prompt=prompt or None, temperature=0, word_timestamps=True, verbose=False)
         else:
-            import tempfile
-            hop, start, total = max(1, int(0.02 * sr)), 0, len(y)
-            segments, texts = [], []
-            while start < total:
-                remaining = total - start
-                if remaining / sr <= 25.0:
-                    end = total
-                else:
-                    lo, hi = start + int(15.8 * sr), min(total - hop, start + int(18.8 * sr))
-                    quiet = [float(np.sqrt(np.mean(y[p:p + hop] ** 2))) < 10 ** (-45 / 20) for p in range(lo, hi, hop)]
-                    best_len, best_mid, run_start = 0, None, None
-                    for idx, is_q in enumerate(quiet + [False]):
-                        if is_q and run_start is None:
-                            run_start = idx
-                        elif not is_q and run_start is not None:
-                            if idx - run_start > best_len:
-                                best_len = idx - run_start
-                                best_mid = lo + ((run_start + idx) * hop) // 2
-                            run_start = None
-                    if best_mid is not None and best_len >= 4:
-                        end = best_mid
-                    else:
-                        rms = [float(np.sqrt(np.mean(y[p:p + hop * 2] ** 2))) for p in range(lo, hi, hop * 2)]
-                        end = lo + int(np.argmin(rms)) * hop * 2 if rms else start + int(21.0 * sr)
-                with tempfile.NamedTemporaryFile(suffix=".wav") as tmp:
-                    sf.write(tmp.name, y[start:end], sr)
-                    chunk = mlx_whisper.transcribe(tmp.name, path_or_hf_repo=model, language="zh",
-                                                  condition_on_previous_text=False,
-                                                  initial_prompt=prompt or None, temperature=0, word_timestamps=True, verbose=False)
-                off = start / sr
-                texts.append(chunk.get("text", ""))
-                for seg in chunk.get("segments", []):
-                    words = [dict(w, start=w["start"] + off, end=w["end"] + off) for w in seg.get("words", [])]
-                    segments.append(dict(seg, start=seg["start"] + off, end=seg["end"] + off, words=words))
-                start = end
-            result = dict(text="".join(texts), segments=segments)
+            def recognize(part):
+                return mlx_whisper.transcribe(part, path_or_hf_repo=model, language="zh",
+                                              condition_on_previous_text=False, initial_prompt=prompt or None,
+                                              temperature=0, word_timestamps=True, verbose=False)
+            result = transcribe_in_sections(y, sr, recognize)
         if y is not None and sr > 0 and isinstance(result.get("segments"), list):
             clean_segs, clean_texts = [], []
             sil_amp = 10 ** (-44 / 20)
@@ -930,7 +1004,7 @@ def finish_chapter(chapter, raw, output, transcription, normalizations, silence,
     check_tool = load_voice_tool("voice-check")
     quality = load_voice_tool("voice-quality")
     natural = profile == 'natural_v7'
-    audit = quality.audit(chapter["text"], transcription, normalizations, asr_threshold, auto_homophone=natural)
+    audit = quality.audit(chapter["text"], transcription, normalizations, asr_threshold, auto_homophone=natural, pronunciations=chapter.get("pronunciations"))
     with wave.open(str(raw), "rb") as source:
         original_duration = source.getnframes() / source.getframerate()
     mapped, ratio, clamps = align_with_audit(chapter["text"], transcription, original_duration, audit)
@@ -1028,7 +1102,7 @@ def main():
                         help="每个语义句组的温度候选数，默认3")
     parser.add_argument("--chapters", help="只处理指定章号，如 00,01")
     parser.add_argument("--pause-after", action="append", help="在完整句组后留停顿，如 0-3=3.0")
-    parser.add_argument("--reuse-candidates", type=Path, help="显式哈希候选缓存；复跑时保留原始生成证据")
+    parser.add_argument("--reuse-candidates", type=Path, default=os.environ.get("YICE_VOICE_REUSE_CANDIDATES"), help="显式哈希候选缓存；复跑时保留原始生成证据")
     parser.add_argument("--max-repair-rounds", type=int, default=3)
     parser.add_argument("--generation-jobs", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--generate-only", action="store_true", help=argparse.SUPPRESS)
@@ -1093,7 +1167,8 @@ def main():
     write_json(output / "analysis/script-manifest.json", {"chapters": chapters})
     generate = make_generator(args.brand, output / "generation", args.reuse_candidates, args.backend, args.candidates)
     asr_cache = Path(os.environ["YICE_ASR_CACHE_DIR"]) if os.environ.get("YICE_ASR_CACHE_DIR") else (output / "analysis/asr")
-    transcribe = make_transcriber(resolve_asr_model(args.asr_model), args.asr_prompt, asr_cache)
+    transcribe = (kaggle_transcriber(asr_cache) if args.backend=='kaggle' else
+                  make_transcriber(resolve_asr_model(args.asr_model), args.asr_prompt, asr_cache))
     jobs = [dict(chapter=chapter["id"], text=chapter["text"], pronunciations=chapter.get("pronunciations") or {},
                  seed=seed, chunk_mode=args.chunk_mode,
                  path=str(output / "raw" / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
@@ -1127,15 +1202,17 @@ def main():
     failed = []
     for chapter in chapters:
         chapter_exceptions = normalization
-        if chapter.get("pronunciations"):
+        readings = {m[0]: m[1]+'航'+m[2] for m in _TECH_LINE.finditer(chapter['text'])}
+        readings.update(chapter.get('pronunciations') or {})
+        if readings:
             if any(k in {"number_unit", "english_name", "homophone"} for k in normalization):
                 chapter_exceptions = {k: dict(v) for k, v in normalization.items()}
                 chapter_exceptions.setdefault("homophone", {})
-                for surface, reading in chapter["pronunciations"].items():
+                for surface, reading in readings.items():
                     chapter_exceptions["homophone"].setdefault(surface, reading)
             else:
                 chapter_exceptions = dict(normalization)
-                for surface, reading in chapter["pronunciations"].items():
+                for surface, reading in readings.items():
                     chapter_exceptions.setdefault(surface, reading)
         result = flow.process_chapter(chapter, [job for job in jobs if job["chapter"] == chapter["id"]],
             output / "candidates" / chapter["id"], generate, transcribe, exceptions=chapter_exceptions,

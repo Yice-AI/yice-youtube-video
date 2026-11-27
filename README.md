@@ -43,3 +43,7 @@ env -i HOME="$HOME" PATH="$PATH" ./install.sh --check
 ## 许可
 
 自行编写的代码和文档使用 [MIT](LICENSE)。思源黑体、思源宋体、Source Code Pro 使用 SIL OFL 1.1；Registry 组件来自 [heygen-com/hyperframes（Apache-2.0）](https://github.com/heygen-com/hyperframes/blob/main/LICENSE)；`onetake` 桥接调用遵循其本地安装许可。详见 [NOTICE](NOTICE) 与 [PRIVACY-SCAN.md](PRIVACY-SCAN.md)。
+
+## 换电脑迁移配音
+
+在本人电脑上运行 `./install.sh --configure-voice 精修参考音.wav 对应原文.txt`。端点配置和声纹都保存在 `~/.config/yice-youtube-video/`。换电脑时只需私下拷贝这个目录，保持文件权限 0600，再运行安装检查。未配置私人参考音时使用工具包品牌配置。

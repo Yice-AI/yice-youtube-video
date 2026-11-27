@@ -1000,6 +1000,8 @@ def sfx_diversity_and_sync_gate(timeline, duration):
             points = [i['at'] for i in shot['interactions'] if INTERACTION_SOUNDS.get(i['action'])==kind]
             if not points:
                 points = shot.get('visual_action_times',[])
+        if kind=='zoom_swoosh':
+            points = [*points,*shot.get('camera_action_times',[])]
         in_punch = any(o['kind']=='editorial_punch' for o in shot.get('overlays',[]))
         primary = kind in {'marker_stroke','shutter_whip','whoosh_cinematic','whoosh_short','whoosh','zoom_swoosh'} or (
             kind.startswith('impact_bass_') and in_punch)

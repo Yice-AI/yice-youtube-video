@@ -37,6 +37,34 @@ def sheet(video, out, duration, every):
     return pages
 
 
+def episode_review_pack(master, blind, shots, out, duration):
+    """Sample every editorial shot; encode two standalone blind-review halves from the clean picture."""
+    from PIL import Image, ImageDraw
+    from tempfile import TemporaryDirectory
+    with TemporaryDirectory(dir=out) as tmp:
+        frame=Path(tmp)/'shot.jpg'
+        canvas=Image.new('RGB',(2400,math.ceil(len(shots)/5)*296),'#17191b')
+        draw=ImageDraw.Draw(canvas)
+        for i,shot in enumerate(shots):
+            t=(shot['start']+shot['end'])/2
+            run(['ffmpeg','-nostdin','-v','error','-y','-ss',str(t),'-i',str(master),'-frames:v','1',
+                 '-vf','scale=480:270','-threads','1',str(frame)])
+            x,y=(i%5)*480,(i//5)*296
+            with Image.open(frame) as im: canvas.paste(im,(x,y))
+            draw.text((x+6,y+274),f"{shot['id']}  {t:.2f}s",fill='white')
+        canvas.save(out/'contact-sheet-v14-full.jpg',quality=92)
+    for index,(start,span) in enumerate([(0,duration),(0,duration/2),(duration/2,duration/2)]):
+        dest=out/('episode-review-480p.mp4' if index==0 else f'review-part{index}.mp4')
+        video=master if index==0 else blind
+        rate=max(70,int(7_500_000*8/span/1000)-106)
+        quality=['-crf','27'] if not index else ['-b:v',f'{rate}k','-maxrate',f'{rate}k','-bufsize',f'{rate}k']
+        run(['ffmpeg','-nostdin','-v','error','-y','-ss',str(start),'-i',str(video),'-t',str(span),
+             '-vf','scale=854:480','-c:v','libx264','-threads','2','-preset','veryfast',*quality,
+             '-c:a','aac','-b:a','96k','-ac','2','-ar','48000','-movflags','+faststart',str(dest)])
+        if index and dest.stat().st_size>=8_000_000:
+            raise ValueError(f'快审分段超出 8 MB：{dest.name}')
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('mp4', type=Path)

@@ -451,6 +451,16 @@ def build(spec, source_dir, output, gsap):
                 if data.get('board'):
                     crop += f';object-position:{x}% {y}%'
                 panel = f'<div class="sim-panel is-media">{media_tag(card["source"], style=crop, loop=True)}</div>'
+            pages = []
+            last = -1.
+            for page in card.get('pages', []):
+                at = number(page['at'], 0, duration-.04, '框内翻页时间')
+                if at <= last:
+                    raise ValueError('框内翻页须按时间递增')
+                last = at
+                pages.append('<div class="sim-page">' + media_tag(page['source'],loop=True) + '</div>')
+            if pages:
+                panel = panel.removesuffix('</div>') + ''.join(pages) + '</div>'
             if card.get('panel_accents'):
                 for at in card['panel_accents']:
                     number(at,0,duration-.28,'框内证据强调时间')

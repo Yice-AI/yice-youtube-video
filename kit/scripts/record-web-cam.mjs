@@ -9,7 +9,6 @@ import {recordBrowserFrames} from './browser-frames.mjs';
 const options = Object.fromEntries('project url id seconds highlight actions source scene fps theme scale hide-selectors'.split(' ').map(key => [key,{type:'string'}]));
 const {values:args} = parseArgs({options});
 const DEFAULT_PLAYWRIGHT_MODULE = '/opt/homebrew/lib/node_modules/openclaw/node_modules/playwright-core';
-const DEFAULT_CHROME_EXECUTABLE = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const url = new URL(args.url);
 const duration = Number(args.seconds ?? 6), fps = Number(args.fps ?? 30);
 const scale = Number(args.scale ?? 1.5);
@@ -32,10 +31,10 @@ const playwrightModule = process.env.YICE_PLAYWRIGHT_MODULE ||
 const {chromium} = require(playwrightModule);
 const viewport = {width:Math.round(1920/scale),height:Math.round(1080/scale)};
 const cx0 = Math.round(viewport.width/2), cy0 = Math.round(viewport.height/2);
-const chromeExecutable = process.env.YICE_CHROME_EXECUTABLE ||
-  (fs.existsSync(DEFAULT_CHROME_EXECUTABLE) ? DEFAULT_CHROME_EXECUTABLE : null);
-const browser = await chromium.launch(chromeExecutable ? {executablePath:chromeExecutable} : {channel:'chrome'});
+const chromeExecutable = process.env.YICE_CHROME_EXECUTABLE;
+const browser = await chromium.launch({headless:true,...(chromeExecutable ? {executablePath:chromeExecutable} : {})});
 const events = [];
+const stills = [];
 let position = {x:cx0,y:cy0};
 function log(t,kind,rect,camScale) {
   events.push({t,kind,...position,rect,recommendedCamera:{scale:camScale,cx:Math.round(position.x*scale),cy:Math.round(position.y*scale)}});
@@ -69,7 +68,7 @@ try {
   await page.waitForTimeout(700);
   if(response && !response.ok()) throw Error('网页响应 '+response.status());
   const steps = actions.map(action=>{
-    if(!['wait','scroll','move','click','type','highlight'].includes(action.type)) throw Error('未知动作 '+action.type);
+    if(!['wait','scroll','move','click','type','highlight','drag','key'].includes(action.type)) throw Error('未知动作 '+action.type);
     const frames=Math.max(1,Math.round(Number(action.ms ?? 350)*fps/1000));
     if(!Number.isFinite(frames)) throw Error('动作时长无效');
     return {action,frames};
@@ -99,6 +98,11 @@ try {
         if(a.type==='scroll') scrollEnd+=Number(a.dy);
       }
     }
+    if(a.type==='drag' && first){
+      origin={...target};target={x:origin.x+Number(a.dx||0),y:origin.y+Number(a.dy||0)};
+      await page.mouse.move(origin.x,origin.y);await page.mouse.down();
+      log(n/fps,'click',rect,1.25);
+    }
     const progress=(n-start+1)/frames;
     const ease=progress*progress*(3-2*progress);
     position={x:origin.x+(target.x-origin.x)*ease,y:origin.y+(target.y-origin.y)*ease};
@@ -107,7 +111,23 @@ try {
       document.getElementById('yice-capture-pointer').style.transform='translate('+pos.x+'px,'+pos.y+'px)';
     },{pos:position,y:scrollStart+(scrollEnd-scrollStart)*ease});
     if(a.type!=='wait') await page.mouse.move(position.x,position.y);
+    if(a.type==='drag') await page.mouse.move(position.x,position.y);
     if(last){
+      if(a.type==='drag') await page.mouse.up();
+      if(a.type==='key'){
+        if(locator) await locator.press(a.key); else await page.keyboard.press(a.key);
+        const clock=performance.now();
+        for(const shot of a.stills || []){
+          if(!/^[a-z0-9-]+$/.test(shot.name) || !Number.isFinite(shot.after_ms) || shot.after_ms<0 || shot.after_ms>5000)
+            throw Error('翻页取帧需要有效名称与 0–5000ms 的等待时长');
+          const remaining=shot.after_ms-(performance.now()-clock);
+          if(remaining>0) await page.waitForTimeout(remaining);
+          const elapsed_ms=Math.round(performance.now()-clock);
+          await page.screenshot({path:path.join(folder,shot.name+'.png')});
+          stills.push({file:shot.name+'.png',after_ms:shot.after_ms,elapsed_ms,key:a.key});
+        }
+      }
+
       if(a.type==='click'){
         await page.mouse.click(position.x,position.y);
         await page.evaluate(()=>{
@@ -122,13 +142,15 @@ try {
         el.style.borderRadius='4px';
         el.animate([{backgroundSize:'0% 100%'},{backgroundSize:'100% 100%'}],{duration:330,fill:'forwards'});
       },a.color||'rgba(255,116,90,.34)');
-      log(n/fps,a.type,rect,locator ? 1.55 : 1);
+      const keyKind={Enter:'confirm',Backspace:'delete',Delete:'delete',ArrowRight:'page_turn',ArrowLeft:'page_turn'};
+      log(n/fps,a.type==='key' ? (keyKind[a.key]||'key') : a.type,rect,locator ? 1.55 : 1);
       index++;start=n+1;
     }else if(a.type==='move') log(n/fps,'move',rect,1.25);
   }});
   await page.screenshot({path:path.join(folder,'still.png')});
   fs.writeFileSync(path.join(folder,'cursor-track.json'),JSON.stringify({url:args.url,width:1920,height:1080,cssViewport:viewport,deviceScaleFactor:scale,colorScheme,fps,duration,events},null,2));
   const rel=path.relative(project,folder);
+  if(stills.length) fs.writeFileSync(path.join(folder,'key-stills.json'),JSON.stringify(stills,null,2)+'\n');
   const entry={id:args.id,kind:'web_cam_recording',sourceType:'web_capture',url:args.url,source:args.source||url.hostname,
     path:rel+'/video.mp4',stillPath:rel+'/still.png',trackPath:rel+'/cursor-track.json',scene:args.scene||'',
     sha256:createHash('sha256').update(fs.readFileSync(path.join(folder,'video.mp4'))).digest('hex'),

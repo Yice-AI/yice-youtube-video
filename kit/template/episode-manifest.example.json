@@ -1,72 +1,476 @@
 {
-  "title": "一期实操示例",
-  "filename": "episode",
-  "voice_manifest": "voice/voice-manifest.json",
-  "voice_timing": "voice/voice-timing.json",
+  "version": "v14.0",
+  "review_pack": true,
+  "episode_kind": "tool_tutorial",
+  "theme": "obsidian",
+  "semantic_alignment": "semantic-alignment.example.json",
   "audio": {
-    "bgm": ["assets/bgm.wav"]
+    "bgm": [
+      "builtin:forward-drive",
+      "builtin:city-groove",
+      "builtin:bright-step"
+    ],
+    "bgm_cuts": [
+      15.0,
+      30.0
+    ],
+    "crossfade": 3.75
   },
+  "title": "实操教程分镜示例",
+  "filename": "episode",
+  "duration": 45.0,
+  "cues": [
+    {
+      "id": "cue-0",
+      "firstCharTime": 0.0,
+      "end": 5.0,
+      "text": "开场作品"
+    },
+    {
+      "id": "cue-1",
+      "firstCharTime": 5.0,
+      "end": 10.0,
+      "text": "实拍对照"
+    },
+    {
+      "id": "cue-2",
+      "firstCharTime": 10.0,
+      "end": 15.0,
+      "text": "具体操作"
+    },
+    {
+      "id": "cue-3",
+      "firstCharTime": 15.0,
+      "end": 20.0,
+      "text": "案例看板"
+    },
+    {
+      "id": "cue-4",
+      "firstCharTime": 20.0,
+      "end": 25.0,
+      "text": "成本结论"
+    },
+    {
+      "id": "cue-5",
+      "firstCharTime": 25.0,
+      "end": 30.0,
+      "text": "分类与做法"
+    },
+    {
+      "id": "cue-5-body",
+      "firstCharTime": 26.5,
+      "end": 30.0,
+      "text": "分类与做法"
+    },
+    {
+      "id": "cue-6",
+      "firstCharTime": 30.0,
+      "end": 35.0,
+      "text": "对照结果"
+    },
+    {
+      "id": "cue-7",
+      "firstCharTime": 35.0,
+      "end": 40.0,
+      "text": "回看源文件"
+    },
+    {
+      "id": "cue-8",
+      "firstCharTime": 40.0,
+      "end": 45.0,
+      "text": "两步收尾"
+    }
+  ],
+  "voice_manifest": "voice/voice-manifest.json",
   "shots": [
     {
-      "id": "opening",
-      "act": "intro",
-      "start": 0,
-      "end": 3,
-      "anchor_cue_id": "0-1",
-      "stage_mode": "cold_open_ab",
-      "sources": ["assets/webcam/shot-a/video.mp4", "assets/webcam/shot-b/video.mp4"],
-      "labels": ["原始", "处理后"],
-      "hook": "先看处理前后的差别",
-      "spoken_topic": "样片效果对照",
-      "visual_subject": "原始与处理后样片",
-      "semantic_binding": "callback_cut",
-      "semantic_tags": ["样片效果"]
-    },
-    {
-      "id": "title",
-      "act": "intro",
-      "start": 3,
-      "end": 6,
-      "anchor_cue_id": "0-2",
-      "stage_mode": "title_sequence",
-      "title": "一次实际操作",
-      "spoken_topic": "介绍本期操作",
-      "visual_subject": "本期标题",
+      "id": "shot-01",
+      "act": "act-01",
+      "chapter": "01",
+      "case_tag": "待填案例",
+      "case_windows": [
+        {
+          "tag": "待填案例",
+          "start": 0.0,
+          "end": 5.0
+        }
+      ],
+      "start": 0.0,
+      "end": 5.0,
+      "anchor_cue_id": "cue-0",
+      "spoken_topic": "开场作品",
+      "semantic_tags": [
+        "分镜草稿"
+      ],
+      "stage_mode": "hyperframes_block",
+      "visual_mode": "M1",
+      "stage_look": "cinema_black",
+      "spatial_spec": {
+        "recipe": "triptych_curtain",
+        "stage_look": "cinema_black",
+        "data": {
+          "videos": [
+            "media/shot-01-1.mp4",
+            "media/shot-01-2.mp4",
+            "media/shot-01-3.mp4"
+          ],
+          "words": [
+            {
+              "text": "作品成果",
+              "at": 0.0,
+              "line": 1
+            },
+            {
+              "text": "本期方法",
+              "at": 0.38,
+              "line": 2
+            }
+          ],
+          "underline_at": 0.78
+        }
+      },
       "semantic_binding": "conceptual_explainer",
-      "semantic_tags": ["实操"]
+      "visual_subject": "待填实际作品与可见动作"
     },
     {
-      "id": "capture",
-      "act": "analysis",
-      "start": 6,
-      "end": 8,
-      "anchor_cue_id": "0-3",
-      "stage_mode": "callout_rig",
-      "source": "assets/webcam/shot-a/video.mp4",
-      "media_start": 3.3,
-      "motion": "push",
-      "overlays": [{"kind": "corner_tag", "at": 0.2, "label": "实操录屏"}],
-      "spoken_topic": "检查输出画面",
-      "visual_subject": "实操输出界面",
+      "id": "shot-02",
+      "act": "act-01",
+      "chapter": "01",
+      "case_tag": "待填案例",
+      "case_windows": [
+        {
+          "tag": "待填案例",
+          "start": 0.0,
+          "end": 5.0
+        }
+      ],
+      "start": 5.0,
+      "end": 10.0,
+      "anchor_cue_id": "cue-1",
+      "spoken_topic": "实拍对照",
+      "semantic_tags": [
+        "分镜草稿"
+      ],
+      "stage_mode": "onetake_clip",
+      "visual_mode": "M3",
+      "shutter": 180,
+      "look": "dusk",
+      "onetake_spec": {
+        "recipe": "split_wipe_compare",
+        "stage_look": "cinema_black",
+        "data": {
+          "mode": "center_scan",
+          "before": "media/shot-02-before.mp4",
+          "after": "media/shot-02-after.mp4"
+        }
+      },
+      "semantic_binding": "conceptual_explainer",
+      "visual_subject": "待填前后对比证据"
+    },
+    {
+      "id": "shot-03",
+      "act": "act-01",
+      "chapter": "01",
+      "case_tag": "待填案例",
+      "case_windows": [
+        {
+          "tag": "待填案例",
+          "start": 0.0,
+          "end": 5.0
+        }
+      ],
+      "start": 10.0,
+      "end": 15.0,
+      "anchor_cue_id": "cue-2",
+      "spoken_topic": "具体操作",
+      "semantic_tags": [
+        "分镜草稿"
+      ],
+      "stage_mode": "fullbleed_rig",
+      "visual_mode": "M2",
+      "framing": "fullbleed",
+      "motion": "focus_push",
+      "source": "media/shot-03.mp4",
       "semantic_binding": "exact_tool_capture",
-      "semantic_tags": ["输出界面"]
+      "visual_subject": "待填实录动作和结果"
     },
     {
-      "id": "reference",
-      "act": "analysis",
-      "start": 8,
-      "end": 10,
-      "anchor_cue_id": "0-4",
-      "stage_mode": "reference_breakdown",
-      "source": "assets/ref-clips/reference.mp4",
-      "channel": "参考频道名称",
-      "claim": "观察剪辑节奏",
-      "cut_points": [0.8, 1.4],
-      "metrics": [{"label": "平均镜长", "value": "填入实测值"}],
-      "spoken_topic": "观察参考片剪辑节奏",
-      "visual_subject": "参考片的镜头切换",
+      "id": "shot-04",
+      "act": "act-01",
+      "chapter": "01",
+      "case_tag": "待填案例",
+      "case_windows": [
+        {
+          "tag": "待填案例",
+          "start": 0.0,
+          "end": 5.0
+        }
+      ],
+      "start": 15.0,
+      "end": 20.0,
+      "anchor_cue_id": "cue-3",
+      "spoken_topic": "案例看板",
+      "semantic_tags": [
+        "分镜草稿"
+      ],
+      "stage_mode": "hyperframes_block",
+      "visual_mode": "M1",
+      "stage_look": "swiss_paper",
+      "spatial_spec": {
+        "recipe": "progressive_sim_cards",
+        "stage_look": "swiss_paper",
+        "data": {
+          "board": true,
+          "heading": "案例对照",
+          "cards": [
+            {
+              "source": "media/shot-04-1.mp4",
+              "label": "第一项",
+              "at": 0.05
+            },
+            {
+              "source": "media/shot-04-2.mp4",
+              "label": "第二项",
+              "at": 1.7
+            },
+            {
+              "source": "media/shot-04-3.mp4",
+              "label": "第三项",
+              "at": 3.25
+            }
+          ]
+        }
+      },
       "semantic_binding": "conceptual_explainer",
-      "semantic_tags": ["剪辑节奏"]
+      "visual_subject": "待填实际作品与可见动作"
+    },
+    {
+      "id": "shot-05",
+      "act": "act-01",
+      "chapter": "01",
+      "case_tag": "待填案例",
+      "case_windows": [
+        {
+          "tag": "待填案例",
+          "start": 0.0,
+          "end": 5.0
+        }
+      ],
+      "start": 20.0,
+      "end": 25.0,
+      "anchor_cue_id": "cue-4",
+      "spoken_topic": "成本结论",
+      "semantic_tags": [
+        "分镜草稿"
+      ],
+      "stage_mode": "fullbleed_rig",
+      "visual_mode": "M2",
+      "framing": "fullbleed",
+      "motion": "focus_push",
+      "source": "media/shot-05.mp4",
+      "semantic_binding": "exact_tool_capture",
+      "visual_subject": "待填实录动作和结果",
+      "overlays": [
+        {
+          "kind": "editorial_punch",
+          "label": "一句结论",
+          "lines": [
+            "一句结论"
+          ],
+          "at": 1.75
+        }
+      ]
+    },
+    {
+      "id": "shot-06",
+      "act": "act-02",
+      "chapter": "02",
+      "case_tag": "待填案例",
+      "case_windows": [
+        {
+          "tag": "待填案例",
+          "start": 0.0,
+          "end": 1.5
+        }
+      ],
+      "start": 25.0,
+      "end": 26.5,
+      "anchor_cue_id": "cue-5",
+      "spoken_topic": "分类与做法",
+      "semantic_tags": [
+        "分镜草稿"
+      ],
+      "stage_mode": "hyperframes_block",
+      "visual_mode": "M1",
+      "stage_look": "swiss_paper",
+      "spatial_spec": {
+        "recipe": "kinetic_title_bridge",
+        "stage_look": "swiss_paper",
+        "data": {
+          "words": [
+            {
+              "text": "案例拆解",
+              "at": 0.0
+            }
+          ],
+          "underline_at": 0.38
+        }
+      },
+      "semantic_binding": "conceptual_explainer",
+      "visual_subject": "待填实际作品与可见动作"
+    },
+    {
+      "id": "shot-07",
+      "act": "act-02",
+      "chapter": "02",
+      "case_tag": "待填案例",
+      "case_windows": [
+        {
+          "tag": "待填案例",
+          "start": 0.0,
+          "end": 3.5
+        }
+      ],
+      "start": 26.5,
+      "end": 30.0,
+      "anchor_cue_id": "cue-5-body",
+      "spoken_topic": "分类与做法",
+      "semantic_tags": [
+        "分镜草稿"
+      ],
+      "stage_mode": "onetake_clip",
+      "visual_mode": "M3",
+      "shutter": 180,
+      "look": "dusk",
+      "onetake_spec": {
+        "recipe": "split_wipe_compare",
+        "stage_look": "cinema_black",
+        "data": {
+          "mode": "center_scan",
+          "before": "media/shot-07-before.mp4",
+          "after": "media/shot-07-after.mp4"
+        }
+      },
+      "semantic_binding": "conceptual_explainer",
+      "visual_subject": "待填前后对比证据"
+    },
+    {
+      "id": "shot-08",
+      "act": "act-02",
+      "chapter": "02",
+      "case_tag": "待填案例",
+      "case_windows": [
+        {
+          "tag": "待填案例",
+          "start": 0.0,
+          "end": 5.0
+        }
+      ],
+      "start": 30.0,
+      "end": 35.0,
+      "anchor_cue_id": "cue-6",
+      "spoken_topic": "对照结果",
+      "semantic_tags": [
+        "分镜草稿"
+      ],
+      "stage_mode": "fullbleed_rig",
+      "visual_mode": "M2",
+      "framing": "fullbleed",
+      "motion": "focus_push",
+      "source": "media/shot-08.mp4",
+      "semantic_binding": "exact_tool_capture",
+      "visual_subject": "待填实录动作和结果"
+    },
+    {
+      "id": "shot-09",
+      "act": "act-02",
+      "chapter": "02",
+      "case_tag": "待填案例",
+      "case_windows": [
+        {
+          "tag": "待填案例",
+          "start": 0.0,
+          "end": 5.0
+        }
+      ],
+      "start": 35.0,
+      "end": 40.0,
+      "anchor_cue_id": "cue-7",
+      "spoken_topic": "回看源文件",
+      "semantic_tags": [
+        "分镜草稿"
+      ],
+      "stage_mode": "hyperframes_block",
+      "visual_mode": "M1",
+      "stage_look": "swiss_paper",
+      "spatial_spec": {
+        "recipe": "step_tree_focus",
+        "stage_look": "swiss_paper",
+        "data": {
+          "heading": "操作步骤",
+          "branches": [
+            {
+              "no": "①",
+              "title": "准备",
+              "at": 0.05,
+              "children": [
+                {
+                  "label": "输入",
+                  "at": 1.0
+                }
+              ]
+            },
+            {
+              "no": "②",
+              "title": "核对结果",
+              "at": 2.75
+            }
+          ],
+          "focus_sequence": [
+            {
+              "index": 0,
+              "at": 1.0
+            },
+            {
+              "index": 1,
+              "at": 2.75
+            },
+            {
+              "index": 0,
+              "at": 4.15
+            }
+          ]
+        }
+      },
+      "semantic_binding": "conceptual_explainer",
+      "visual_subject": "待填实际作品与可见动作"
+    },
+    {
+      "id": "shot-10",
+      "act": "act-02",
+      "chapter": "02",
+      "case_tag": "待填案例",
+      "case_windows": [
+        {
+          "tag": "待填案例",
+          "start": 0.0,
+          "end": 5.0
+        }
+      ],
+      "start": 40.0,
+      "end": 45.0,
+      "anchor_cue_id": "cue-8",
+      "spoken_topic": "两步收尾",
+      "semantic_tags": [
+        "分镜草稿"
+      ],
+      "stage_mode": "fullbleed_rig",
+      "visual_mode": "M2",
+      "framing": "fullbleed",
+      "motion": "focus_push",
+      "source": "media/shot-10.mp4",
+      "semantic_binding": "exact_tool_capture",
+      "visual_subject": "待填实录动作和结果"
     }
   ]
 }

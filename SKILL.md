@@ -22,6 +22,8 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v14.0�
 亮场桥 `kinetic_title_bridge` 使用 1.2–1.8 秒、按口播触发的 `words: [{text, at}]` 与马克笔 `underline_at`。三联幕布每次使用三条不同动态视频；`case_monotony_gate` 按文件内容检验 85 秒内最多两次且不复用槽位。大字用 `words[].line` 或 `editorial_punch.lines` 分成两行。三联看板用 `board: true` 保持三框自开场都在位；`progressive_sim_cards` 的卡片用 `source`、`zoom` 与百分比 `focus_x/focus_y` 录到局部操作。划线、厚卡落位、切幕与数字翻滚使用 `marker_stroke`、`card_thock`、`shutter_whip`、`counter_roll`。
 
 v14 清单为每镜填写 `case_tag`，并以 `semantic_alignment` 引用逐镜台账（`shot_id, start, end, quote, evidence, case_tag`）。同镜轮播或并列多个作品时用 `case_windows: [{tag,start,end}]` 记录镜内可见区间。审计按作品合并重叠时间并检查占比不超过 30%，逐镜核对口播、时间与画面物证。导演连看确认反例对应现场操作、开场不出现终端、每次换场有新的信息。
+精修参考音与对应原文通过 `./install.sh --configure-voice 参考音.wav 原文.txt` 保存，换机私下复制 `~/.config/yice-youtube-video/`。录屏入口会记录实际点击、键入、拖动和翻页，使用其 `video.mp4` 时组装自动读取同目录的动作记录。看板的 `cards[].pages: [{source,at}]` 在同一帧切换画面并配翻页声。新脚手架中的 `review_pack` 会随标准组装导出全镜头图墙、480p 有声版，以及两段单独渲染的无字幕盲审片。
+
 
 ## 工具教程与老练叙事铁律（v14.0）
 
@@ -49,7 +51,7 @@ v14 清单为每镜填写 `case_tag`，并以 `semantic_alignment` 引用逐镜�
    - 多视频 3D 墙（`perspective_video_fan`）、Bento 拼装（`logo_bento_stage`）、剪纸视差（`cutout_parallax_stage`）、纪录片解剖（`documentary_ken_burns`）、工作流焦点树（`step_tree_focus`）、渐进装置卡（`progressive_sim_cards`）和因果胶囊链（`formula_pill_chain`）用 `hyperframes_block`。
    - 实录优先用 `fullbleed_rig` 满屏跟焦。
    - 执行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 装片（默认 2 个低优先级进程，`--draft` 快速试片）。最后执行 `kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
-5. **封面与打包。** 用 `kit/scripts/thumbnail.sh --project . --title "标题" --summary "内容摘要"` 走 `image2` 原生直出 3 张候选与联系表，`--select` 导出 `< 2 MB` 高清 JPG 并入账。
+5. **封面与打包。** 用 `kit/scripts/thumbnail.sh --project . --title "标题" --summary "内容摘要"` 走 `image2` 原生直出 3 张候选与联系表，`--select` 导出 `< 2 MB` 高清 JPG 并入账。 使用 `--hook` 与可选的 `--badge` 控制整张图最多 10 个汉字或词组，以 168px 手机预览选定实物反差最清楚的一张。
 
 ## 反简陋 PPT 铁律
 

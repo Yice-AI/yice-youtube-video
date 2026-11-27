@@ -100,6 +100,19 @@ def test_onetake_default_workers(tmp_path,monkeypatch):
     bridge.render_clip(tmp_path/'comp.html',tmp_path/'clip.mp4',span=1)
 
 
+def test_chapter_bridge_and_portable_ledger(tmp_path):
+    voice=tmp_path/'voice.json'
+    voice.write_text(json.dumps(dict(total_duration=12,chapters=[dict(id='01',start=0),dict(id='02',start=6)],
+        scene_timing=[dict(id='first',firstCharTime=0,text='准备'),dict(id='second',firstCharTime=6,text='交付')])))
+    draft=scaffold.scaffold(voice,None,tmp_path/'draft.json','测试')
+    bridge=next(s for s in draft['shots'] if s.get('spatial_spec',{}).get('recipe')=='kinetic_title_bridge')
+    assert bridge['chapter']=='02' and 1.2 <= bridge['end']-bridge['start'] <= 1.8
+    rows=json.loads((tmp_path/draft['semantic_alignment']).read_text())
+    assert [r['shot_id'] for r in rows]==[s['id'] for s in draft['shots']]
+    assert len(draft['audio']['bgm'])==3
+    assert all(s['case_tag'] and s['case_windows'] for s in draft['shots'])
+
+
 def test_caption_boundaries_are_scaffold_anchors(tmp_path):
     voice=tmp_path/'voice.json'
     voice.write_text(json.dumps(dict(total_duration=14,scene_timing=[dict(id='A',firstCharTime=0,text='操作')])))
@@ -111,7 +124,7 @@ def test_caption_boundaries_are_scaffold_anchors(tmp_path):
     assert all(3.5<=audit.shot_span(s)<=6 for s in shots)
     assert [s['stage_mode'] for s in shots] == ['hyperframes_block','onetake_clip','fullbleed_rig']
     assert [s['visual_mode'] for s in shots] == ['M1','M3','M2']
-    assert shots[0]['spatial_spec']['recipe']=='carousel_3d_select' and shots[1]['onetake_spec']['recipe']=='duplicate_laser_sweep' and shots[2]['source']
+    assert shots[0]['spatial_spec']['recipe']=='triptych_curtain' and shots[1]['onetake_spec']['recipe']=='split_wipe_compare' and shots[2]['source']
     assert shots[1]['shutter']==180 and shots[1]['look']=='dusk'
     cues={c['id']:c['firstCharTime'] for c in draft['cues']}
     assert all(abs(cues[s['anchor_cue_id']]-s['start'])<=.22 for s in shots)

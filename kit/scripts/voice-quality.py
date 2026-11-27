@@ -9,7 +9,8 @@ DIGITS = dict(zip('零〇一二两三四五六七八九', [0, 0, 1, 2, 2, 3, 4, 
 ENGLISH = {'Codex': ['CodeX', 'CODEX', 'Code X', 'codecs'],
            'Claude': ['Cloudo', 'Cloud', 'claude'],
            'Fireship': ['Fairship', 'Fire ship'],
-           'Hugging Face': ['Hogging Face', 'HuggingFace']}
+           'Hugging Face': ['Hogging Face', 'HuggingFace'],
+           'GitHub': ['Git Hub'], 'HyperFrames': ['Hyper Frames'], 'PPTX': ['PPT X', 'P P T X']}
 
 # Conservative offline fallback. Sets contain one Mandarin reading including
 # its tone. Numeral changes and characters with competing readings are not inferred.
@@ -119,7 +120,16 @@ def differences(expected, heard):
             if kind != 'equal']
 
 
-def audit(text, transcription, exceptions=None, threshold=.97, *, auto_homophone=False):
+def phrase_readings(text):
+    try:
+        from pypinyin import Style, lazy_pinyin
+    except ImportError:
+        return [pronunciation(c) for c in text]
+    return lazy_pinyin(text, style=Style.TONE3, neutral_tone_with_five=True,
+                       errors=lambda chars: list(chars))
+
+
+def audit(text, transcription, exceptions=None, threshold=.97, *, auto_homophone=False, pronunciations=None):
     if not math.isfinite(threshold) or not 0 < threshold <= 1:
         raise ValueError('ASR 匹配率阈值须在 (0,1]')
     raw = transcription.get('text')
@@ -223,6 +233,8 @@ def audit(text, transcription, exceptions=None, threshold=.97, *, auto_homophone
     if any(not isinstance(row[1], str) or not isinstance(row[2], str) for row in records):
         raise ValueError('例外短语须为字符串')
     for kind, intended, recognized in sorted(records, key=lambda row: -len(row[2])):
+        if kind == 'homophone' and len(characters(intended)) != len(characters(recognized)):
+            continue
         a, b = numeric(intended), numeric(recognized)
         if a is not None and b is not None and a != b:
             continue  # Never waive a changed number, even via a legacy mapping.
@@ -246,13 +258,24 @@ def audit(text, transcription, exceptions=None, threshold=.97, *, auto_homophone
             match = re.search(pattern, raw, flags=re.IGNORECASE)
             if match and match[0] != word:
                 events.append(dict(kind='auto_homophone', intended=word, heard=match[0], reason='英文大小写、分词或连字符变体'))
+        wanted_text=characters(text)
+        marked=wanted_text
+        for surface, reading in sorted((pronunciations or {}).items(), key=lambda pair: -len(pair[0])):
+            if len(characters(surface)) == len(characters(reading)):
+                marked=marked.replace(characters(surface),characters(reading))
+        wanted_readings=phrase_readings(marked)
+        heard_readings=phrase_readings(normalized)
         edited = list(normalized)
         for row in differences(text, heard):
             wanted, actual = row['expected'], row['heard']
             if row['kind'] != 'replace' or len(wanted) != len(actual):
                 continue
-            if not all(a == b or (pronunciation(a) and pronunciation(a) == pronunciation(b))
-                       for a, b in zip(wanted, actual)):
+            if not re.fullmatch(r'[一-鿿]+', wanted+actual) or re.search(NUMBER, wanted+actual):
+                continue
+            left, right = row['expected_start'], row['heard_start']
+            if not all(a == b or (wanted_readings[left+i] and
+                                   wanted_readings[left+i] == heard_readings[right+i])
+                       for i, (a,b) in enumerate(zip(wanted,actual))):
                 continue
             begin = row['heard_start']
             edited[begin:begin+len(actual)] = wanted

@@ -117,7 +117,7 @@ STAGE .bento-col[data-item-count="1"] .bento-item{max-height:none;flex-direction
 STAGE .bento-logo-wrap{width:56px;height:56px;display:flex;align-items:center;justify-content:center;flex:none}
 STAGE .bento-col[data-item-count="1"] .bento-logo-wrap{width:144px;height:144px}
 STAGE .bento-logo-wrap img,.bento-logo-wrap svg{width:100%;height:100%;object-fit:contain}
-STAGE .bento-item-name{font:700 28px/1.2 "Spatial Sans",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+STAGE .bento-item-name{padding-block:.08em;font:700 28px/1.4 "Spatial Sans",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 STAGE .bento-col[data-item-count="1"] .bento-item-name{font-size:38px;color:#fff7ef}
 STAGE .bento-item-badge{margin-left:auto;padding:5px 12px;border-radius:999px;background:#e61e7228;color:#ff7eb3;font:600 17px/1 "Spatial Sans",sans-serif;flex:none;white-space:nowrap}
 STAGE .bento-cat{font:700 36px/1.2 "Spatial Sans",sans-serif;text-align:center;letter-spacing:.5px}
@@ -273,3 +273,6 @@ STAGE[data-spatial-recipe="triptych_curtain"] .curtain-wall::after{content:"";po
 STAGE .curtain-rule{display:block;position:absolute;left:12%;right:12%;height:7px;bottom:-20px;background:#ff4d1c;transform-origin:left}
 STAGE .panel-accents,STAGE .panel-accents i{position:absolute;inset:0;pointer-events:none}
 STAGE .panel-accents i{bottom:auto;border:5px solid #ff4d1c;opacity:0}
+
+STAGE .sim-page{position:absolute;inset:0;overflow:hidden;visibility:hidden;background:var(--paper,#f3f0e9)}
+STAGE .sim-page>img,STAGE .sim-page>video{width:100%;height:100%;object-fit:cover}

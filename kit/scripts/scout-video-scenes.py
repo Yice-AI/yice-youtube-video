@@ -166,6 +166,20 @@ def shot_sources(shot):
         for card in shot.get('cards',[]):
             yield card['source'],float(card.get('media_start',0.)),span-float(card['reveal_at'])
         return
+    spec=shot.get('spatial_spec') or shot.get('onetake_spec') or {}
+    data=spec.get('data',{})
+    for path in data.get('videos',[]):
+        yield path,0.,span
+    for field in ('before','after'):
+        if isinstance(data.get(field),str):
+            yield data[field],0.,span
+    for card in data.get('cards',[]):
+        if isinstance(card,dict) and card.get('source'):
+            yield card['source'],0.,span
+            pages=card.get('pages',[])
+            for i,page in enumerate(pages):
+                until=pages[i+1]['at'] if i+1<len(pages) else span
+                yield page['source'],float(page['at']),until-page['at']
     if mode=='studio_ui':
         monitor = shot.get('data',{}).get('monitor')
         if monitor:
@@ -204,7 +218,7 @@ def make_verification_rows(manifest):
                 raise ValueError(f"镜头 {shot['id']} 的源片时间窗无效")
             pad = min(.3,span/4)
             times = (start+pad,start+span/2,start+span-pad)
-            if suffix=='.gif':
+            if suffix=='.gif' or shot.get('spatial_spec') or shot.get('onetake_spec'):
                 last = max(0.,probe_video(root/asset)-.1)
                 times = tuple(min(at,last) for at in times)
             rows.append(dict(id=shot['id'],source=asset,media_start=start,play_span=span,

@@ -89,11 +89,20 @@ print(json.dumps({"outputs":outputs,"candidates":3,"attempts":3}))
             batch = json.loads(result.stdout)
             self.assertEqual((batch["candidates"], batch["attempts"]), (3, 3))
             calls = project / "calls.jsonl"
-            self.assertEqual(json.loads(calls.read_text()), [
-                "--title", "采集画质", "--summary", "本地验收。", "--role", "thumbnail", "--guard", "light",
+            call = json.loads(calls.read_text())
+            self.assertIn('仅供选择实物题材', call[3])
+            self.assertIn('本地验收。', call[3])
+            self.assertIn('右下 x>78%、y>80%', call[3])
+            self.assertEqual(call, [
+                "--title", "采集画质", "--summary", call[3], "--role", "thumbnail", "--guard", "light",
                 "--thumb-guard", "r_plus", "--candidates", "3",
                 "-o", str(project/"thumbnails/fixture/candidate.png"), "--json",
             ])
+            invalid = subprocess.run([*entry, '--title','演示评测', '--hook','一二三四五六七八九十多一个字',
+                                      '--summary','实际案例', '--image2-script',str(fake)],
+                                     text=True,capture_output=True,timeout=15)
+            self.assertNotEqual(invalid.returncode, 0)
+            self.assertIn('10 个汉字', invalid.stderr)
             first = batch["outputs"][0]
             if os.access(scout.OCR, os.X_OK):
                 self.assertTrue(first["watermark_warning"], first)

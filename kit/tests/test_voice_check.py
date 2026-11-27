@@ -244,7 +244,7 @@ class VoiceCheckTests(unittest.TestCase):
         argv = ["voice.py", str(script), "--output", str(output), "--skip-post", "--silence", "0",
                 "--backend", "kaggle", "--profile", "legacy", "--max-repair-rounds", "0"]
         with patch.object(sys, "argv", argv), patch.object(voice, 'make_generator', return_value=fake_generation), \
-                patch.object(voice, 'make_transcriber', return_value=lambda _: {'text': aligned['text']}), \
+                patch.object(voice, 'kaggle_transcriber', return_value=lambda _: {'text': aligned['text']}), \
                 patch.object(voice, 'load_voice_tool', side_effect=lambda name: flow if name == 'voice-repair' else original_loader(name)), \
                 patch.object(flow.v, "align_characters", return_value=(aligned["mapped"], 1., 0)):
             with self.assertRaisesRegex(SystemExit, "配音检测未通过"):

@@ -6,7 +6,7 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 exec python3 - "$REPO_DIR" "$@" <<'PY'
-import argparse, json, os, shlex, shutil, subprocess, sys
+import argparse, json, os, shlex, shutil, subprocess, sys, tempfile, wave
 from datetime import datetime
 from pathlib import Path
 
@@ -19,7 +19,25 @@ parser = argparse.ArgumentParser(description='安装/检查 skill；自动补齐
 parser.add_argument('--workspace', type=Path)
 parser.add_argument('--toolkit', type=Path)
 parser.add_argument('--check', action='store_true', help='检查并补齐 ASR 配音依赖，不修改 skill 软链接或路径配置')
+parser.add_argument('--configure-voice', nargs=2, type=Path, metavar=('WAV','TEXT'),
+                    help='仅保存成对的私人参考音及转写，权限 0600')
 args = parser.parse_args(sys.argv[2:])
+if args.configure_voice:
+    src, text = args.configure_voice
+    with wave.open(str(src),'rb') as audio:
+        if not audio.getnframes(): parser.error('参考音为空')
+    if not text.read_text(encoding='utf-8').strip(): parser.error('参考音转写为空')
+    private = Path.home() / '.config/yice-youtube-video'
+    private.mkdir(mode=0o700,parents=True,exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=private) as tmp:
+        pairs = [(src,'voice-reference.wav'),(text,'voice-reference.txt')]
+        for source,name in pairs:
+            pending=Path(tmp)/name
+            shutil.copyfile(source,pending)
+            pending.chmod(0o600)
+        for _,name in pairs: (Path(tmp)/name).replace(private/name)
+    print('已配置私人参考音和转写')
+    sys.exit(0)
 workspace, toolkit = load_environment(dict(os.environ))
 if args.workspace:
     workspace = args.workspace.expanduser().resolve()
@@ -32,7 +50,7 @@ for value in [workspace, toolkit, repo]:
         parser.error('目录不能含换行')
 home = Path.home()
 env = {**os.environ, 'YICE_WORKSPACE':str(workspace), 'YICE_TOOLKIT':str(toolkit)}
-load_environment(env)
+load_environment(env, kaggle_voice=True)
 stamp = datetime.now().strftime('%Y%m%dT%H%M%S-%f')
 backups, links = [], []
 

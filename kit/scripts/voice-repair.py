@@ -177,7 +177,7 @@ def final_scan(chapter, audio, alignment, folder, transcribe, exceptions, thresh
     aligned = dict(text=chapter['text'], mapped=analysis['output_mapped'],
                    planned_pauses=alignment.get('planned_pauses', {}))
     transcript = transcribe(final)
-    audit = quality.audit(chapter['text'], transcript, exceptions, threshold, auto_homophone=profile=='natural_v7')
+    audit = quality.audit(chapter['text'], transcript, exceptions, threshold, auto_homophone=profile=='natural_v7', pronunciations=chapter.get('pronunciations'))
     if transcript.get('segments'):
         mapped, ratio, clamps = v.align_with_audit(chapter['text'], transcript, sf.info(final).duration, audit)
         aligned.update(mapped=mapped, matched_ratio=ratio, monotonic_clamps=clamps)
@@ -247,7 +247,7 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
             candidate = {**job, 'ok': False}
             try:
                 transcript = transcribe(raw)
-                audit = quality.audit(job['text'], transcript, exceptions, threshold, auto_homophone=profile=='natural_v7')
+                audit = quality.audit(job['text'], transcript, exceptions, threshold, auto_homophone=profile=='natural_v7', pronunciations=chapter.get('pronunciations'))
                 v.write_json(raw.with_suffix('.transcript.json'), transcript)
                 candidate['asr'] = audit
                 if not audit['ok']:
@@ -332,7 +332,7 @@ def screen_chapter(chapter, candidate, folder, transcribe, exceptions, threshold
         skip_post=skip_post, post_options=post_options, asr_threshold=threshold, profile=profile)
     audio = out/record['path']
     final_transcript = transcribe(audio)
-    audit = quality.audit(chapter['text'], final_transcript, exceptions, threshold, auto_homophone=profile=='natural_v7')
+    audit = quality.audit(chapter['text'], final_transcript, exceptions, threshold, auto_homophone=profile=='natural_v7', pronunciations=chapter.get('pronunciations'))
     audit['sha256'] = hashlib.sha256(audio.read_bytes()).hexdigest()
     if final_transcript.get('segments'):
         mapped, ratio, clamps = v.align_with_audit(chapter['text'], final_transcript, sf.info(audio).duration, audit)
@@ -365,6 +365,21 @@ def process_chapter(chapter, candidates, folder, generate, transcribe, *, except
         return screen_chapter(chapter, candidate, folder, transcribe, exceptions, threshold,
                               silence, offset, anchors, skip_post, post_options, profile=profile)
     screened = [screen(candidate) for candidate in candidates]
+    # For a hash-verified original, test the untouched waveform before commissioning
+    # another take. Both the final word audit and the acoustic checks still run.
+    if cloud_backend and profile == 'natural_v7' and not skip_post and (post_options or {}).get('speed', 1.) == 1.:
+        for candidate, processed in zip(candidates, screened.copy()):
+            if not candidate.get('reused_sha256') or processed['check']['ok']:
+                continue
+            raw_transcript = json.loads((Path(processed['folder'])/'analysis/raw-transcript.json').read_text())
+            raw_audit = quality.audit(chapter['text'], raw_transcript, exceptions, threshold,
+                                      auto_homophone=True, pronunciations=chapter.get('pronunciations'))
+            if raw_audit['ok']:
+                original = screen_chapter(chapter, candidate, Path(folder)/'original-pcm', transcribe,
+                                          exceptions, threshold, silence, offset, anchors, True, post_options, profile)
+                original['record']['mastering_source'] = 'verified_original_pcm'
+                if original['check']['ok'] and original['asr']['ok']:
+                    screened.append(original)
     chosen = min(screened, key=quality.rank)
     v.write_json(Path(folder)/'selection.json', dict(selected_seed=chosen['seed'], candidates=[
         dict(seed=x['seed'], asr_ok=x['asr']['ok'], ratio=x['asr']['ratio'], alerts=len(x['check']['alerts'])) for x in screened]))

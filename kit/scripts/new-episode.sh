@@ -33,7 +33,8 @@ for name in ('script', 'asset-needs', 'beat-table'):
     existing = project / f'{name}.md'
     copy_missing(existing if existing.is_file() else project / f'{name}.example.md',notes / f'{name}.md')
 copy_missing(notes / 'script.md',project / 'script.md')
-copy_missing(project / 'anchors.example.json', notes / 'anchors.json')
+if not (notes / 'anchors.json').exists():
+    (notes / 'anchors.json').write_text('[]\n')
 (notes / 'evidence').mkdir(exist_ok=True)
 for name in ('voice', 'assets/local', 'assets/props', 'assets/stock', 'assets/ref-clips', 'renders'):
     (project / name).mkdir(parents=True, exist_ok=True)
@@ -45,11 +46,13 @@ copy_missing(project / 'beats.example.json', project / 'beats.json')
 copy_missing(project / 'episode-manifest.example.json',project / 'episode-manifest.json')
 scripts = shlex.quote(str(kit/'scripts'))
 steps = [
+    f'{scripts}/record-web-cam.sh --project . --url "$PUBLIC_URL" --id shot-a --seconds 7',
     f'{scripts}/voice.sh script.md --backend kaggle --speed 1.0 --output voice',
-    f'{scripts}/record-web-cam.sh --project . --url "$PUBLIC_URL_A" --id shot-a --seconds 7 && '
-    f'{scripts}/record-web-cam.sh --project . --url "$PUBLIC_URL_B" --id shot-b --seconds 7',
-    f'{scripts}/assemble-episode.sh episode-manifest.json --output renders',
-    f'{scripts}/audit-v3.sh --v7 --project renders --timeline renders/shot-timeline.json --rendered renders/episode.mp4',
+    f'{scripts}/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.draft.json',
+    f'{scripts}/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify',
+    f'{scripts}/assemble-episode.sh episode-manifest.json --output out --workers 2',
+    f'{scripts}/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4',
+    f'{scripts}/thumbnail.sh --help',
 ]
 print(json.dumps({'project':str(project),'notes':str(notes),'next':steps},ensure_ascii=False,indent=2))
 PY

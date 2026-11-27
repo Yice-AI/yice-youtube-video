@@ -427,6 +427,19 @@ def test_v14_gate_rejects_unsynced_duplicate_and_mismatched_sounds():
     assert not sfx_diversity_and_sync_gate(dict(shots=[shot],sound_marks=[dict(kind='shutter_whip',at=0)]),5)['ok']
 
 
+def test_automatic_foley_follows_visible_page_and_layer_changes():
+    import importlib.util
+    f=Path(__file__).parents[1]/'scripts/assemble-episode.py'
+    spec=importlib.util.spec_from_file_location('v14_auto_assemble',f)
+    engine=importlib.util.module_from_spec(spec);spec.loader.exec_module(engine)
+    card=dict(source='primary.mp4',at=.1,pages=[dict(source='second.mp4',at=1.23)])
+    marks=engine._spatial_sound_marks(dict(recipe='progressive_sim_cards',stage_look='swiss_paper',
+                                           data=dict(cards=[card])),4)
+    assert ('page_flip',1.23,.34) in marks
+    names=[s[0] for s in engine._spatial_sound_marks(dict(recipe='layer_explode_3d',data=dict(count_at=.8)),4)]
+    assert names==['zoom_swoosh','counter_roll','ping']
+
+
 def test_foley_density_silence_and_gain_tiers():
     from audit_v7 import sfx_diversity_and_sync_gate
     sounds = ['page_flip','ui_lock_bonk','paper_slap','zoom_swoosh','click','typing']

@@ -1,6 +1,7 @@
 """Synthetic audio only; no model generation, network or private recordings."""
 import hashlib
 import importlib.util
+import os
 import json
 from pathlib import Path
 import shutil
@@ -204,6 +205,51 @@ class VoiceWorkflowTests(unittest.TestCase):
         source.write_bytes(source.read_bytes()+b'changed')
         with self.assertRaisesRegex(ValueError,'哈希'):
             generate([dict(text='甲乙。',seed=42,path=str(self.root/'bad.wav'))])
+
+    def test_cloud_whisper_long_audio_keeps_absolute_words_and_caches_result(self):
+        import base64
+        import io
+        import numpy as np
+        import soundfile as sf
+
+        sound = self.root / 'long.wav'
+        sf.write(sound, np.linspace(0., .04, 45 * 16000), 16000)
+        durations = []
+        def recognize(request, timeout):
+            self.assertTrue(request.full_url.endswith('/asr'))
+            self.assertEqual(request.get_header('Authorization'), 'Bearer fixture')
+            wav = base64.b64decode(json.loads(request.data)['audio'])
+            durations.append(sf.info(io.BytesIO(wav)).duration)
+            return io.BytesIO(json.dumps(dict(text='甲', segments=[dict(start=0, end=.5,
+                                              words=[dict(word='甲', start=0, end=.5)])])).encode())
+        env = dict(KAGGLE_TTS_ENDPOINT_URL='https://example.invalid/tts', KAGGLE_TTS_TOKEN='fixture')
+        with mock.patch.dict(os.environ, env), mock.patch('urllib.request.urlopen', side_effect=recognize):
+            transcribe = voice.kaggle_transcriber(self.root / 'cloud-asr')
+            result = transcribe(sound)
+            self.assertEqual(transcribe(sound), result)
+        self.assertGreater(len(durations), 1)
+        self.assertLessEqual(max(durations), 25)
+        self.assertAlmostEqual(sum(durations), 45)
+        for index, segment in enumerate(result['segments']):
+            self.assertAlmostEqual(segment['words'][0]['start'], sum(durations[:index]))
+
+    def test_reviewed_raw_pcm_is_checked_again_if_postprocessing_changes_transcript(self):
+        folder=self.root/'selection'
+        folder.mkdir()
+        chapter=dict(id='01', text='甲乙。')
+        raw_folder=folder/'seed42'
+        (raw_folder/'analysis').mkdir(parents=True)
+        (raw_folder/'analysis/raw-transcript.json').write_text(json.dumps({'text':'甲乙。'}))
+        def result(ok):
+            return dict(seed=42, folder=str(raw_folder), alignment={'text':'甲乙。'}, check=dict(ok=ok, alerts=[]),
+                        asr=quality.audit('甲乙。', {'text':'甲乙。' if ok else '甲甲。'}),
+                        record=dict(generated_duration=1.,added_boundary_silence=0.))
+        with mock.patch.object(repair,'screen_chapter',side_effect=[result(False),result(True)]) as screen:
+            chosen=repair.process_chapter(chapter,[dict(seed=42,path='reviewed.wav',reused_sha256='verified')],
+                folder,None,None,profile='natural_v7',cloud_backend='kaggle',post_options={'speed':1.})
+        self.assertTrue(chosen['check']['ok'])
+        self.assertEqual(chosen['record']['mastering_source'], 'verified_original_pcm')
+        self.assertIs(screen.call_args.args[9], True)
 
     def test_asr_cache_is_tied_to_audio_hash_and_settings(self):
         source=self.root/'source.wav'; source.write_bytes(b'first')

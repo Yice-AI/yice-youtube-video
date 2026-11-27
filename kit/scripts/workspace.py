@@ -89,6 +89,17 @@ def valid_whisper_directory(path):
 
 
 def load_voice_reference(toolkit, brand):
+    private = Path.home() / '.config/yice-youtube-video'
+    ref, transcript = private / 'voice-reference.wav', private / 'voice-reference.txt'
+    if brand == 'yice' and (ref.exists() or transcript.exists()):
+        if not (ref.is_file() and transcript.is_file()):
+            raise ValueError('迁移声纹需要 voice-reference.wav 和 voice-reference.txt 两个文件')
+        if any(p.stat().st_mode & 0o077 for p in (ref,transcript)):
+            raise ValueError('请将两份私人参考音文件权限设为 0600')
+        words = transcript.read_text(encoding='utf-8').strip()
+        if not words or not ref.stat().st_size:
+            raise ValueError('私人参考音或对应文本为空')
+        return ref, words, 'Chinese'
     config = toolkit / "brands" / brand / "voice.json"
     if not config.is_file():
         raise ValueError(f"缺少声音配置：{config}")
@@ -231,7 +242,7 @@ def load_environment(environ=None, *, kaggle_voice=False):
 def ensure_voice_dependencies(toolkit):
     """Install only missing/wrong-version voice dependencies in the existing ASR venv."""
     python = Path(toolkit) / "local/asr-venv/bin/python"
-    required = {"librosa": "1.0.1", "soundfile": "0.14.0", "scipy": None, "numpy": None, "Pillow": None}
+    required = {"librosa": "1.0.1", "soundfile": "0.14.0", "scipy": None, "numpy": None, "Pillow": None, "pypinyin": "0.55.0"}
     if not python.is_file():
         return {"ready": False, "python": str(python), "installed": [], "missing_environment": True}
     probe = """

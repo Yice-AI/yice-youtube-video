@@ -192,6 +192,18 @@ def prepare_shots(raw, root, cues):
         if expected:
             for path in media:
                 validate_media(path,media_start+end-start,durations,allow_image=mode=='evidence_spotlight')
+        if mode in {'fullbleed_rig','callout_rig'} and media and 'interactions' not in src:
+            track = locate(root,src['cursor_track']) if src.get('cursor_track') else (
+                media[0].with_name('cursor-track.json') if media[0].name=='video.mp4' else None)
+            if track and track.is_file():
+                action_map={'click':'click','type':'type','delete':'delete','confirm':'confirm','page_turn':'page_turn','drag':'soft_click','highlight':'line_draw'}
+                events = []
+                for event in read(track)['events']:
+                    action=action_map.get(event['kind'])
+                    t=round(float(event['t'])-media_start,5)
+                    if action and 0<=t<end-start:
+                        events.append(dict(action=action,at=t,gain=.60 if action=='line_draw' else .34))
+                src=dict(src,interactions=events)
         if mode=='evidence_spotlight':
             src = evidence_metadata(src,root)
         if 'transition_in' in src:
@@ -575,6 +587,8 @@ def _spatial_sound_marks(sp_spec, span):
     swiss = (sp_spec.get('stage_look') or data.get('stage_look')) == 'swiss_paper'
     land = 'card_thock' if swiss else 'pop'
     if recipe == 'kinetic_title_bridge':
+        for word in data.get('words', []):
+            add('pop',word['at']+.12,.30)
         add('marker_stroke', data['underline_at'])
     elif recipe == 'triptych_curtain':
         add('shutter_whip', 0.02)
@@ -604,6 +618,8 @@ def _spatial_sound_marks(sp_spec, span):
             cat = float(card.get('at', 0.12 + idx * 0.65))
             if card.get('reveal', True):
                 add(land, cat, 0.34)
+            for page in card.get('pages',[]):
+                add('page_flip',page['at'],.34)
             for at in card.get('panel_accents',[]):
                 add('click_soft',at,.31)
             if card.get('kind') == 'race_bars':
@@ -630,8 +646,9 @@ def _spatial_sound_marks(sp_spec, span):
         sel = float(data.get('select_at', span * 0.5))
         add('impact', sel, 0.34)
     elif recipe == 'layer_explode_3d':
-        add('whoosh', span * 0.22, 0.32)
-        add('counter_roll' if 'count_at' in data else 'chime', data.get('count_at', span * 0.52), 0.26)
+        add('zoom_swoosh', span*.04, .62)
+        add('counter_roll', data.get('count_at',span*.07), .34)
+        add('ping',span*.84,.36)
     elif recipe == 'roadmap_thread_camera':
         for idx, st in enumerate(data.get('steps') or []):
             add('pop', float(st.get('at', 0.15 + idx * 0.8)), 0.30)
@@ -806,6 +823,7 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
                         if 'at' in item:
                             action_times.append(item['at'])
                         action_times.extend(item.get('panel_accents',[]))
+                        action_times.extend(page['at'] for page in item.get('pages',[]))
                         if group=='words': action_times.append(item.get('at',0)+.12)
                         for child in item.get('children',[]) + item.get('items',[]):
                             if isinstance(child,dict) and 'at' in child:
@@ -815,6 +833,8 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
                 if row['recipe']=='step_tree_focus':
                     action_times.extend(max(.03,b['at']-.16) for b in data['branches'][1:] if 'at' in b)
                 row['visual_action_times'] = sorted(set(action_times))
+            if row['recipe']=='layer_explode_3d':
+                row['visual_action_times']=[span*.04,data.get('count_at',span*.07),span*.84]
             if 'expected_items' in data:
                 row['expected_items'] = data['expected_items']
             row['source_names'] += [Path(v).name for v in (data.get('videos') or [])]
@@ -824,6 +844,15 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
             row['presenter_shortcuts'] = shot['presenter_shortcuts']
         if 'custom_layout' in shot:
             row['custom_layout'] = shot['custom_layout']
+        if mode in {'fullbleed_rig','callout_rig'}:
+            moves = shot.get('camera_moves')
+            camera = ([float(move[0]) for move in moves if (move[4] if len(move)>4 else shot.get('motion'))!='hold']
+                      if moves is not None else [0.] if shot.get('motion') in {'push','pull','focus_push','punch'} else [])
+            manual = [r['at'] for r in shot.get('interactions',[]) if r['action']=='camera_zoom']
+            for at in camera:
+                if 0<=at<span and not any(abs(at-t)<=.12 for t in manual):
+                    stage.add_sound_mark('camera_sweep',a+at,gain=.59)
+            row['camera_action_times']=camera
         if 'interactions' in shot:
             row['interactions'] = shot['interactions']
             for act in row['interactions']:
@@ -896,7 +925,7 @@ def hyperframes_step(command, operation, args, folder, env, run):
             return
 
 
-def render_act(folder, stage, command, env, run, *, force_render=False, workers=None, draft=False):
+def render_act(folder, stage, command, env, run, *, force_render=False, workers=None, draft=False, artifact="render"):
     workers = render_workers(workers)
     arguments = ['.','--fps',str(FPS),'--quality','draft' if draft else 'looks']
     media = {'vendor/gsap.min.js','assets/mix.wav',*(path for row in stage.shots for path in row['files'])}
@@ -910,10 +939,10 @@ def render_act(folder, stage, command, env, run, *, force_render=False, workers=
             path.relative_to(folder).as_posix():file_fingerprint(path)
             for entry in stage.subcompositions for path in composition_files(folder/entry)
         }
-    output,stamp = folder/'render.mp4',folder/'.render-stamp.json'
+    output,stamp = folder/f'{artifact}.mp4',folder/f'.{artifact}-stamp.json'
     if not force_render and matching_render(output,stamp,inputs,stage.duration):
         return 'reused'
-    pending = folder/'render.pending.mp4'
+    pending = folder/f'{artifact}.pending.mp4'
     try:
         hyperframes_step(command,'check',['.'],folder,env,run)
         hyperframes_step(command,'render',[*arguments,'--workers',str(workers),'--output',pending.name],folder,env,run)
@@ -1028,6 +1057,7 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
     command = resolve_hyperframes_command()
     env = {**os.environ,'HYPERFRAMES_TELEMETRY_DISABLED':'1','DO_NOT_TRACK':'1'}
     render_status = {}
+    review_pack = bool(raw.get('review_pack'))
     for folder,stage,offset in stages:
         stop = offset+stage.duration
         local = [dict(text=row['text'],start=max(offset,row['start'])-offset,end=min(stop,row['end'])-offset)
@@ -1040,17 +1070,39 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
         sf.write(folder/'assets/mix.wav',wave[round(offset*rate):round(stop*rate)],rate,subtype='PCM_24')
         if not build_only:
             render_status[folder.name] = render_act(folder,stage,command,env,run,force_render=force_render,workers=workers,draft=draft)
+            if review_pack:
+                captions_html=stage.captions
+                try:
+                    stage.captions=[]
+                    stage.write_project(folder,timeline_out=folder/'shot-timeline.json')
+                    render_act(folder,stage,command,env,run,workers=workers,force_render=force_render,
+                               draft=True,artifact='blind-render')
+                finally:
+                    stage.captions=captions_html
+                    stage.write_project(folder,timeline_out=folder/'shot-timeline.json')
     result = dict(ok=True,duration=duration,acts=len(stages),shots=len(shots),timeline='shot-timeline.json',srt=f'{name}.srt')
     if not build_only:
-        concat = output/'acts.ffconcat'
-        concat.write_text('ffconcat version 1.0\n'+''.join(
-            f"file '{folder.relative_to(output).as_posix()}/render.mp4'\nduration {stage.duration:.9f}\n"
-            for folder,stage,_ in stages))
-        staged = output/f'{name}.pending.mp4'
-        run(['ffmpeg','-nostdin','-v','error','-y','-f','concat','-safe','0','-i',str(concat),
-             '-i',str(output/'mix.wav'),'-map','0:v:0','-map','1:a:0','-c:v','copy',
-             '-c:a','aac','-ac','2','-b:a','256k','-movflags','+faststart','-shortest',str(staged)],check=True)
-        staged.replace(output/f'{name}.mp4')
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory(dir=output) as scratch:
+            scratch=Path(scratch)
+            for render in (['render','blind-render'] if review_pack else ['render']):
+                concat=scratch/'acts.ffconcat'
+                lines=['ffconcat version 1.0']
+                for i,(folder,stage,_) in enumerate(stages):
+                    frames=round(stage.duration*FPS)
+                    pic=scratch/f'picture-{i}.mp4'
+                    run(['ffmpeg','-nostdin','-v','error','-y','-i',str(folder/(render+'.mp4')),
+                         '-map','0:v:0','-c:v','copy','-frames:v',str(frames),str(pic)],check=True)
+                    lines.extend([f"file '{pic.name}'",f'duration {frames/FPS:.9f}'])
+                concat.write_text('\n'.join(lines)+'\n')
+                staged=scratch/(render+'-mux.mp4')
+                run(['ffmpeg','-nostdin','-v','error','-y','-f','concat','-safe','0','-i',str(concat),
+                     '-i',str(output/'mix.wav'),'-map','0:v:0','-map','1:a:0','-c:v','copy',
+                     '-c:a','aac','-ac','2','-b:a','256k','-movflags','+faststart',str(staged)],check=True)
+                if render=='render': staged.replace(output/f'{name}.mp4')
+                else:
+                    from review import episode_review_pack
+                    episode_review_pack(output/f'{name}.mp4',staged,global_shots,output,duration)
         result['mp4'] = f'{name}.mp4'
         result['act_render_status'] = render_status
     write(output/'assembly-report.json',result)

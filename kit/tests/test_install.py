@@ -189,7 +189,7 @@ class InstallTests(unittest.TestCase):
 
 
 class VoiceDependencyTests(unittest.TestCase):
-    versions = {'librosa': '1.0.1', 'soundfile': '0.14.0', 'scipy': '1.18.1', 'numpy': '2.5.4', 'Pillow': '13.0.0'}
+    versions = {'librosa': '1.0.1', 'soundfile': '0.14.0', 'scipy': '1.18.1', 'numpy': '2.5.4', 'Pillow': '13.0.0', 'pypinyin': '0.55.0'}
 
     def toolkit(self, directory):
         toolkit = Path(directory)

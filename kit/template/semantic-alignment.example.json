@@ -1,0 +1,152 @@
+[
+  {
+    "shot_id": "shot-01",
+    "start": 0.0,
+    "end": 5.0,
+    "quote": "开场作品",
+    "case_tag": "待填案例",
+    "case_windows": [
+      {
+        "tag": "待填案例",
+        "start": 0.0,
+        "end": 5.0
+      }
+    ],
+    "evidence": "待填实际作品与可见动作"
+  },
+  {
+    "shot_id": "shot-02",
+    "start": 5.0,
+    "end": 10.0,
+    "quote": "实拍对照",
+    "case_tag": "待填案例",
+    "case_windows": [
+      {
+        "tag": "待填案例",
+        "start": 0.0,
+        "end": 5.0
+      }
+    ],
+    "evidence": "待填前后对比证据"
+  },
+  {
+    "shot_id": "shot-03",
+    "start": 10.0,
+    "end": 15.0,
+    "quote": "具体操作",
+    "case_tag": "待填案例",
+    "case_windows": [
+      {
+        "tag": "待填案例",
+        "start": 0.0,
+        "end": 5.0
+      }
+    ],
+    "evidence": "待填实录动作和结果"
+  },
+  {
+    "shot_id": "shot-04",
+    "start": 15.0,
+    "end": 20.0,
+    "quote": "案例看板",
+    "case_tag": "待填案例",
+    "case_windows": [
+      {
+        "tag": "待填案例",
+        "start": 0.0,
+        "end": 5.0
+      }
+    ],
+    "evidence": "待填实际作品与可见动作"
+  },
+  {
+    "shot_id": "shot-05",
+    "start": 20.0,
+    "end": 25.0,
+    "quote": "成本结论",
+    "case_tag": "待填案例",
+    "case_windows": [
+      {
+        "tag": "待填案例",
+        "start": 0.0,
+        "end": 5.0
+      }
+    ],
+    "evidence": "待填实录动作和结果"
+  },
+  {
+    "shot_id": "shot-06",
+    "start": 25.0,
+    "end": 26.5,
+    "quote": "分类与做法",
+    "case_tag": "待填案例",
+    "case_windows": [
+      {
+        "tag": "待填案例",
+        "start": 0.0,
+        "end": 1.5
+      }
+    ],
+    "evidence": "待填实际作品与可见动作"
+  },
+  {
+    "shot_id": "shot-07",
+    "start": 26.5,
+    "end": 30.0,
+    "quote": "分类与做法",
+    "case_tag": "待填案例",
+    "case_windows": [
+      {
+        "tag": "待填案例",
+        "start": 0.0,
+        "end": 3.5
+      }
+    ],
+    "evidence": "待填前后对比证据"
+  },
+  {
+    "shot_id": "shot-08",
+    "start": 30.0,
+    "end": 35.0,
+    "quote": "对照结果",
+    "case_tag": "待填案例",
+    "case_windows": [
+      {
+        "tag": "待填案例",
+        "start": 0.0,
+        "end": 5.0
+      }
+    ],
+    "evidence": "待填实录动作和结果"
+  },
+  {
+    "shot_id": "shot-09",
+    "start": 35.0,
+    "end": 40.0,
+    "quote": "回看源文件",
+    "case_tag": "待填案例",
+    "case_windows": [
+      {
+        "tag": "待填案例",
+        "start": 0.0,
+        "end": 5.0
+      }
+    ],
+    "evidence": "待填实际作品与可见动作"
+  },
+  {
+    "shot_id": "shot-10",
+    "start": 40.0,
+    "end": 45.0,
+    "quote": "两步收尾",
+    "case_tag": "待填案例",
+    "case_windows": [
+      {
+        "tag": "待填案例",
+        "start": 0.0,
+        "end": 5.0
+      }
+    ],
+    "evidence": "待填实录动作和结果"
+  }
+]

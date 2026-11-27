@@ -239,6 +239,8 @@ def test_long_paragraph_keeps_text_and_breath(tmp_path):
     assert voice.chapter_chunks(longer,'whole_chapter')==[longer]
     assert len(voice.chapter_chunks(longer,'legacy_chunk'))>2
     assert voice.chapter_chunks('甲'*114 + '。')==['甲'*114 + '。']
+    clause='甲'*65+'，'+'乙'*66+'。'
+    assert voice.chapter_chunks(clause)==['甲'*65+'，','乙'*66+'。']
     with pytest.raises(ValueError, match='单句超过 115 字'):
         voice.chapter_chunks('甲'*58 + '\n' + '乙'*57)
     breath = tone(.16,.0038,520)
@@ -893,3 +895,32 @@ def test_triptych_cards_reveal_and_check_video_tail(tmp_path):
     shot['cards'][1]['media_start'] = .8
     with pytest.raises(ValueError,match='余量'):
         assemble.prepare_shots({'shots':[shot]},tmp_path,cues)
+
+
+def test_technical_line_and_semicolon_are_synthesis_only():
+    text = '一行代码。两行脚本；几行配置。三人同行，一行人。'
+    assert voice.apply_pronunciations(text) == '一航代码。两航脚本；几航配置。三人同行，一行人。'
+    assert voice.chapter_chunks('请看提纲；接着放映。') == ['请看提纲；', '接着放映。']
+
+
+def test_phrase_readings_and_annotations_preserve_lexical_and_numeric_errors():
+    assert quality.audit('请微调音量。', {'text':'请微条音量。'}, auto_homophone=True)['ok']
+    assert quality.audit('打开归藏。', {'text':'打开硅葬。'}, auto_homophone=True,
+                         pronunciations={'归藏':'归葬'})['ok']
+    for expected, heard in [('GitHub', 'GeekHub'), ('两行代码', '三行代码'), ('发黑', '发'),
+                            ('发黑', '发了黑'), ('请微调','请微跳')]:
+        assert not quality.audit(expected, {'text':heard}, auto_homophone=True)['ok']
+    assert not quality.audit('发黑', {'text':'发'}, {'homophone':{'发黑':'发'}})['ok']
+
+
+def test_cloud_concat_keeps_at_least_180_ms_after_active_audio(tmp_path):
+    import numpy as np
+    import soundfile as sf
+    rate = 24000
+    signal = .2 * np.sin(2*np.pi*250*np.arange(rate)/rate)
+    original, out = tmp_path/'raw.wav', tmp_path/'protected.wav'
+    sf.write(original, signal, rate)
+    voice._concat_wavs([original], out, safe_tail_ms=180)
+    samples, _ = sf.read(out)
+    last = np.flatnonzero(abs(samples) > 10**(-48/20))[-1]
+    assert len(samples)-1-last >= round(rate*.18)
