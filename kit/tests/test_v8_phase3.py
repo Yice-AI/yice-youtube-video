@@ -68,14 +68,14 @@ class Phase3Tests(unittest.TestCase):
         self.assertEqual(len(scripts),4)
         self.assertEqual(scripts[0].split(',{scale:',1)[1],scripts[2].split(',{scale:',1)[1])
         self.assertEqual(scripts[1].split(',{scale:',1)[1],scripts[3].split(',{scale:',1)[1])
-        self.assertIn("duration:0.65000,ease:'power3.out'",scripts[0])
-        self.assertIn("duration:3.35000,ease:'sine.out'",scripts[1])
+        self.assertIn("duration:0.32000,ease:'expo.out'",scripts[0])
+        self.assertIn("duration:3.68000,ease:'sine.out'",scripts[1])
         self.assertIn('rgba(255,212,59,0.26)',''.join(stage.plates))
         short = EditorialStage('短镜',1)
         circle = dict(mark,kind='hand_circle',at=.1)
         short.add_callout_rig(0,1,'clip.mp4',motion='spring_glide',overlays=[circle])
         self.assertEqual(''.join(short.plates).count('class="verified-circle"'),2)
-        self.assertIn("ease:'power2.out'",short.scripts[0])
+        self.assertIn("ease:'power3.out'",short.scripts[0])
         self.assertEqual(next(short.sound_events())['kind'],'marker')
         self.assertFalse(audit.spotlight_restraint_gate([
             dict(id='a',overlays=[mark]),dict(id='b',overlays=[circle]),
