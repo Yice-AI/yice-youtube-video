@@ -562,6 +562,79 @@ def explainer(shot, root, folder, run, *, force_render=False):
     return target.relative_to(folder).as_posix(),spec
 
 
+def _spatial_sound_marks(sp_spec, span):
+    recipe = sp_spec.get('recipe', '')
+    data = sp_spec.get('data') or {}
+    cues = []
+    def add(kind, rel_t, gain=0.32):
+        t = float(rel_t)
+        if 0.0 <= t < span - 0.04:
+            cues.append((round(t, 4), kind, gain))
+
+    if recipe == 'perspective_video_fan':
+        add('whoosh', 0.04, 0.30)
+        focus_at = float(data.get('focus_at', span * 0.42))
+        add('click', focus_at, 0.34)
+        add('chime', focus_at + 0.08, 0.24)
+        if isinstance(data.get('punch_at'), (int, float)):
+            add('impact', data['punch_at'], 0.40)
+    elif recipe == 'logo_bento_stage':
+        for idx, mod in enumerate(data.get('modules') or []):
+            mat = float(mod.get('at', 0.12 + idx * 0.28))
+            add('pop', mat, 0.32)
+            for j, it in enumerate(mod.get('items') or []):
+                if isinstance(it, dict) and isinstance(it.get('at'), (int, float)):
+                    add('click', it['at'], 0.30)
+    elif recipe == 'progressive_sim_cards':
+        for idx, card in enumerate(data.get('cards') or []):
+            cat = float(card.get('at', 0.12 + idx * 0.65))
+            add('pop', cat, 0.34)
+            if card.get('kind') == 'race_bars':
+                add('chime', cat + 0.36, 0.26)
+    elif recipe == 'step_tree_focus':
+        for idx, br in enumerate(data.get('branches') or []):
+            bat = float(br.get('at', 0.12 + idx * 1.1))
+            add('pop', bat, 0.32)
+            for ch in (br.get('children') or []):
+                if isinstance(ch.get('at'), (int, float)):
+                    add('click', ch['at'], 0.28)
+        for step in (data.get('focus_sequence') or [])[1:]:
+            if isinstance(step.get('at'), (int, float)):
+                add('whoosh', step['at'], 0.28)
+    elif recipe == 'formula_pill_chain':
+        add('pop', 0.04, 0.30)
+        rev = float(data.get('reveal_at', span * 0.32))
+        add('whoosh', rev, 0.30)
+        add('click', rev + 0.10, 0.34)
+    elif recipe == 'carousel_3d_select':
+        add('whoosh', 0.05, 0.28)
+        sel = float(data.get('select_at', span * 0.5))
+        add('impact', sel, 0.34)
+    elif recipe == 'layer_explode_3d':
+        add('whoosh', span * 0.22, 0.32)
+        add('chime', span * 0.52, 0.26)
+    elif recipe == 'roadmap_thread_camera':
+        for idx, st in enumerate(data.get('steps') or []):
+            add('pop', float(st.get('at', 0.15 + idx * 0.8)), 0.30)
+    elif recipe == 'cutout_parallax_stage':
+        add('whoosh', 0.05, 0.28)
+        add('pop', 0.28, 0.28)
+    elif recipe == 'documentary_ken_burns':
+        add('whoosh', 0.05, 0.24)
+        if isinstance(data.get('split_at'), (int, float)):
+            add('click', data['split_at'], 0.30)
+    else:
+        add('pop', 0.08, 0.30)
+        add('click', span * 0.42, 0.28)
+
+    deduped, last_by_kind = [], {}
+    for t, kind, gain in sorted(cues):
+        if t - last_by_kind.get(kind, -9.0) >= 0.14:
+            deduped.append((kind, t, gain))
+            last_by_kind[kind] = t
+    return deduped
+
+
 def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None, workers=None):
     first,last = shots[0]['start'],shots[-1]['end']
     stage = EditorialStage(title,duration=last-first,fps=FPS)
@@ -667,9 +740,12 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
         elif mode == 'hyperframes_block':
             entry,composition_id = install_subcomposition(shot,root,folder,gsap or gsap_runtime({},root))
             stage.add_subcomposition(key,composition_id,entry,a,b)
-            stage._shot(text,'hyperframes_motion',a,b,[])
-            stage.shots[-1]['composition'] = entry
             sp_spec = shot.get('spatial_spec') or {}
+            auto_marks = _spatial_sound_marks(sp_spec, span)
+            stage._shot(text,'hyperframes_motion',a,b,[],beats=[round(t,4) for _,t,_ in auto_marks])
+            stage.shots[-1]['composition'] = entry
+            for sfx_kind, rel_t, sfx_gain in auto_marks:
+                stage.add_sound_mark(sfx_kind, a + rel_t, gain=sfx_gain)
             sp_look = sp_spec.get('stage_look') or (sp_spec.get('data') or {}).get('stage_look')
             sp_recipe = sp_spec.get('recipe')
             if sp_look in {'editorial_paper', 'scroll_paper', 'paper'} or (
@@ -704,6 +780,10 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
             row['files'] = list(dict.fromkeys([*row['files'],*auxiliary]))
         if gif_hashes:
             row['gif_source_hashes'] = gif_hashes
+        for custom_sfx in shot.get('sound_marks', []):
+            rel_at = float(custom_sfx['at'])
+            if 0.0 <= rel_at < span:
+                stage.add_sound_mark(custom_sfx['kind'], a + rel_at, gain=custom_sfx.get('gain', 0.34))
         stage.register_visual_shot(key,a,b,before,shot.get('transition_in'))
     return stage
 
@@ -874,7 +954,7 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
         staged = output/f'{name}.pending.mp4'
         run(['ffmpeg','-nostdin','-v','error','-y','-f','concat','-safe','0','-i',str(concat),
              '-i',str(output/'mix.wav'),'-map','0:v:0','-map','1:a:0','-c:v','copy',
-             '-c:a','aac','-b:a','256k','-movflags','+faststart','-shortest',str(staged)],check=True)
+             '-c:a','aac','-ac','2','-b:a','256k','-movflags','+faststart','-shortest',str(staged)],check=True)
         staged.replace(output/f'{name}.mp4')
         result['mp4'] = f'{name}.mp4'
         result['act_render_status'] = render_status

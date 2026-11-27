@@ -69,7 +69,42 @@ def action_mark(kind: str, at: float) -> dict[str, object]:
     return {"kind": kind, "at": round(float(at), 5)}
 
 
-SFX_KINDS = {'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser'}
+SFX_KINDS = {
+    'tick', 'whoosh', 'pop', 'marker', 'stamp', 'riser',
+    'click', 'impact', 'chime', 'ping', 'typing', 'keypress', 'sparkle', 'whoosh_cinematic',
+}
+
+ASSETS_DIR = Path(__file__).resolve().parents[1] / 'assets'
+BUNDLED_SFX_MAP = {
+    'pop': 'pop.mp3',
+    'click': 'click.mp3',
+    'tick': 'key-press.mp3',
+    'keypress': 'key-press.mp3',
+    'whoosh': 'whoosh-short.mp3',
+    'whoosh_cinematic': 'whoosh-cinematic.mp3',
+    'marker': 'whoosh-short.mp3',
+    'stamp': 'impact-bass-1.mp3',
+    'impact': 'impact-bass-1.mp3',
+    'chime': 'chime.mp3',
+    'ping': 'ping.mp3',
+    'typing': 'typing.mp3',
+    'sparkle': 'sparkle.mp3',
+    'riser': 'riser.mp3',
+}
+
+
+def resolve_bgm_path(path, root=Path('.')):
+    if path is None:
+        return None
+    s = str(path)
+    if s.startswith('builtin:'):
+        name = s.split(':', 1)[1]
+        cand = ASSETS_DIR / 'bgm' / (name if name.endswith(('.mp3', '.wav')) else f'{name}.mp3')
+        if not cand.is_file():
+            raise FileNotFoundError(f'内置曲库不存在该曲目：{name}')
+        return cand
+    p = Path(path)
+    return p if p.is_absolute() else Path(root) / p
 
 
 class EpisodeAudioMixer:
@@ -167,7 +202,7 @@ class EpisodeAudioMixer:
             decay = math.exp(-.01/(.025 if target > value else .32))
             value = target+(value-target)*decay
             envelope[i] = value
-        db = np.interp(np.arange(len(voice))/hop,np.arange(len(envelope)),-13-9*envelope)
+        db = np.interp(np.arange(len(voice))/hop,np.arange(len(envelope)),-11.2-6.3*envelope)
         return (10**(db/20)).astype('float32')
 
     def _effect(self, kind):
@@ -240,16 +275,34 @@ class EpisodeAudioMixer:
         mixed = voice+bed
         applied = []
         library = sfx_library or {}
+        sfx_cache = {}
         for event in sound_marks:
             kind, at = event['kind'],float(event['at'])
             if kind == 'music_drop':
                 continue
             if kind == 'slap':
                 kind = 'stamp'
-            gain = float(event.get('gain',.18))
+            gain = float(event.get('gain',.30))
             if kind not in SFX_KINDS or not 0 <= at < duration or not 0 < gain <= 1:
                 raise ValueError('音效类型、时间或增益无效')
-            effect = self._read(library[kind]) if kind in library else self._effect(kind)
+            if kind in library:
+                src_key = ('custom', str(library[kind]))
+                if src_key not in sfx_cache:
+                    w = self._read(library[kind])
+                    pk = float(np.max(np.abs(w))) or 1.
+                    sfx_cache[src_key] = w / pk
+                effect = sfx_cache[src_key]
+            else:
+                bundled = ASSETS_DIR / 'sfx' / BUNDLED_SFX_MAP.get(kind, '')
+                if BUNDLED_SFX_MAP.get(kind) and bundled.is_file():
+                    src_key = ('bundled', bundled.name)
+                    if src_key not in sfx_cache:
+                        w = self._read(bundled)
+                        pk = float(np.max(np.abs(w))) or 1.
+                        sfx_cache[src_key] = (w / pk) * 0.95
+                    effect = sfx_cache[src_key]
+                else:
+                    effect = self._effect(kind)
             i = round(at*self.rate); n = min(len(effect),frames-i)
             mixed[i:i+n] += gain*effect[:n]
             applied.append({**event,'kind':kind,'at':at,'gain':gain})
@@ -274,7 +327,11 @@ def mix_episode_audio(config, duration, output, *, root=Path('.'), sound_marks=(
     library = {key:root/path for key,path in config.get('sfx_library', {}).items()}
     drops = [(item['start'],item['end']) if isinstance(item,dict) else tuple(item)
              for item in config.get('music_drops', [])]
-    return EpisodeAudioMixer().mix(duration,clips,output,bgm=[root/path for path in config.get('bgm',[])],
+    raw_bgm = config.get('bgm', [])
+    if not raw_bgm and duration >= 12.0 and (ASSETS_DIR / 'bgm/city-groove.mp3').is_file():
+        raw_bgm = ['builtin:city-groove']
+    bgm_paths = [resolve_bgm_path(path, root) for path in raw_bgm]
+    return EpisodeAudioMixer().mix(duration,clips,output,bgm=bgm_paths,
            bgm_cuts=config.get('bgm_cuts',bgm_cuts),music_drops=drops,
            sound_marks=[*config.get('sound_marks',[]), *sound_marks],sfx_library=library,
            intro_fade_in=float(config.get('intro_fade_in',0.)),crossfade=float(config.get('crossfade',6.)))

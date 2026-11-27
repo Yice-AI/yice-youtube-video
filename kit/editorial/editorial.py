@@ -198,19 +198,33 @@ def caseleft(eyebrow: str, lines: list[str], desc: str, subdesc: str = "",
     )
 
 
+def _text_units(text: str) -> float:
+    return sum(0.58 if ord(ch) < 128 else 1.02 for ch in str(text))
+
+
 def stamp(x: float, y: float, text: str, angle: float = -7, outline_only: bool = False) -> str:
+    units = max(2.0, _text_units(text))
     if outline_only:
+        size = min(96, max(52, round(620 / units)))
+        box_w = max(500, min(860, round(units * size * 1.06) + 96))
+        max_txt = box_w - 72
+        fit = f'textLength="{max_txt}" lengthAdjust="spacingAndGlyphs"' if units * size > max_txt else ''
         inner = (
-            rect(0, 0, 544, 183, "none", f'stroke="{CRIMSON}" stroke-width="12"')
-            + txt(272, 133, text, 102, CRIMSON, anchor="middle", weight=700)
+            rect(0, 0, box_w, 176, "none", f'stroke="{CRIMSON}" stroke-width="11"')
+            + txt(box_w / 2, 126, text, size, CRIMSON, anchor="middle", weight=700, attrs=fit)
         )
     else:
+        size = min(70, max(44, round(540 / units)))
+        box_w = max(440, min(820, round(units * size * 1.06) + 88))
+        max_txt = box_w - 64
+        fit = f'textLength="{max_txt}" lengthAdjust="spacingAndGlyphs"' if units * size > max_txt else ''
         inner = (
-            rect(0, 0, 530, 128, CORAL)
-            + rect(9, 9, 512, 110, "none", f'stroke="{INK}" stroke-width="3"')
-            + txt(265, 94, text, 78, INK, anchor="middle", weight=900)
+            rect(0, 0, box_w, 124, CORAL, 'rx="6"')
+            + rect(9, 9, box_w - 18, 106, "none", f'rx="4" stroke="{INK}" stroke-width="3"')
+            + txt(box_w / 2, 62 + round(size * 0.36), text, size, INK, anchor="middle", weight=900, attrs=fit)
         )
-    return f'<g transform="translate({x} {y}) rotate({angle})"><g class="stamp">{inner}</g></g>'
+    safe_x = max(96, min(float(x), 1824 - box_w))
+    return f'<g transform="translate({safe_x:.1f} {y}) rotate({angle})"><g class="stamp">{inner}</g></g>'
 
 
 def perforations(color: str = "#46554b") -> str:
@@ -533,15 +547,19 @@ class EditorialStage:
                             f"ease:'{ease}',immediateRender:false}},{start:.5f});")
 
     def _breathing_tween(self, selector, start, span, motion, focus=None):
-        scale = (1.,1.27) if motion=='focus_push' or focus else (1.06,1.20)
-        shift = (0.,0.) if motion=='focus_push' or focus else (-27.,72.)
+        if focus is not None:
+            scale, shift = (1.0, 1.18), (0.0, 0.0)
+        elif motion == 'focus_push':
+            scale, shift = (1.0, 1.032), (0.0, 0.0)
+        else:
+            scale, shift = (1.0, 1.022), (0.0, 0.0)
         if span < 1.4:
-            self._camera_tween(selector,start,span,scale=scale,shift=shift,focus=focus,ease='power2.out')
+            self._camera_tween(selector,start,span,scale=scale,shift=shift,focus=focus,ease='power3.out')
             return
-        scale_mid = scale[0]+.7*(scale[1]-scale[0])
-        shift_mid = shift[0]+.7*(shift[1]-shift[0])
-        self._camera_tween(selector,start,.65,scale=(scale[0],scale_mid),shift=(shift[0],shift_mid),focus=focus,ease='power3.out')
-        self._camera_tween(selector,start+.65,span-.65,scale=(scale_mid,scale[1]),shift=(shift_mid,shift[1]),focus=focus,ease='sine.out')
+        scale_mid = scale[0]+.75*(scale[1]-scale[0])
+        shift_mid = shift[0]+.75*(shift[1]-shift[0])
+        self._camera_tween(selector,start,.32,scale=(scale[0],scale_mid),shift=(shift[0],shift_mid),focus=focus,ease='expo.out')
+        self._camera_tween(selector,start+.32,span-.32,scale=(scale_mid,scale[1]),shift=(shift_mid,shift[1]),focus=focus,ease='sine.out')
 
     def add_overlays(self, start, end, overlays, *, nle_plate=None, focus=None, motion=None, framing='fullbleed'):
         if not 1 <= len(overlays) <= 2:
@@ -607,7 +625,15 @@ class EditorialStage:
                 logo = overlay.get('logo')
                 inset = 44 if logo else 0
                 width = min(760,max(190,57+inset+max(len(label)*28,len(sublabel)*22)))
-                x,y = (136,34) if studio else (80,82)
+                pos = overlay.get('position', 'auto')
+                shot_files = ' '.join(str(f) for f in shot.get('files', []))
+                use_right = pos == 'top_right' or (pos == 'auto' and any(tok in shot_files.lower() for tok in ('cli-', 'terminal', 'ttyd')))
+                if use_right:
+                    x,y = (1784-width,34) if studio else (1840-width,56)
+                elif pos == 'bottom_right':
+                    x,y = (1784-width,772) if studio else (1840-width,784)
+                else:
+                    x,y = (136,34) if studio else (80,82)
                 height = (68 if studio else 80) if sublabel else 56
                 text_width = width-48-inset
                 main_fit = f'textLength="{text_width}" lengthAdjust="spacingAndGlyphs"' if len(label)*28>text_width else ''
@@ -620,6 +646,25 @@ class EditorialStage:
                     body += txt(x+24+inset,y+65,sublabel,22,MUTED,attrs='data-layout-ignore'+sub_fit)
                 body = group('rise',body)
                 audio = 'pop'
+            elif style == 'hero_punch':
+                if not label.strip():
+                    raise ValueError('重锤大字需要文字')
+                sub = str(overlay.get('sublabel', '')).strip()
+                units = max(3.0, _text_units(label))
+                fsize = min(86, max(54, round(1320 / units)))
+                card_w = min(1560, max(680, round(units * fsize * 1.06) + 140))
+                card_h = 196 if sub else 148
+                cx, cy = (1920 - card_w) / 2, (920 - card_h) / 2
+                fit = f'textLength="{card_w - 96}" lengthAdjust="spacingAndGlyphs"' if units * fsize > card_w - 96 else ''
+                card_svg = (
+                    rect(0, 0, 1920, 1080, 'rgba(6,10,18,0.56)')
+                    + rect(cx, cy, card_w, card_h, '#0d1422eb', f'rx="24" stroke="{CORAL}" stroke-width="2.5"')
+                    + txt(960, cy + (88 if sub else 98), label, fsize, '#FFFFFF', anchor='middle', weight=900, attrs=fit)
+                )
+                if sub:
+                    card_svg += txt(960, cy + 150, sub, 30, '#9bd8f0', anchor='middle', weight=700, attrs='data-layout-ignore')
+                body = group('punch-slam', card_svg)
+                audio = 'stamp'
             elif style == 'stat_badge':
                 value = float(overlay['value'])
                 unit = str(overlay.get('unit',''))
@@ -711,6 +756,10 @@ class EditorialStage:
                         beats.append(at+delay)
             if style == 'verdict_stamp':
                 self.add_stamp_slam(plate,begin)
+            if style == 'hero_punch':
+                self.scripts.append(f"tl.fromTo('#{plate} .punch-slam',{{scale:1.12,opacity:0}},"
+                                    f"{{scale:1,opacity:1,duration:{min(.20,hold):.5f},"
+                                    f"transformOrigin:'960px 460px',ease:'expo.out',immediateRender:false}},{begin:.5f});")
             if style in {'prop_badge','reaction_cutout'}:
                 ease = 'back.out(1.4)' if foreground else 'back.out(1.35)'
                 self.scripts.append(f"tl.fromTo('#{plate} .cutout-hit',{{scale:1.18,rotation:4,y:-9,opacity:0}},"

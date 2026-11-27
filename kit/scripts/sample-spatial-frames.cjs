@@ -94,9 +94,33 @@ async function measure(page, {entry,seconds}) {
         const bounds=el.getBoundingClientRect();
         return [bounds.left,bounds.right];
       }) : [];
+      const containerOverflows = [];
+      if (phase >= 0.35) {
+        const containers = Array.from(document.querySelectorAll('.bento-box,.sim-panel,.tree-branch'));
+        for (const box of containers) {
+          if (!visible(box)) continue;
+          const pr = box.getBoundingClientRect();
+          if (pr.width < 20 || pr.height < 20) continue;
+          const kids = box.querySelectorAll('.bento-item,.bento-logo-wrap,.bento-item-name,.sim-bar-group');
+          for (const kid of kids) {
+            if (!visible(kid)) continue;
+            const kr = kid.getBoundingClientRect();
+            if (kr.top < pr.top - 4 || kr.bottom > pr.bottom + 4 || kr.left < pr.left - 4 || kr.right > pr.right + 4) {
+              containerOverflows.push(Math.round(Math.max(pr.top - kr.top, kr.bottom - pr.bottom, pr.left - kr.left, kr.right - pr.right)));
+            }
+          }
+          const cat = box.parentElement?.querySelector('.bento-cat');
+          if (cat && visible(cat)) {
+            const cr = cat.getBoundingClientRect();
+            if (pr.bottom > cr.top + 2) {
+              containerOverflows.push(Math.round(pr.bottom - cr.top));
+            }
+          }
+        }
+      }
       const root = document.querySelector('[data-composition-id]');
       return {
-        phase, overlaps, cards, titles, stations,
+        phase, overlaps, containerOverflows, cards, titles, stations,
         stageLook: root?.dataset?.stageLook || null,
         exploded: !!document.querySelector('[data-spatial-recipe="layer_explode_3d"]')
       };

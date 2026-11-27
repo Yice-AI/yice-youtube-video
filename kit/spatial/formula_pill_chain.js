@@ -1,21 +1,21 @@
-// formula_pill_chain: centered source pill slides left, shoots arrow & target pill while media plays below.
+// formula_pill_chain (v13): snappy 0.18s pill snap + arrow shoot with rock-steady frame below.
 const srcPill = q('.pill-src');
 const arrow = q('.chain-arrow path');
 const dstPill = q('.pill-dst');
 const frame = q('.chain-frame');
-const revealAt = data.reveal_at ?? dur * 0.34;
+const revealAt = data.reveal_at ?? dur * 0.32;
 
 if (srcPill) {
-  tl.fromTo(srcPill, { scale: 0.85, opacity: 0, x: 180 }, { scale: 1, opacity: 1, x: 180, duration: 0.38, ease: 'back.out(1.4)' }, 0.04);
-  tl.to(srcPill, { x: 0, duration: 0.42, ease: 'power3.inOut' }, revealAt);
+  tl.fromTo(srcPill, { scale: 0.9, opacity: 0, x: 170 }, { scale: 1, opacity: 1, x: 170, duration: 0.18, ease: 'expo.out' }, 0.02);
+  tl.to(srcPill, { x: 0, duration: 0.22, ease: 'expo.out' }, revealAt);
 }
 if (arrow) {
-  tl.fromTo(arrow, { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: 0.3, ease: 'power2.out' }, revealAt + 0.12);
+  tl.fromTo(arrow, { strokeDashoffset: 1, opacity: 0 }, { strokeDashoffset: 0, opacity: 1, duration: 0.16, ease: 'expo.out' }, revealAt + 0.06);
 }
 if (dstPill) {
-  tl.fromTo(dstPill, { x: -34, scale: 0.78, opacity: 0 }, { x: 0, scale: 1, opacity: 1, duration: 0.44, ease: 'back.out(1.5)' }, revealAt + 0.18);
+  tl.fromTo(dstPill, { x: -20, scale: 0.88, opacity: 0 }, { x: 0, scale: 1, opacity: 1, duration: 0.2, ease: 'expo.out' }, revealAt + 0.1);
 }
 if (frame) {
-  tl.fromTo(frame, { y: 26, z: -45, rotationX: 4, scale: 0.95, opacity: 0 }, { y: 0, z: 18, rotationX: 0, scale: 1, opacity: 1, duration: 0.55, ease: 'power3.out' }, 0.08);
+  tl.fromTo(frame, { y: 20, scale: 0.96, opacity: 0 }, { y: 0, scale: 1, opacity: 1, duration: 0.24, ease: 'expo.out' }, 0.05);
 }
-tl.fromTo(cam, { x: -14, y: 10, z: -20, ry: 2 }, { x: 14, y: -6, z: 38, ry: -2, duration: dur, ease: 'sine.inOut', onUpdate: applyCamera }, 0);
+tl.fromTo(cam, { x: 0, y: 4, z: -12 }, { x: 0, y: 0, z: 12, duration: dur, ease: 'sine.out', onUpdate: applyCamera }, 0);

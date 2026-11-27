@@ -218,9 +218,13 @@ def build(spec, source_dir, output, gsap):
         focus_idx = data.get('focus_index', min(2, len(raw_items) - 1))
         if type(focus_idx) is not int or not 0 <= focus_idx < len(raw_items):
             raise ValueError('focus_index 超出视频墙范围')
-        focus_at = number(data.get('focus_at', round(duration * 0.48, 3)), 0.3, duration - 0.35, 'focus_at')
+        focus_at = number(data.get('focus_at', round(duration * 0.42, 3)), 0.25, duration - 0.35, 'focus_at')
         data['focus_index'] = focus_idx
         data['focus_at'] = focus_at
+        aspect = data.get('card_aspect', 'widescreen')
+        if aspect not in ('widescreen', 'portrait'):
+            raise ValueError('card_aspect 仅支持 widescreen 或 portrait')
+        data['card_aspect'] = aspect
         badge = label(data.get('badge', '✦ 修改后'))
         header_html = f'<div class="fan-badge" data-spatial-title data-title-kind="editorial_single"><i>✦</i><span>{badge.lstrip("✦ ")}</span></div>'
         cards_html = []
@@ -229,7 +233,13 @@ def build(spec, source_dir, output, gsap):
             lbl = item.get('label', '') if isinstance(item, dict) else ''
             lbl_html = f'<span class="fan-label">{label(lbl)}</span>' if lbl else ''
             cards_html.append(f'<div class="fan-card" data-spatial-subject><div class="fan-card-inner">{media_tag(src)}{lbl_html}</div></div>')
-        body = f'<div class="fan-stage">{"".join(cards_html)}</div>'
+        stage_cls = 'fan-stage is-portrait' if aspect == 'portrait' else 'fan-stage'
+        if data.get('punch_text'):
+            punch_at = number(data.get('punch_at', round(duration * 0.72, 3)), 0.2, duration - 0.2, 'punch_at')
+            data['punch_at'] = punch_at
+            psub = f'<span>{label(data["punch_sub"])}</span>' if data.get('punch_sub') else ''
+            overlay = f'<div class="fan-punch"><div class="fan-punch-box"><strong>{label(data["punch_text"])}</strong>{psub}</div></div>'
+        body = f'<div class="{stage_cls}">{"".join(cards_html)}</div>'
     elif recipe == 'logo_bento_stage':
         modules = items('modules', 2, 4)
         brand = data.get('brand') or {}
@@ -245,19 +255,22 @@ def build(spec, source_dir, output, gsap):
         cols_html = []
         for idx, mod in enumerate(modules):
             if 'at' in mod:
-                number(mod['at'], 0, duration - 0.3, '模块出场时间')
+                number(mod['at'], 0, duration - 0.2, '模块出场时间')
+            mod_items = mod.get('items', [])[:3]
             rows_html = []
-            for item_idx, entry in enumerate(mod.get('items', [])[:3]):
+            for item_idx, entry in enumerate(mod_items):
                 entry_obj = entry if isinstance(entry, dict) else {'name': str(entry)}
+                if 'at' in entry_obj:
+                    number(entry_obj['at'], 0, duration - 0.15, '子项出场时间')
                 logo_html = f'<img src="{picture(entry_obj["logo"])}" alt="">' if entry_obj.get('logo') else fallback_svg
-                spin_cls = ' bento-spin' if (idx == 0 and item_idx == 0) or entry_obj.get('spin') else ''
+                spin_cls = ' bento-spin' if (idx == 0 and item_idx == 0 and len(mod_items) == 1) or entry_obj.get('spin') else ''
                 badge_html = f'<span class="bento-item-badge">{label(entry_obj["badge"])}</span>' if entry_obj.get('badge') else ''
                 rows_html.append(
                     f'<div class="bento-item"><div class="bento-logo-wrap{spin_cls}">{logo_html}</div>'
                     f'<div class="bento-item-name">{label(entry_obj.get("name", ""))}</div>{badge_html}</div>'
                 )
             cols_html.append(
-                f'<section class="bento-col" data-spatial-subject>'
+                f'<section class="bento-col" data-item-count="{len(mod_items)}" data-spatial-subject>'
                 f'<div class="bento-box">{"".join(rows_html)}</div>'
                 f'<div class="bento-cat">{label(mod["category"])}</div></section>'
             )
@@ -440,10 +453,20 @@ def build(spec, source_dir, output, gsap):
     script = (HERE / 'camera.js').read_text() + (HERE / (motion + '.js')).read_text()
     keep_keys = (
         'selected_index', 'select_at', 'count', 'focus_step', 'action',
-        'focus_index', 'focus_at', 'modules', 'counter', 'focal_from',
+        'focus_index', 'focus_at', 'counter', 'focal_from',
         'focal_to', 'split_at', 'branches', 'focus_sequence', 'reveal_at',
+        'card_aspect', 'punch_at',
     )
     settings_data = {key: data[key] for key in keep_keys if key in data}
+    if 'modules' in data:
+        clean_mods = []
+        for mod in data['modules']:
+            clean_items = [
+                ({k: v for k, v in it.items() if k != 'logo'} if isinstance(it, dict) else it)
+                for it in mod.get('items', [])
+            ]
+            clean_mods.append({**{k: v for k, v in mod.items() if k != 'items'}, 'items': clean_items})
+        settings_data['modules'] = clean_mods
     if 'cards' in data:
         settings_data['cards'] = [{k: v for k, v in card.items() if k != 'source'} for card in data['cards']]
     if 'steps' in data:

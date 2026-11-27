@@ -1,16 +1,16 @@
-// progressive_sim_cards: progressive 1 -> 2 -> 3 device showcase cards with live race bars & media.
+// progressive_sim_cards (v13): Sac-style 0.19s crisp snap-in cards with steady hold & fast race bar lock.
 const cards = all('.sim-card');
 const heading = q('.sim-heading');
 if (heading) {
-  tl.fromTo(heading, { y: -22, opacity: 0 }, { y: 0, opacity: 1, duration: 0.42, ease: 'power3.out' }, 0.03);
+  tl.fromTo(heading, { y: -14, opacity: 0 }, { y: 0, opacity: 1, duration: 0.18, ease: 'expo.out' }, 0.02);
 }
 
 cards.forEach((card, i) => {
   const cfg = (data.cards || [])[i] || {};
-  const at = typeof cfg.at === 'number' ? cfg.at : 0.15 + i * 0.85;
+  const at = typeof cfg.at === 'number' ? cfg.at : 0.12 + i * 0.65;
   tl.fromTo(card,
-    { y: 48, z: -80, scale: 0.84, opacity: 0 },
-    { y: 0, z: 0, scale: 1, opacity: 1, duration: 0.48, ease: 'back.out(1.45)' },
+    { y: 26, z: -40, scale: 0.9, opacity: 0 },
+    { y: 0, z: 0, scale: 1, opacity: 1, duration: 0.2, ease: 'expo.out' },
     at);
 
   const slowFill = card.querySelector('.sim-bar-fill.is-slow');
@@ -30,13 +30,13 @@ cards.forEach((card, i) => {
       }
     }, at);
     tl.to(fastVal, {
-      p: fastEnd, duration: Math.min(0.62, Math.max(0.32, (dur - at) * 0.28)), ease: 'power3.out',
+      p: fastEnd, duration: 0.36, ease: 'expo.out',
       onUpdate: () => {
         fastFill.style.width = fastVal.p.toFixed(1) + '%';
         if (fastPct) fastPct.textContent = Math.round(fastVal.p) + '%';
       }
-    }, at + 0.16);
+    }, at + 0.08);
   }
 });
 
-tl.fromTo(cam, { x: -16, y: 8, z: -28, ry: 2 }, { x: 16, y: -4, z: 36, ry: -2, duration: dur, ease: 'sine.inOut', onUpdate: applyCamera }, 0);
+tl.fromTo(cam, { x: 0, y: 4, z: -14, ry: 0 }, { x: 0, y: 0, z: 12, ry: 0, duration: dur, ease: 'sine.out', onUpdate: applyCamera }, 0);

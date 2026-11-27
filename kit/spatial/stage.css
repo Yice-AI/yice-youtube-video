@@ -81,40 +81,46 @@ STAGE[data-stage-look="ultramarine"]{color:#f8f9ff;background:radial-gradient(el
 STAGE[data-stage-look="ultramarine"] .stage-light{background-image:radial-gradient(#8ca2ff30 1px,transparent 1.6px);background-size:44px 44px;opacity:.35}
 STAGE[data-stage-look="ultramarine"] .ambient-wires path{stroke:#8aa5ff;opacity:.14}
 
-/* ── v12.0 Recipe 1: perspective_video_fan ── */
-STAGE .fan-badge{position:absolute;left:50%;top:50px;margin-left:-124px;width:248px;height:46px;display:flex;align-items:center;justify-content:center;gap:10px;border-radius:14px;border:1.5px solid #ff6398aa;background:linear-gradient(120deg,#2c1020e6,#11131de8);color:#fff0f6;font:700 24px/1 "Spatial Sans",sans-serif;box-shadow:0 12px 32px #0008,0 0 28px #e61e7244;z-index:6;letter-spacing:1px}
+/* ── v12.0/v13.0 Recipe 1: perspective_video_fan (16:9 widescreen default, portrait opt-in) ── */
+STAGE .fan-badge{position:absolute;left:50%;top:48px;margin-left:-136px;width:272px;height:46px;display:flex;align-items:center;justify-content:center;gap:10px;border-radius:14px;border:1.5px solid #ff6398aa;background:linear-gradient(120deg,#2c1020e6,#11131de8);color:#fff0f6;font:700 24px/1 "Spatial Sans",sans-serif;box-shadow:0 12px 32px #0008,0 0 28px #e61e7244;z-index:6;letter-spacing:1px}
 STAGE[data-stage-look="editorial_paper"] .fan-badge{background:linear-gradient(120deg,#221a20,#161616);color:#ffffff;border-color:#e61e72}
 STAGE .fan-badge i{color:#ff5497;font-style:normal}
 STAGE .fan-stage{position:absolute;inset:0;transform-style:preserve-3d}
-STAGE .fan-card{position:absolute;left:755px;top:186px;width:410px;height:520px;border-radius:20px;padding:7px;background:linear-gradient(145deg,#ffffff44,#151b26d9 30%,#0c1018ee);border:1.5px solid #9bd8f066;box-shadow:0 28px 64px #000a,0 0 24px #38bdf822,inset 0 1px 0 #ffffff66;overflow:hidden}
+STAGE .fan-card{position:absolute;left:640px;top:248px;width:640px;height:360px;border-radius:20px;padding:7px;background:linear-gradient(145deg,#ffffff44,#151b26d9 30%,#0c1018ee);border:1.5px solid #9bd8f066;box-shadow:0 28px 64px #000a,0 0 24px #38bdf822,inset 0 1px 0 #ffffff66;overflow:hidden}
+STAGE .fan-stage.is-portrait .fan-card{left:755px;top:186px;width:410px;height:520px}
 STAGE[data-stage-look="editorial_paper"] .fan-card{background:linear-gradient(145deg,#ffffff,#e6dfd2);border:2px solid #1e1e1e28;box-shadow:0 24px 54px #241e142e}
 STAGE .fan-card-inner{position:relative;width:100%;height:100%;border-radius:14px;overflow:hidden;background:#0d1118}
 STAGE .fan-card video,STAGE .fan-card img{width:100%;height:100%;object-fit:cover;display:block}
 STAGE .fan-card::after{content:'';position:absolute;inset:0;border-radius:inherit;background:linear-gradient(112deg,transparent 34%,#ffffff55 49%,transparent 62%);background-size:260% 100%;background-position:var(--sweep,180%) 0;pointer-events:none}
-STAGE .fan-label{position:absolute;left:16px;bottom:16px;padding:7px 14px;border-radius:10px;background:#090d14cc;border:1px solid #ffffff30;color:#f3f7ff;font:600 18px/1.2 "Spatial Sans",sans-serif;backdrop-filter:blur(8px)}
+STAGE .fan-label{position:absolute;left:16px;bottom:14px;padding:6px 14px;border-radius:10px;background:#090d14d9;border:1px solid #ffffff30;color:#f3f7ff;font:600 18px/1.2 "Spatial Sans",sans-serif;backdrop-filter:blur(8px);z-index:3}
+STAGE .fan-punch{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(7,11,19,.56);backdrop-filter:blur(8px);z-index:8;opacity:0;pointer-events:none}
+STAGE .fan-punch-box{padding:26px 56px;border-radius:24px;background:linear-gradient(145deg,#101828f2,#090d16f5);border:2px solid #ff5497cc;box-shadow:0 28px 72px #000c,0 0 42px #e61e7244;text-align:center}
+STAGE .fan-punch-box strong{display:block;font:900 68px/1.15 "Spatial Sans",sans-serif;color:#ffffff;letter-spacing:1px}
+STAGE .fan-punch-box span{display:block;margin-top:10px;font:700 26px/1.2 "Spatial Sans",sans-serif;color:#7dd3fc}
 
-/* ── v12.0 Recipe 2: logo_bento_stage ── */
+/* ── v12.0/v13.0 Recipe 2: logo_bento_stage (adaptive zero-overflow) ── */
 STAGE .bento-brand{position:absolute;left:130px;top:62px;height:60px;display:flex;align-items:center;gap:18px;z-index:6;padding:0;border:none;background:none;box-shadow:none;color:inherit}
 STAGE .bento-brand::before{display:none}
 STAGE .bento-brand-pill{display:inline-flex;align-items:center;gap:10px;padding:10px 22px;border-radius:999px;background:linear-gradient(125deg,#ff2d85,#e61e72);color:#fff;font:700 32px/1 "Spatial Sans",sans-serif;box-shadow:0 8px 22px #e61e7240}
 STAGE .bento-brand-pill img{width:30px;height:30px;object-fit:contain}
 STAGE .bento-brand-title{font:700 38px/1 "Spatial Sans",sans-serif;color:#f3f7ff;letter-spacing:-0.5px}
 STAGE[data-stage-look="editorial_paper"] .bento-brand-title{color:#181613}
-STAGE .bento-grid{position:absolute;left:130px;right:130px;top:186px;height:660px;display:flex;justify-content:center;align-items:flex-start;gap:42px;transform-style:preserve-3d}
-STAGE .bento-col{flex:1;max-width:480px;display:flex;flex-direction:column;align-items:center;gap:24px;transform-style:preserve-3d}
-STAGE .bento-box{width:100%;height:500px;border-radius:28px;padding:26px;display:flex;flex-direction:column;justify-content:center;gap:22px;background:linear-gradient(145deg,#181f2cd9,#0e131ceb);border:2px solid #63b3ed55;box-shadow:0 24px 54px #0008,inset 0 1px 0 #ffffff24}
+STAGE .bento-grid{position:absolute;left:110px;right:110px;top:182px;height:664px;display:flex;justify-content:center;align-items:flex-start;gap:36px;transform-style:preserve-3d}
+STAGE .bento-col{flex:1;max-width:520px;display:flex;flex-direction:column;align-items:center;gap:22px;transform-style:preserve-3d}
+STAGE .bento-box{width:100%;height:492px;border-radius:28px;padding:22px;display:flex;flex-direction:column;justify-content:center;gap:16px;background:linear-gradient(145deg,#181f2cd9,#0e131ceb);border:2px solid #63b3ed55;box-shadow:0 24px 54px #0008,inset 0 1px 0 #ffffff24;overflow:hidden;box-sizing:border-box}
 STAGE[data-stage-look="editorial_paper"] .bento-box{background:#ffffff;border:3px solid #191919;box-shadow:0 18px 40px #1e181018}
 STAGE .bento-col:first-child .bento-box{background:linear-gradient(145deg,#1d181a,#121012);border-color:#d96c4599;color:#f5ede6}
-STAGE .bento-item{flex:1;border-radius:18px;padding:18px 22px;display:flex;align-items:center;gap:18px;background:#ffffff0d;border:1px solid #ffffff1c}
+STAGE[data-stage-look="editorial_paper"] .bento-col:first-child .bento-box{background:linear-gradient(145deg,#1f1c1b,#141212);color:#fff7ef}
+STAGE .bento-item{flex:1;min-height:0;max-height:136px;border-radius:18px;padding:14px 20px;display:flex;align-items:center;gap:16px;background:#ffffff0d;border:1px solid #ffffff1c;box-sizing:border-box;overflow:hidden}
 STAGE[data-stage-look="editorial_paper"] .bento-col:not(:first-child) .bento-item{background:#f7f5f0;border:2px solid #22201d1c;color:#171717}
-STAGE .bento-col:first-child .bento-item{flex-direction:column;justify-content:center;background:transparent;border:none;text-align:center}
-STAGE .bento-logo-wrap{width:64px;height:64px;display:flex;align-items:center;justify-content:center;flex:none}
-STAGE .bento-col:first-child .bento-logo-wrap{width:158px;height:158px}
+STAGE .bento-col[data-item-count="1"] .bento-item{max-height:none;flex-direction:column;justify-content:center;background:transparent;border:none;text-align:center;gap:22px}
+STAGE .bento-logo-wrap{width:56px;height:56px;display:flex;align-items:center;justify-content:center;flex:none}
+STAGE .bento-col[data-item-count="1"] .bento-logo-wrap{width:144px;height:144px}
 STAGE .bento-logo-wrap img,.bento-logo-wrap svg{width:100%;height:100%;object-fit:contain}
-STAGE .bento-item-name{font:700 32px/1.2 "Spatial Sans",sans-serif}
-STAGE .bento-col:first-child .bento-item-name{font-size:38px;color:#fff7ef}
-STAGE .bento-item-badge{margin-left:auto;padding:5px 12px;border-radius:999px;background:#e61e7222;color:#ff6ba6;font:600 18px/1 "Spatial Sans",sans-serif}
-STAGE .bento-cat{font:700 40px/1.2 "Spatial Sans",sans-serif;text-align:center;letter-spacing:.5px}
+STAGE .bento-item-name{font:700 28px/1.2 "Spatial Sans",sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+STAGE .bento-col[data-item-count="1"] .bento-item-name{font-size:38px;color:#fff7ef}
+STAGE .bento-item-badge{margin-left:auto;padding:5px 12px;border-radius:999px;background:#e61e7228;color:#ff7eb3;font:600 17px/1 "Spatial Sans",sans-serif;flex:none;white-space:nowrap}
+STAGE .bento-cat{font:700 36px/1.2 "Spatial Sans",sans-serif;text-align:center;letter-spacing:.5px}
 
 /* ── v12.0 Recipe 3: cutout_parallax_stage ── */
 STAGE .brocade-bar{position:absolute;left:0;right:0;height:42px;z-index:7;background-color:#1c3152;background-image:linear-gradient(135deg,#d8a848 25%,transparent 25%),linear-gradient(225deg,#d8a848 25%,transparent 25%),linear-gradient(45deg,#d8a848 25%,transparent 25%),linear-gradient(315deg,#d8a848 25%,#1c3152 25%);background-position:14px 0,14px 0,0 0,0 0;background-size:28px 28px;border-top:3px solid #d4a345;border-bottom:3px solid #d4a345;box-shadow:0 4px 14px #0003}

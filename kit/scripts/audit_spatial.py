@@ -309,6 +309,8 @@ def spatial_frame_gates(shots, duration, measured, required):
                     overflow.append(dict(shot=key,phase=frame['phase'],left=left,right=right))
             if frame['overlaps']:
                 collisions.append(dict(shot=key,reason='title_card_collision',phase=frame['phase'],area=max(frame['overlaps'])))
+            if frame.get('containerOverflows'):
+                collisions.append(dict(shot=key,reason='container_child_overflow',phase=frame['phase'],overflow_px=max(frame['containerOverflows'])))
             for x,y,right,bottom in frame.get('titles',[]):
                 if x<760 and y<210 and bottom-y>34:
                     headers.append(dict(shot=key,reason='ppt_slide_header_detected',phase=frame['phase'],

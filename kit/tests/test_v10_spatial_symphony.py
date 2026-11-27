@@ -206,3 +206,69 @@ def test_capture_stage_backgrounds_skips_fullbleed_and_samples_uncropped_window(
     audit_spatial.capture_stage_backgrounds(shots, tmp_path, tmp_path / 'ep.mp4', gate)
     assert gate['ok'] and not gate['violations']
     assert 'fb_bright' not in gate['backgrounds'] and 'p3d_dark_stage' in gate['backgrounds']
+
+
+def test_v13_widescreen_fan_adaptive_stamp_and_bundled_audio(tmp_path):
+    from PIL import Image
+    import numpy as np
+    import soundfile as sf
+    from kit.spatial.block import build
+    from kit.editorial.editorial import EditorialStage, stamp
+    from kit.editorial.audio_mix import EpisodeAudioMixer, resolve_bgm_path
+    import importlib
+    assemble_mod = importlib.import_module('assemble-episode')
+
+    # 1. Stamp auto-widens for 9-char labels and stays inside 1920 safe zone
+    long_svg = stamp(1400, 520, '光斑底图×独立字层')
+    assert 'width="' in long_svg and 'translate(' in long_svg
+    # 2. Fullbleed breathing without focus never zooms 1.27x
+    st = EditorialStage('t', duration=6.0)
+    st.add_callout_rig(0, 5, 'cli-04-render.mp4', overlays=[
+        {'kind': 'corner_tag', 'at': 0.2, 'label': '04 · HyperFrames', 'sublabel': 'cli'},
+        {'kind': 'hero_punch', 'at': 2.0, 'label': '全程零订阅费', 'sublabel': 'GitHub 免费开源'},
+    ], motion='focus_push')
+    joined = '\n'.join(st.scripts)
+    assert '1.270' not in joined and 'punch-slam' in joined
+    assert 'x="1' in '\n'.join(st.plates)  # CLI corner_tag auto-placed on top_right
+
+    # 3. Widescreen fan default + 3-item bento strips raw logo paths & emits auto SFX
+    pic = tmp_path / 'slide.png'
+    Image.new('RGB', (1280, 720), (20, 40, 90)).save(pic)
+    gsap = tmp_path / 'gsap.min.js'
+    gsap.write_text('// stub')
+    fan_html = build({
+        'id': 'fan13', 'recipe': 'perspective_video_fan', 'duration': 6.0,
+        'data': {
+            'items': [{'source': 'slide.png', 'label': 'A'}, {'source': 'slide.png', 'label': 'B'}, {'source': 'slide.png', 'label': 'C'}],
+            'punch_text': '零订阅费', 'punch_at': 4.2,
+        }
+    }, tmp_path, tmp_path / 'fan', gsap).read_text()
+    assert '<div class="fan-stage">' in fan_html and 'fan-punch-box' in fan_html
+
+    bento_html = build({
+        'id': 'bento13', 'recipe': 'logo_bento_stage', 'duration': 6.0,
+        'data': {
+            'brand': {'name': 'GitHub', 'tag': '5 Tools'},
+            'modules': [
+                {'category': '演示', 'at': 0.2, 'items': [{'name': 'A', 'logo': 'slide.png', 'at': 0.3}, {'name': 'B', 'at': 0.6}, {'name': 'C', 'at': 0.9}]},
+                {'category': '视频', 'at': 1.2, 'items': [{'name': 'D', 'at': 1.4}]},
+            ],
+        }
+    }, tmp_path, tmp_path / 'bento', gsap).read_text()
+    assert 'data-item-count="3"' in bento_html and '"slide.png"' not in bento_html
+
+    marks = assemble_mod._spatial_sound_marks({'recipe': 'logo_bento_stage', 'data': {'modules': [{'at': 0.2, 'items': [{'at': 0.5}, {'at': 0.9}]}]}}, 5.0)
+    assert len(marks) >= 3
+
+    # 4. Builtin groove BGM & bundled studio SFX mix cleanly
+    bgm_file = resolve_bgm_path('builtin:city-groove')
+    assert bgm_file.is_file()
+    vpath = tmp_path / 'v.wav'
+    t = np.linspace(0, 3.0, 24000 * 3, endpoint=False)
+    sf.write(vpath, (0.18 * np.sin(2 * np.pi * 220 * t)).astype('float32'), 24000)
+    res = EpisodeAudioMixer(sample_rate=24000).mix(
+        3.0, [{'path': vpath}], tmp_path / 'mixout',
+        bgm=[bgm_file],
+        sound_marks=[{'kind': 'pop', 'at': 0.2}, {'kind': 'click', 'at': 0.6}, {'kind': 'impact', 'at': 1.4}],
+    )
+    assert len(res['sound_marks']) == 3 and abs(res['measured_lufs'] + 14.5) <= 0.8

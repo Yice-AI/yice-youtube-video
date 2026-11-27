@@ -1,22 +1,28 @@
-// logo_bento_stage: staggered brand bento modules with spring landing and rotating core mark.
+// logo_bento_stage (v13): Sac-style 0.18s snappy module & per-item word-synced landing with steady hold.
 const cols = all('.bento-col');
 const brand = q('.bento-brand');
 if (brand) {
-  tl.fromTo(brand, { y: -24, opacity: 0 }, { y: 0, opacity: 1, duration: 0.42, ease: 'power3.out' }, 0.04);
+  tl.fromTo(brand, { y: -16, opacity: 0 }, { y: 0, opacity: 1, duration: 0.2, ease: 'expo.out' }, 0.02);
 }
 cols.forEach((col, i) => {
-  const at = (data.modules && data.modules[i] && typeof data.modules[i].at === 'number') ? data.modules[i].at : 0.2 + i * 0.38;
+  const mod = (data.modules && data.modules[i]) || {};
+  const at = typeof mod.at === 'number' ? mod.at : 0.12 + i * 0.28;
   tl.fromTo(col,
-    { y: 65, z: -130, rotationX: 16, scale: 0.82, opacity: 0 },
-    { y: 0, z: 0, rotationX: 0, scale: 1, opacity: 1, duration: Math.min(0.65, dur * 0.24), ease: 'back.out(1.45)' },
+    { y: 28, z: -60, scale: 0.9, opacity: 0 },
+    { y: 0, z: 0, scale: 1, opacity: 1, duration: 0.21, ease: 'expo.out' },
     at);
   const items = col.querySelectorAll('.bento-item');
-  tl.fromTo(items,
-    { y: 20, opacity: 0, scale: 0.92 },
-    { y: 0, opacity: 1, scale: 1, duration: 0.35, stagger: 0.11, ease: 'power2.out' },
-    at + 0.12);
+  const modItems = mod.items || [];
+  items.forEach((el, j) => {
+    const cfg = modItems[j];
+    const itemAt = (cfg && typeof cfg === 'object' && typeof cfg.at === 'number') ? cfg.at : (at + 0.06 + j * 0.09);
+    tl.fromTo(el,
+      { y: 14, opacity: 0, scale: 0.94 },
+      { y: 0, opacity: 1, scale: 1, duration: 0.18, ease: 'expo.out' },
+      itemAt);
+  });
 });
 all('.bento-spin').forEach((mark, idx) => {
-  tl.fromTo(mark, { rotation: 0 }, { rotation: idx % 2 ? -180 : 180, duration: dur, ease: 'none' }, 0);
+  tl.fromTo(mark, { rotation: 0 }, { rotation: idx % 2 ? -90 : 90, duration: dur, ease: 'none' }, 0);
 });
-tl.fromTo(cam, { x: -30, y: 16, z: -65, ry: 4 }, { x: 24, y: -6, z: 55, ry: -3, duration: dur, ease: 'sine.inOut', onUpdate: applyCamera }, 0);
+tl.fromTo(cam, { x: 0, y: 4, z: -18, ry: 0 }, { x: 0, y: 0, z: 14, ry: 0, duration: dur, ease: 'sine.out', onUpdate: applyCamera }, 0);
