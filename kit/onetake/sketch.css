@@ -1,0 +1,56 @@
+#sketch-world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
+#sketch-canvas {
+  position: absolute;
+  inset: 0;
+  width: 1920px;
+  height: 1080px;
+  display: block;
+}
+
+.sketch-nodes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sketch-title {
+  position: absolute;
+  left: 50%;
+  top: 58px;
+  transform: translateX(-50%);
+  padding: 10px 28px;
+  border-radius: 999px;
+  font: 700 28px/1.1 "Source Han Sans CN", sans-serif;
+  z-index: 4;
+  white-space: nowrap;
+}
+
+.sketch-title.is-pencil {
+  background: #fffcf4ee;
+  border: 2.5px solid #241e18;
+  color: #1f1a14;
+  box-shadow: 0 6px 18px #1f1a141c;
+}
+
+.sketch-title.is-riso {
+  background: #f7dc3d;
+  border: 2.5px solid #141c4a;
+  color: #111844;
+  box-shadow: 0 8px 24px #0004;
+}
+
+.sketch-hud-light {
+  border-color: #26211b44 !important;
+  background: #fffaf0e6 !important;
+  color: #211c16 !important;
+}
+
+.sketch-hud-light::before {
+  background: #e6492e !important;
+  box-shadow: 0 0 8px #e6492e !important;
+}

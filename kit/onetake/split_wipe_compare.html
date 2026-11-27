@@ -1,0 +1,150 @@
+<canvas id="field" width="1920" height="1080" style="position:absolute;inset:0"></canvas>
+<div class="paper"></div>
+<header data-spatial-title>@@HUD@@</header>
+<main id="compare-world" style="position:absolute;inset:0;transform-origin:0 0">
+  <section id="scan-stage" class="compare-stage" data-spatial-subject style="display:none">
+    <div class="compare-layer"><canvas id="slot-before"></canvas></div>
+    <div id="after-layer" class="compare-layer"><canvas id="slot-after"></canvas></div>
+    <div id="scan-divider" class="compare-divider"><div class="compare-knob">↔</div></div>
+    <div id="diag-blade" class="compare-diag-blade" style="display:none"></div>
+    <span class="compare-pill is-before">@@BEFORE_LABEL@@</span>
+    <span class="compare-pill is-after">@@AFTER_LABEL@@</span>
+    <div class="compare-hud-bar"><span id="hud-left">@@LEFT_META@@</span><span id="hud-pct">50%</span><span id="hud-right">@@RIGHT_META@@</span></div>
+  </section>
+  <aside id="diag-summary" class="compare-summary-card" style="display:none;opacity:0">
+    <small>✦ TRANSFORMATION COMPLETE</small>
+    <h2>@@AFTER_LABEL@@</h2>
+    <p>@@RIGHT_META@@</p>
+  </aside>
+  <section id="race-grid" class="race-grid" style="display:none">
+    <article class="race-col" data-spatial-subject>
+      <div class="race-head"><strong>@@BEFORE_LABEL@@</strong><span class="race-timer" id="timer-a">00.00s</span></div>
+      <div class="race-meta">@@LEFT_META@@</div>
+      <div class="race-view"><canvas id="race-before"></canvas></div>
+      <div class="race-bar"><i id="bar-a"></i></div>
+    </article>
+    <article class="race-col is-after" data-spatial-subject>
+      <div class="race-head"><strong>@@AFTER_LABEL@@</strong><span class="race-timer" id="timer-b">00.00s</span></div>
+      <div class="race-meta">@@RIGHT_META@@</div>
+      <div class="race-view"><canvas id="race-after"></canvas></div>
+      <div class="race-bar"><i id="bar-b"></i></div>
+    </article>
+  </section>
+</main>
+<script>
+const D = @@DURATION@@;
+const CFG = @@CONFIG@@;
+window.__meta = { dur: D, fps: 30, w: 1920, h: 1080, beats: [D * 0.22, D * 0.56, D * 0.82] };
+
+function loadMediaSlot(spec) {
+  if (spec.type === 'video') {
+    return Promise.all(spec.frames.map(src => new Promise((res, rej) => {
+      const img = new Image();
+      img.onload = () => img.decode().then(() => res(img), () => res(img));
+      img.onerror = () => rej(new Error('Frame load failed: ' + src));
+      img.src = src;
+    }))).then(imgs => ({ type: 'video', fps: spec.fps || 24, imgs }));
+  }
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => img.decode().then(() => res({ type: 'image', imgs: [img] }), () => res({ type: 'image', imgs: [img] }));
+    img.onerror = () => rej(new Error('Image load failed: ' + spec.src));
+    img.src = spec.src;
+  });
+}
+
+function drawCover(canvas, img) {
+  if (!canvas || !img) return;
+  const tw = canvas.clientWidth || 1440, th = canvas.clientHeight || 736;
+  if (canvas.width !== tw || canvas.height !== th) { canvas.width = tw; canvas.height = th; }
+  const ctx = canvas.getContext('2d');
+  const iw = img.naturalWidth || img.width || tw, ih = img.naturalHeight || img.height || th;
+  const s = Math.max(tw / iw, th / ih);
+  const dw = iw * s, dh = ih * s;
+  ctx.drawImage(img, (tw - dw) / 2, (th - dh) / 2, dw, dh);
+}
+
+function pickFrame(slot, t) {
+  if (!slot || !slot.imgs.length) return null;
+  if (slot.type === 'image') return slot.imgs[0];
+  const idx = Math.min(slot.imgs.length - 1, Math.max(0, Math.floor(t * slot.fps)));
+  return slot.imgs[idx];
+}
+
+const camera = t => OM.camera(t, [
+  { t: 0, x: 940, y: 536, zoom: 0.96 },
+  { t: D * 0.52, x: 960, y: 540, zoom: 1.015 },
+  { t: D, x: 974, y: 538, zoom: 1.045 }
+]);
+
+let beforeSlot = null, afterSlot = null;
+const mode = CFG.mode || 'center_scan';
+if (mode === 'quad_race') {
+  document.getElementById('race-grid').style.display = 'flex';
+} else {
+  document.getElementById('scan-stage').style.display = 'block';
+  if (mode === 'diagonal_wipe') {
+    document.getElementById('scan-divider').style.display = 'none';
+    document.getElementById('diag-blade').style.display = 'block';
+    document.getElementById('diag-summary').style.display = 'block';
+  }
+}
+
+window.__seek = t => {
+  const pose = camera(t);
+  const fctx = document.getElementById('field').getContext('2d');
+  const grid = OM.lattice(pose, { depth: 1.3, spacing: 58, px: 1.4 });
+  fctx.setTransform(1, 0, 0, 1, 0, 0);
+  fctx.clearRect(0, 0, 1920, 1080);
+  fctx.setTransform(...grid.matrix);
+  fctx.fillStyle = '#3a566e';
+  for (let x = grid.x0; x < grid.x1; x += grid.spacing)
+    for (let y = grid.y0; y < grid.y1; y += grid.spacing)
+      fctx.fillRect(x, y, 2, 2);
+  document.getElementById('compare-world').style.transform = 'matrix(' + OM.view(pose).join(',') + ')';
+
+  const imgA = pickFrame(beforeSlot, t), imgB = pickFrame(afterSlot, t);
+  if (mode === 'quad_race') {
+    drawCover(document.getElementById('race-before'), imgA);
+    drawCover(document.getElementById('race-after'), imgB);
+    const pA = Math.min(0.68, 0.08 + OM.ease.smoother(OM.seg(t, 0.1, D * 0.92)) * 0.60);
+    const kB = OM.spring(Math.max(0, t - 0.1), 0.72, 2.8);
+    const pB = Math.min(1, Math.max(0.05, kB));
+    document.getElementById('bar-a').style.width = (pA * 100).toFixed(1) + '%';
+    document.getElementById('bar-b').style.width = (pB * 100).toFixed(1) + '%';
+    document.getElementById('timer-a').textContent = t.toFixed(2).padStart(5, '0') + 's';
+    document.getElementById('timer-b').textContent = Math.min(t, D * 0.52).toFixed(2).padStart(5, '0') + 's';
+  } else if (mode === 'diagonal_wipe') {
+    const stage = document.getElementById('scan-stage');
+    drawCover(document.getElementById('slot-before'), imgA);
+    drawCover(document.getElementById('slot-after'), imgB);
+    const sweep = OM.ease.smoother(OM.seg(t, D * 0.10, D * 0.56));
+    const cutX = -25 + sweep * 155;
+    document.getElementById('after-layer').style.clipPath = `polygon(0 0, ${cutX}% 0, ${cutX - 28}% 100%, 0 100%)`;
+    document.getElementById('diag-blade').style.left = (cutX - 14) + '%';
+    document.getElementById('diag-blade').style.opacity = sweep > 0.01 && sweep < 0.99 ? '1' : '0';
+    document.getElementById('hud-pct').textContent = Math.round(sweep * 100) + '%';
+    const dock = OM.spring(Math.max(0, t - D * 0.62), 0.68, 12);
+    stage.style.transform = `translate3d(${dock * 250}px, ${dock * 14}px, 0) perspective(1400px) rotateY(${dock * -11}deg) scale(${1 - dock * 0.24})`;
+    const sum = document.getElementById('diag-summary');
+    sum.style.opacity = String(Math.min(1, dock * 1.4));
+    sum.style.transform = `translateY(${(1 - dock) * 32}px)`;
+  } else {
+    drawCover(document.getElementById('slot-before'), imgA);
+    drawCover(document.getElementById('slot-after'), imgB);
+    const s1 = OM.spring(Math.max(0, t - D * 0.08), 0.66, 11);
+    const s2 = OM.spring(Math.max(0, t - D * 0.42), 0.64, 11);
+    const s3 = OM.spring(Math.max(0, t - D * 0.72), 0.68, 12);
+    const split = 0.35 + s1 * 0.37 - s2 * 0.44 + s3 * 0.22;
+    const pct = Math.max(8, Math.min(92, split * 100));
+    document.getElementById('after-layer').style.clipPath = `inset(0 0 0 ${pct.toFixed(2)}%)`;
+    document.getElementById('scan-divider').style.left = pct.toFixed(2) + '%';
+    document.getElementById('hud-pct').textContent = Math.round(pct) + '%';
+  }
+};
+
+window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.abs(b - a) * 260;
+window.__events = () => [{ t: D * 0.22, kind: 'whoosh', gain: .14 }, { t: D * 0.62, kind: 'pop', gain: .16 }];
+window.__ready = Promise.all([document.fonts.ready, loadMediaSlot(CFG.before), loadMediaSlot(CFG.after)])
+  .then(([, a, b]) => { beforeSlot = a; afterSlot = b; window.__seek(0); });
+</script>

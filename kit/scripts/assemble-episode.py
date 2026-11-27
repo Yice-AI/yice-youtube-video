@@ -623,7 +623,7 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
                                   camera_moves=shot.get('camera_moves'),framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''),refractive=cinema)
         elif mode == 'fullbleed_rig':
             stage.add_fullbleed_rig(a,b,assets[0],media_start=start,motion=shot.get('motion','glide'),
-                                    camera_moves=shot.get('camera_moves'),framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''),refractive=cinema)
+                                    camera_moves=shot.get('camera_moves'),chapter_pill=shot.get('chapter_pill'),framing=shot.get('framing','fullbleed'),window_title=shot.get('window_title',''),refractive=cinema)
         elif mode == 'studio_ui':
             data = dict(shot['data'])
             data['evidence'] = assets
@@ -661,11 +661,21 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
             for event in probe['events']:
                 if event['t'] < span:
                     stage.add_sound_mark(event['kind'],a+event['t'],gain=event.get('gain'))
+            ot_data = (shot.get('onetake_spec') or {}).get('data') or {}
+            if shot.get('look') in {'paper', 'tabletop', 'riso', 'ember'} or ot_data.get('style') == 'pencil_watercolor':
+                stage.light_zones.append((a, b))
         elif mode == 'hyperframes_block':
             entry,composition_id = install_subcomposition(shot,root,folder,gsap or gsap_runtime({},root))
             stage.add_subcomposition(key,composition_id,entry,a,b)
             stage._shot(text,'hyperframes_motion',a,b,[])
             stage.shots[-1]['composition'] = entry
+            sp_spec = shot.get('spatial_spec') or {}
+            sp_look = sp_spec.get('stage_look') or (sp_spec.get('data') or {}).get('stage_look')
+            sp_recipe = sp_spec.get('recipe')
+            if sp_look in {'editorial_paper', 'scroll_paper', 'paper'} or (
+                sp_look is None and sp_recipe in {'cutout_parallax_stage', 'documentary_ken_burns', 'step_tree_focus', 'progressive_sim_cards', 'logo_bento_stage'}
+            ):
+                stage.light_zones.append((a, b))
         else:
             clip,spec = explainer(shot,root,folder,run,force_render=force_render)
             stage.add_video(a,b,clip,0,0,1920,1080,fit='cover')

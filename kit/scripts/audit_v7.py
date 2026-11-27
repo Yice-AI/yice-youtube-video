@@ -753,12 +753,14 @@ def composition_entry_for_audit(shot, project, manifest_root=None):
 def composition_material(entry):
     scripts = [entry, *(p for p in entry.parent.rglob('*') if p.suffix.lower() in {'.js','.mjs','.css'}
                         and 'vendor' not in p.relative_to(entry.parent).parts
-                        and p.name not in {'motion.js','ui_kit.js','gsap.min.js'})]
+                        and p.name not in {'motion.js','ui_kit.js','gsap.min.js','sketch_brush.js'})]
     sources, images = [], set()
     for path in scripts:
         code = path.read_text()
         sources.append(f"<script>{code}</script>" if path.suffix.lower() in {".js", ".mjs"} else code)
         for name in re.findall(r"""[\w./%+@-]+\.(?:png|jpe?g|webp)\b""", code, re.I):
+            if re.search(r'(?:^|/)vframes_[0-9a-f]+/f_(?!0001\.jpg)\d+\.jpg$', name, re.I):
+                continue
             image = (path.parent/name).resolve()
             if not image.is_file():
                 image = (entry.parent/name).resolve()
@@ -784,7 +786,7 @@ def dual_engine_craft_gate(shots, project, manifest_root=None, *, v10=False):
                 violations.append(dict(shot=shot['id'], reason='static_raster_gallery', images=checked[shot['id']]))
             if mode == 'onetake_clip':
                 zooms = {float(n) for n in re.findall(r'\bzoom\s*:\s*([\d.]+)',source)}
-                morph = re.search(r'\b(?:OM\.(?:morphRect|zoomThrough)|UIK\.\w+|(?:ctx|context)\.(?:arc|bezierCurveTo)|setAttribute\([\'"]d[\'"])\s*[, (]',source)
+                morph = re.search(r'\b(?:OM\.(?:morphRect|zoomThrough|spring)|UIK\.\w+|SKETCH\.\w+|(?:ctx|context)\.(?:arc|bezierCurveTo)|setAttribute\([\'"]d[\'"])\s*[, (]',source)
                 if len(zooms)<2 and not morph:
                     violations.append(dict(shot=shot['id'],reason='missing_camera_or_morph'))
         except (OSError,ValueError) as exc:

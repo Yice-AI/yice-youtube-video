@@ -33,30 +33,48 @@ def draft_stage(index, span=5):
     key = f'shot-{index+1:02}'
     beat = index % 10
     route = ('M1', 'M3', 'M2', 'M3', 'M2', 'M1', 'M2', 'M3', 'M2', 'M3')[beat]
-    images = [f'media/{key}-{n}.png' for n in range(1,6)]
+    images = [f'media/{key}-{n}.png' for n in range(1, 6)]
     if route == 'M1':
         if beat == 0:
             spec = dict(recipe='carousel_3d_select', hud='素材选择',
-                        data=dict(images=images,selected_index=0,select_at=round(max(.3,min(span-.35,span*.42)),3)))
+                        data=dict(images=images, selected_index=0, select_at=round(max(.3, min(span - .35, span * .42)), 3)))
+        elif index // 10 % 3 == 0:
+            spec = dict(recipe='perspective_video_fan', hud='效果总览',
+                        data=dict(items=[dict(source=f'media/{key}-{n}.mp4', label=f'方案 {n}') for n in range(1, 6)],
+                                  badge='✦ 修改后', focus_index=2, focus_at=round(max(.35, span * .48), 3)))
+        elif index // 10 % 3 == 1:
+            spec = dict(recipe='logo_bento_stage', hud='能力拼装',
+                        data=dict(brand=dict(name='Stack', tag='Workflow'),
+                                  modules=[
+                                      dict(category='大模型', at=0.3, items=[dict(name='Agent')]),
+                                      dict(category='视觉引擎', at=0.8, items=[dict(name='HyperFrames'), dict(name='Onetake')]),
+                                  ]))
         else:
             spec = dict(recipe='layer_explode_3d', hud='图层拆解',
-                        data=dict(image=images[0],boxes=[[.1,.15,.5,.1]],count=1))
+                        data=dict(image=images[0], boxes=[[.1, .15, .5, .1]], count=1))
         return dict(stage_mode='hyperframes_block', visual_mode=route, spatial_spec=spec,
                     semantic_binding='conceptual_explainer', visual_subject='待填本片真实截图与结构')
     if route == 'M3':
         if beat == 1:
-            spec = dict(recipe='duplicate_laser_sweep',hud='版式检查',
-                        data=dict(cards=['开场','过程','结果'],series='布局',caption='待填实际例子'))
+            spec = dict(recipe='duplicate_laser_sweep', hud='版式检查',
+                        data=dict(cards=['开场', '过程', '结果'], series='布局', caption='待填实际例子'))
         elif beat == 3:
-            spec = dict(recipe='live_control_sync',hud='实时预览',
-                        data=dict(image=images[0],slider='强度',switch='动态预览',canvas='画布'))
+            spec = dict(recipe='split_wipe_compare', hud='改前改后',
+                        data=dict(mode='center_scan', before=images[0], after=images[1],
+                                  before_label='↺ 修改前', after_label='✦ 修改后'))
         elif beat == 7:
-            spec = dict(recipe='energy_roadmap_dive',hud='操作路线',
-                        data=dict(stations=[dict(image=path,label=title) for path,title in
-                                            zip(images,('准备','制作','交付'))],target=0))
+            if index // 10 % 2 == 0:
+                spec = dict(recipe='energy_roadmap_dive', hud='操作路线',
+                            data=dict(stations=[dict(image=path, label=title) for path, title in
+                                                zip(images, ('准备', '制作', '交付'))], target=0))
+            else:
+                spec = dict(recipe='handdrawn_sketch_stage', hud='机理推演',
+                            data=dict(style='pencil_watercolor', title='手绘推演图',
+                                      nodes=[dict(title='输入想法', sub='脚本拆解', at=0.3, icon='bulb'),
+                                             dict(title='逐帧绘制', sub='物理弹簧', at=1.2, icon='chart')]))
         else:
-            spec = dict(recipe='capsule_archive_seal',hud='交付',
-                        data=dict(images=images[:3],project='项目',file='SKILL.md',command='open ./output'))
+            spec = dict(recipe='capsule_archive_seal', hud='交付',
+                        data=dict(images=images[:3], project='项目', file='SKILL.md', command='open ./output'))
         return dict(stage_mode='onetake_clip', visual_mode=route, onetake_spec=spec,
                     shutter=180, look='dusk' if beat in (1, 7) else 'ember',
                     semantic_binding='conceptual_explainer', visual_subject='待填本片真实操作与结果')

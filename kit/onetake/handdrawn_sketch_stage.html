@@ -1,0 +1,122 @@
+<canvas id="sketch-bg" width="1920" height="1080" style="position:absolute;inset:0"></canvas>
+<header data-spatial-title id="sketch-hud">@@HUD@@</header>
+<div id="sketch-title" class="sketch-title" data-spatial-title data-title-kind="editorial_single">@@TITLE@@</div>
+<main id="sketch-world">
+  <canvas id="sketch-canvas" width="1920" height="1080"></canvas>
+  <div class="sketch-stage-bounds" data-spatial-subject style="position:absolute;left:140px;top:168px;width:1640px;height:704px;pointer-events:none"></div>
+</main>
+<script>
+const D = @@DURATION@@;
+const CFG = @@CONFIG@@;
+window.__meta = { dur: D, fps: 30, w: 1920, h: 1080, beats: [D * 0.2, D * 0.5, D * 0.8] };
+
+const styleKind = CFG.style || 'pencil_watercolor';
+const titleEl = document.getElementById('sketch-title');
+const hudEl = document.getElementById('sketch-hud');
+if (styleKind === 'riso_halftone') {
+  titleEl.classList.add('is-riso');
+} else {
+  titleEl.classList.add('is-pencil');
+  hudEl.classList.add('sketch-hud-light');
+}
+
+const bgCtx = document.getElementById('sketch-bg').getContext('2d');
+if (styleKind === 'riso_halftone') {
+  const grad = bgCtx.createRadialGradient(960, 480, 120, 960, 540, 1180);
+  grad.addColorStop(0, '#1f2e8c');
+  grad.addColorStop(0.62, '#142068');
+  grad.addColorStop(1, '#0b1242');
+  bgCtx.fillStyle = grad;
+  bgCtx.fillRect(0, 0, 1920, 1080);
+} else {
+  SKETCH.paper(bgCtx, 1920, 1080, { bg: '#F6EFE0', seed: 19 });
+}
+
+const camera = t => OM.camera(t, [
+  { t: 0, x: 950, y: 536, zoom: 1.0 },
+  { t: D * 0.48, x: 960, y: 540, zoom: 1.03 },
+  { t: D, x: 970, y: 538, zoom: 1.055 }
+]);
+
+window.__seek = t => {
+  const pose = camera(t);
+  document.getElementById('sketch-world').style.transform = 'matrix(' + OM.view(pose).join(',') + ')';
+  const canvas = document.getElementById('sketch-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 1920, 1080);
+
+  if (styleKind === 'riso_halftone') {
+    const grad = ctx.createRadialGradient(960, 480, 120, 960, 540, 1180);
+    grad.addColorStop(0, '#1f2e8c');
+    grad.addColorStop(0.62, '#142068');
+    grad.addColorStop(1, '#0b1242');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1920, 1080);
+    SKETCH.risoHalftone(ctx, 120, 150, 1680, 720, { t, spacing: 26, maxR: 7.4 });
+  } else {
+    SKETCH.paper(ctx, 1920, 1080, { bg: '#F6EFE0', seed: 19 });
+    SKETCH.blob(ctx, 420, 380, 260, 180, '#f3c677', { seed: 3, t, alpha: 0.22 });
+    SKETCH.blob(ctx, 1420, 520, 290, 210, '#e8a598', { seed: 9, t, alpha: 0.20 });
+  }
+
+  const nodes = CFG.nodes || [];
+  const hasMonster = Boolean(CFG.monster);
+  const hasGauge = Boolean(CFG.gauge);
+  const startX = hasMonster ? 210 : (1920 - (nodes.length * 360 + (nodes.length - 1) * 70)) / 2;
+  const boxW = hasMonster ? 320 : 360;
+  const gap = 64;
+  const strokeCol = styleKind === 'riso_halftone' ? '#fff7e8' : '#231d17';
+  const boxFill = styleKind === 'riso_halftone' ? '#121c56' : '#fffdf6';
+
+  nodes.forEach((node, i) => {
+    const at = typeof node.at === 'number' ? node.at : 0.25 + i * 0.7;
+    const sp = OM.spring(Math.max(0, t - at), 0.62, 16);
+    if (sp <= 0.02) return;
+    const bx = startX + i * (boxW + gap);
+    const by = 295 + (i % 2 ? 42 : 0) + (1 - sp) * 34;
+    const bh = 250;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, sp * 1.4);
+    SKETCH.roundedBox(ctx, bx, by, boxW, bh, 20, {
+      seed: 30 + i * 11, t, fill: boxFill, stroke: strokeCol, width: 3.4, wobble: 2.2
+    });
+    SKETCH.icon(ctx, node.icon || 'bulb', bx + boxW / 2, by + 68, 30, {
+      t, color: strokeCol, fill: node.color || (styleKind === 'riso_halftone' ? '#ff48b0' : '#f4b942'), seed: 60 + i * 7
+    });
+    ctx.font = '700 30px "Source Han Sans CN", sans-serif';
+    ctx.fillStyle = strokeCol;
+    ctx.textAlign = 'center';
+    ctx.fillText(node.title || '', bx + boxW / 2, by + 148);
+    ctx.font = '500 21px "Source Han Sans CN", sans-serif';
+    ctx.fillStyle = styleKind === 'riso_halftone' ? '#b8c8ff' : '#655849';
+    ctx.fillText(node.sub || '', bx + boxW / 2, by + 194);
+    ctx.restore();
+
+    if (i > 0) {
+      const prevY = 295 + ((i - 1) % 2 ? 42 : 0) + 125;
+      const curY = by + 125;
+      const prog = OM.seg(t, at - 0.1, at + 0.38);
+      SKETCH.arrow(ctx, startX + (i - 1) * (boxW + gap) + boxW + 10, prevY, bx - 12, curY, prog, {
+        seed: 200 + i, t, color: styleKind === 'riso_halftone' ? '#f7dc3d' : '#d1492f', width: 3.6
+      });
+    }
+  });
+
+  if (hasMonster) {
+    const ms = OM.spring(Math.max(0, t - 0.25), 0.58, 14);
+    SKETCH.monster(ctx, 1340, 520, 0.92 * Math.max(0.1, ms), { t, seed: 101 });
+  }
+  if (hasGauge) {
+    const g = CFG.gauge;
+    const p = OM.ease.smoother(OM.seg(t, 0.2, D * 0.82));
+    const pct = ((g.from ?? 18) + ((g.to ?? 88) - (g.from ?? 18)) * p) / 100;
+    SKETCH.gauge(ctx, 1650, 310, 62, 320, pct, g.label || 'PROGRESS', {
+      t, stroke: strokeCol, fill: styleKind === 'riso_halftone' ? '#ff48b0' : '#4d8b31'
+    });
+  }
+};
+
+window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.abs(b - a) * 240;
+window.__events = () => [{ t: D * 0.2, kind: 'pop', gain: .14 }, { t: D * 0.5, kind: 'tick', gain: .12 }, { t: D * 0.8, kind: 'pop', gain: .14 }];
+window.__ready = document.fonts.ready.then(() => window.__seek(0));
+</script>

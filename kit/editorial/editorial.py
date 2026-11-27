@@ -1322,6 +1322,7 @@ html,body{margin:0;width:100%;height:100%;background:#172322;color:#f6f0df;font-
 .cap[data-caption-style="editorial_box"] span{background:rgba(17,26,25,.94);box-shadow:0 8px 24px rgba(0,0,0,.34)}
 .cap.caption-on-light span{color:#f8fafc;border:1.5px solid rgba(255,255,255,.18);border-bottom:3px solid #ff6b4a;-webkit-text-stroke:0;text-shadow:0 2px 8px rgba(0,0,0,.45);background:rgba(13,18,26,.90);border-radius:14px;padding:9px 26px 12px}
 .caption-on-light{bottom:44px}
+.rig-overlay{position:absolute;inset:0;z-index:8;pointer-events:none}
 .chapter-pill{position:absolute;left:72px;top:54px;padding:10px 18px;border:1px solid rgba(255,250,240,.42);border-radius:22px;color:#fffaf0;background:rgba(20,29,27,.54);backdrop-filter:blur(10px);font:600 22px/1.1 system-ui,sans-serif}
 .rig-checklist{position:absolute;right:72px;top:54px;display:grid;gap:10px;padding:14px 18px;border-radius:14px;background:rgba(20,29,27,.88);backdrop-filter:blur(10px);color:#fffaf0;font:600 20px/1.2 system-ui,sans-serif}
 .check-row{display:flex;gap:10px;align-items:center;opacity:1;color:#fffaf0}.check-row.checked{color:#ffb29f}.check-row.checked i{color:#ff745a}.check-row i{font-style:normal;color:#fffaf0}

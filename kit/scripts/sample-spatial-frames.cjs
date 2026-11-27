@@ -16,7 +16,15 @@ async function measure(page, {entry,seconds}) {
   await page.addStyleTag({content:'html,body{margin:0}'});
   await page.evaluate(async () => {
     await document.fonts.ready;
-    await Promise.all(Array.from(document.images, image => image.decode()));
+    await Promise.all(Array.from(document.images, image => image.decode().catch(()=>{})));
+    await Promise.all(Array.from(document.querySelectorAll('video'), v =>
+      v.readyState >= 1 ? Promise.resolve() : new Promise(res => {
+        const done = () => res();
+        v.addEventListener('loadedmetadata', done, {once:true});
+        v.addEventListener('error', done, {once:true});
+        setTimeout(done, 2500);
+      })
+    ));
     await window.__ready;
   });
   const frames = [];
@@ -28,11 +36,28 @@ async function measure(page, {entry,seconds}) {
   const witnesses = [0.03,0.12,0.25,0.38,0.5,0.63,0.75,0.88,0.97];
   const phases = new Set([...witnesses,...Array.from({length:Math.ceil(duration*30)},(_,i)=>i/30/duration)]);
   for (const phase of [...phases].sort((a,b)=>a-b)) {
-    const boxes = await page.evaluate(({phase,duration}) => {
+    const syncVideos = witnesses.includes(phase);
+    const boxes = await page.evaluate(async ({phase,duration,syncVideos}) => {
       const timeline = Object.values(window.__timelines || {})[0];
-      if (window.__seek) window.__seek(phase * duration);
-      else if (timeline) timeline.seek(phase * duration, false);
+      const t = phase * duration;
+      if (window.__seek) window.__seek(t);
+      else if (timeline) timeline.seek(t, false);
       else throw Error('缺少可定位的合成时间轴');
+      if (syncVideos) {
+        const vids = Array.from(document.querySelectorAll('video'));
+        await Promise.all(vids.map(v => {
+          const d = (Number.isFinite(v.duration) && v.duration > 0) ? v.duration : duration;
+          const target = Math.min(Math.max(0, d - 0.05), Math.max(0, t % d));
+          if (Math.abs(v.currentTime - target) < 0.02 && v.readyState >= 2) return Promise.resolve();
+          return new Promise(res => {
+            const done = () => res();
+            v.addEventListener('seeked', done, {once:true});
+            v.addEventListener('error', done, {once:true});
+            v.currentTime = target;
+            setTimeout(done, 800);
+          });
+        }));
+      }
       const visible = el => {
         let opacity = 1;
         for (let node = el; node; node = node.parentElement) {
@@ -42,23 +67,40 @@ async function measure(page, {entry,seconds}) {
         }
         return opacity > 0.15;
       };
-      function rects(selector) {
-        return Array.from(document.querySelectorAll(selector)).filter(visible).map(el => {
+      function rects(selector, excludeIntentional = false) {
+        return Array.from(document.querySelectorAll(selector)).filter(el => {
+          if (!visible(el)) return false;
+          if (!excludeIntentional) return true;
+          const holder = el.dataset?.titleKind ? el : el.closest('[data-title-kind]');
+          const kind = holder?.dataset?.titleKind;
+          if (!kind) return true;
+          const r = holder.getBoundingClientRect();
+          if (kind === 'editorial_single' && r.height <= 68) return false;
+          if (kind === 'archive_plaque' && r.width <= 380 && r.height <= 160) return false;
+          return true;
+        }).map(el => {
           const r = el.getBoundingClientRect();
           return [Math.max(0,r.left), Math.max(0,r.top), Math.min(innerWidth,r.right), Math.min(innerHeight,r.bottom)];
         }).filter(([x,y,r,b]) => r>x && b>y);
       }
-      const subjects = '[data-spatial-subject],.orbit-card,.node,.old-card,.model,[data-spatial-layer],.file-card,.slidecard,.station,.file,.locked-shot,.slots,.plan-lines';
-      const titles = rects('[data-spatial-title], header, h1, [role="heading"], .headline, .slide-title');
+      const subjects = '[data-spatial-subject],.orbit-card,.node,.old-card,.model,[data-spatial-layer],.file-card,.slidecard,.station,.file,.locked-shot,.slots,.plan-lines,.fan-card,.bento-col,.doc-frame,.doc-anatomy-card,.tree-branch,.tree-child,.sim-card,.chain-frame,.compare-stage,.race-col';
+      const titleSel = '[data-spatial-title], header, h1, [role="heading"], .headline, .slide-title';
+      const allTitles = rects(titleSel, false);
+      const titles = rects(titleSel, true);
       const cards = rects(subjects);
-      const overlaps = titles.flatMap(t => cards.map(c => Math.max(0,Math.min(c[2],t[2])-Math.max(c[0],t[0])) *
+      const overlaps = allTitles.flatMap(t => cards.map(c => Math.max(0,Math.min(c[2],t[2])-Math.max(c[0],t[0])) *
         Math.max(0,Math.min(c[3],t[3])-Math.max(c[1],t[1])))).filter(a => a>0);
       const stations = phase >= .38 && phase <= .51 ? Array.from(document.querySelectorAll('[data-overview-station]'), el => {
         const bounds=el.getBoundingClientRect();
         return [bounds.left,bounds.right];
       }) : [];
-      return {phase, overlaps, cards, titles, stations, exploded:!!document.querySelector('[data-spatial-recipe="layer_explode_3d"]')};
-    }, {phase,duration});
+      const root = document.querySelector('[data-composition-id]');
+      return {
+        phase, overlaps, cards, titles, stations,
+        stageLook: root?.dataset?.stageLook || null,
+        exploded: !!document.querySelector('[data-spatial-recipe="layer_explode_3d"]')
+      };
+    }, {phase,duration,syncVideos});
     if ([0.12,0.5,0.88].includes(phase)) {
       const image = await page.screenshot();
       boxes.samples = await page.evaluate(async encoded => {

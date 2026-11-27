@@ -1,0 +1,224 @@
+.compare-stage {
+  position: absolute;
+  left: 240px;
+  top: 132px;
+  width: 1440px;
+  height: 736px;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 1.5px solid #79a7c755;
+  background: #0d121a;
+  box-shadow: 0 30px 80px #000b, 0 0 36px #38bdf81c;
+  transform-style: preserve-3d;
+}
+
+.compare-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.compare-layer canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.compare-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  margin-left: -2px;
+  background: #f5fbff;
+  box-shadow: 0 0 12px 2px #38bdf8, 0 0 36px 6px #e61e72;
+  z-index: 4;
+}
+
+.compare-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1b2434, #0d111a);
+  border: 2px solid #9ae7ff;
+  color: #f3fbff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 700 22px/1 "Source Code Pro", monospace;
+  box-shadow: 0 8px 24px #000a, 0 0 22px #38bdf866;
+}
+
+.compare-diag-blade {
+  position: absolute;
+  top: -180px;
+  left: 0;
+  width: 6px;
+  height: 1200px;
+  background: linear-gradient(180deg, #ff5497, #fff7fb, #38bdf8);
+  box-shadow: 0 0 16px 3px #ff488f, 0 0 42px 8px #38bdf8aa;
+  transform: rotate(22deg);
+  transform-origin: center;
+  z-index: 5;
+}
+
+.compare-pill {
+  position: absolute;
+  top: 22px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  font: 700 20px/1 "Source Han Sans CN", sans-serif;
+  z-index: 6;
+  backdrop-filter: blur(10px);
+}
+
+.compare-pill.is-before {
+  left: 24px;
+  background: #141a24d6;
+  border: 1px solid #9db4c855;
+  color: #dce6f2;
+}
+
+.compare-pill.is-after {
+  right: 24px;
+  background: linear-gradient(125deg, #3c1228e6, #191326e6);
+  border: 1px solid #ff5497aa;
+  color: #ffe3f0;
+  box-shadow: 0 0 22px #e61e7244;
+}
+
+.compare-hud-bar {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 20px;
+  height: 44px;
+  border-radius: 12px;
+  background: #0c1119d6;
+  border: 1px solid #6fa5c844;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  font: 600 18px/1 "Source Code Pro", monospace;
+  color: #b7d3e6;
+  z-index: 6;
+}
+
+.race-grid {
+  position: absolute;
+  left: 160px;
+  right: 160px;
+  top: 138px;
+  height: 730px;
+  display: flex;
+  gap: 44px;
+  z-index: 3;
+}
+
+.race-col {
+  flex: 1;
+  border-radius: 20px;
+  padding: 20px;
+  background: linear-gradient(145deg, #1b2331eb, #0e131cf2);
+  border: 1.5px solid #6894b34d;
+  box-shadow: 0 24px 60px #000a;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.race-col.is-after {
+  border-color: #38bdf8aa;
+  box-shadow: 0 24px 60px #000a, 0 0 32px #38bdf822;
+}
+
+.race-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.race-head strong {
+  font: 700 32px/1.2 "Source Han Sans CN", sans-serif;
+  color: #f3f7ff;
+}
+
+.race-timer {
+  font: 700 28px/1 "Source Code Pro", monospace;
+  color: #7ee3ff;
+  font-variant-numeric: tabular-nums;
+}
+
+.race-meta {
+  font: 500 18px/1 "Source Code Pro", monospace;
+  color: #93abc0;
+}
+
+.race-view {
+  flex: 1;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #090c12;
+  border: 1px solid #ffffff1a;
+  position: relative;
+}
+
+.race-view canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.race-bar {
+  height: 12px;
+  border-radius: 6px;
+  background: #1b2434;
+  overflow: hidden;
+}
+
+.race-bar i {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #38bdf8, #818cf8);
+}
+
+.race-col.is-after .race-bar i {
+  background: linear-gradient(90deg, #ff3e8d, #38bdf8);
+}
+
+.compare-summary-card {
+  position: absolute;
+  left: 140px;
+  top: 260px;
+  width: 470px;
+  padding: 34px;
+  border-radius: 20px;
+  background: linear-gradient(140deg, #1b2232eb, #0c1018f5);
+  border: 1.5px solid #ff549788;
+  box-shadow: 0 24px 60px #000b;
+  z-index: 5;
+}
+
+.compare-summary-card small {
+  display: block;
+  font: 600 18px/1 "Source Code Pro", monospace;
+  color: #ff8ab8;
+  margin-bottom: 12px;
+}
+
+.compare-summary-card h2 {
+  margin: 0 0 12px;
+  font: 700 40px/1.2 "Source Han Sans CN", sans-serif;
+  color: #f7f9ff;
+}
+
+.compare-summary-card p {
+  margin: 0;
+  font: 500 22px/1.45 "Source Han Sans CN", sans-serif;
+  color: #b4c7da;
+}

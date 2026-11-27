@@ -15,13 +15,17 @@ def composition_motion(source, declared=None):
                   and len(set(re.findall(r'zoom\s*:\s*([\d.]+)',scripts))) > 1)
     spatial = bool((tween and 'preserve-3d' in source and depth and layered) or (camera and layered and (depth or re.search(r'OM\.view\(|OM\.lattice\(', scripts))))
     recipe = re.search(r'<[a-zA-Z][^<>]*?\sdata-spatial-recipe=[\'"]([\w-]+)', source)
-    process = recipe and recipe[1] in ('literal_action_stage','roadmap_thread_camera')
-    native_action = re.search(r'OM\.(?:shake|spring|gather)\(', scripts)
+    process_recipes = (
+        'literal_action_stage', 'roadmap_thread_camera',
+        'step_tree_focus', 'progressive_sim_cards', 'formula_pill_chain',
+    )
+    process = recipe and recipe[1] in process_recipes
+    native_action = re.search(r'OM\.(?:shake|spring|gather|morphRect|zoomThrough)\(|SKETCH\.', scripts)
     if declared == 'M3' and '__seek' in scripts and (native_action or camera):
         return spatial, 'M3'
     if tween and process:
         return spatial, 'M3'
-    if spatial:
+    if spatial or (tween and recipe and recipe[1] in ('perspective_video_fan', 'logo_bento_stage', 'cutout_parallax_stage', 'documentary_ken_burns')):
         return True, 'M1'
     if declared == 'M3' and (tween or camera):
         return False, 'M3'
@@ -198,12 +202,40 @@ def spatial_measurements(shots, project):
     return results
 
 
+LIGHT_STAGE_LOOKS = {'editorial_paper', 'paper'}
+SCROLL_STAGE_LOOKS = {'scroll_paper'}
+ULTRAMARINE_STAGE_LOOKS = {'ultramarine'}
+
+
+def _shot_stage_look(shot):
+    if shot.get('stage_look'):
+        return shot['stage_look']
+    for key in ('spatial_spec', 'onetake_spec'):
+        spec = shot.get(key)
+        if isinstance(spec, dict):
+            if spec.get('stage_look'):
+                return spec['stage_look']
+            data = spec.get('data') or {}
+            if data.get('stage_look'):
+                return data['stage_look']
+            if data.get('style') == 'pencil_watercolor':
+                return 'editorial_paper'
+            if data.get('style') == 'riso_halftone':
+                return 'ultramarine'
+    if shot.get('look') in {'paper', 'tabletop', 'riso', 'ember'}:
+        return 'editorial_paper'
+    if shot.get('look') == 'ultramarine':
+        return 'ultramarine'
+    return None
+
+
 def capture_stage_backgrounds(shots, project, rendered, gate):
     import numpy as np
     for shot in shots:
         if stage_mode(shot) not in RIGS | {'studio_ui'}:
             continue
         key = shot['id']
+        look = _shot_stage_look(shot)
         for phase in (.12,.5,.88):
             try:
                 frame = capture_frame(shot,project,rendered,shot_span(shot)*phase,prefer_rendered=True)
@@ -213,7 +245,13 @@ def capture_stage_backgrounds(shots, project, rendered, gate):
                 margin = (x<width*.035)|(x>width*.965)|(y<height*.04)|(y>height*.94)
                 luma = float((pixels[margin] @ np.array([.2126,.7152,.0722])).mean())
                 gate['backgrounds'].setdefault(key,[]).append(dict(phase=phase,luma=luma))
-                if luma>42:
+                if look in LIGHT_STAGE_LOOKS:
+                    if luma < 185:
+                        gate['violations'].append(dict(shot=key,phase=phase,luma=luma,reason='dim_editorial_paper_background'))
+                elif look in SCROLL_STAGE_LOOKS:
+                    if luma < 115:
+                        gate['violations'].append(dict(shot=key,phase=phase,luma=luma,reason='dim_editorial_paper_background'))
+                elif luma>42:
                     gate['violations'].append(dict(shot=key,phase=phase,luma=luma,reason='bright_stage_background'))
             except (OSError,ValueError,subprocess.SubprocessError) as exc:
                 gate['violations'].append(dict(shot=key,phase=phase,reason='missing_frame_evidence',detail=str(exc)))
@@ -224,7 +262,7 @@ def spatial_frame_gates(shots, duration, measured, required):
     overflow = []
     engines = {'hyperframes_block':dict(count=0,seconds=0.),'onetake_clip':dict(count=0,seconds=0.)}
     collisions, contrast, palette, ratios, plates = [], [], {}, {}, {}
-    headers, dark, accents = [], [], {}
+    headers, dark, accents, tone_families = [], [], {}, {}
     for shot in shots:
         mode, key = stage_mode(shot), shot['id']
         if mode not in engines:
@@ -239,6 +277,7 @@ def spatial_frame_gates(shots, duration, measured, required):
             dark.append(failure)
             headers.append(failure)
             continue
+        shot_look = _shot_stage_look(shot)
         for frame in result['frames']:
             for left,right in frame.get('stations',[]):
                 if left<130 or right>1790:
@@ -253,9 +292,24 @@ def spatial_frame_gates(shots, duration, measured, required):
                 continue
             samples = frame['samples']
             bg = samples.get('background',{})
-            palette.setdefault(key,[]).append(dict(phase=frame['phase'],**bg))
-            if required and (not bg.get('n') or bg['luma']>42):
-                dark.append(dict(shot=key,phase=frame['phase'],reason='bright_stage_background',luma=bg.get('luma')))
+            effective_look = frame.get('stageLook') or shot_look
+            palette.setdefault(key,[]).append(dict(phase=frame['phase'],look=effective_look,**bg))
+            if effective_look in LIGHT_STAGE_LOOKS:
+                tone_families[key] = 'light'
+                if required and (not bg.get('n') or bg['luma'] < 185):
+                    dark.append(dict(shot=key,phase=frame['phase'],reason='dim_editorial_paper_background',luma=bg.get('luma')))
+            elif effective_look in SCROLL_STAGE_LOOKS:
+                tone_families[key] = 'light'
+                if required and (not bg.get('n') or bg['luma'] < 115):
+                    dark.append(dict(shot=key,phase=frame['phase'],reason='dim_editorial_paper_background',luma=bg.get('luma')))
+            elif effective_look in ULTRAMARINE_STAGE_LOOKS:
+                tone_families[key] = 'ultramarine'
+                if required and (not bg.get('n') or bg['luma'] > 76):
+                    dark.append(dict(shot=key,phase=frame['phase'],reason='bright_stage_background',luma=bg.get('luma')))
+            else:
+                tone_families[key] = 'dark'
+                if required and (not bg.get('n') or bg['luma']>42):
+                    dark.append(dict(shot=key,phase=frame['phase'],reason='bright_stage_background',luma=bg.get('luma')))
             ranked = samples.get('highlights',{})
             if ranked:
                 dominant = max(ranked,key=ranked.get)
@@ -275,6 +329,8 @@ def spatial_frame_gates(shots, duration, measured, required):
         ratios[mode] = data['seconds']/duration if duration else 0
         if required and (data['count']<minimum or ratios[mode]+1e-8<share):
             violations.append(dict(engine=mode,minimum_count=minimum,minimum_ratio=share))
+    if required and len(set(tone_families.values())) > 1:
+        dark.append(dict(reason='inconsistent_stage_tone',tones=tone_families))
     from collections import Counter
     dominant = {key:Counter(bands).most_common(1)[0][0] for key,bands in accents.items()}
     if required and len(set(dominant.values()))<2:
@@ -283,7 +339,7 @@ def spatial_frame_gates(shots, duration, measured, required):
                 title_card_collision=dict(ok=not collisions,violations=collisions),
                 no_ppt_slide_header_gate=dict(ok=not headers,violations=headers),
                 unified_cyber_stage_and_accent_gate=dict(ok=not dark,required=required,backgrounds=palette,
-                                                         dominant_hue_bins=dominant,violations=dark),
+                                                         tone_families=tone_families,dominant_hue_bins=dominant,violations=dark),
                 low_layer_contrast=dict(ok=not contrast,plates=plates,violations=contrast),
                 dual_engine_symphony_gate=dict(ok=not violations,required=required,engines=engines,ratios=ratios,
                                               backgrounds=palette,violations=violations))
