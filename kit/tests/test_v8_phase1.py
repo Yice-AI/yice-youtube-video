@@ -93,11 +93,8 @@ print(json.dumps({"outputs":outputs,"candidates":1,"attempts":1}))
             logged = [json.loads(line) for line in calls.read_text().splitlines()]
             self.assertEqual(len(logged), 3)
             call = logged[0]
-            self.assertIn('仅供选择实物题材', call[3])
-            self.assertIn('本地验收。', call[3])
-            self.assertIn('右下 x>78%、y>80%', call[3])
             self.assertEqual(call, [
-                "--title", "采集画质", "--summary", call[3], "--role", "thumbnail", "--guard", "light",
+                "--title", "采集画质", "--summary", "本地验收。", "--role", "thumbnail", "--guard", "light",
                 "--thumb-guard", "r_plus", "--candidates", "1",
                 "-o", str(project/"thumbnails/fixture/candidate-1.png"), "--json",
             ])

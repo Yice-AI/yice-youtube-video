@@ -96,7 +96,6 @@ def generate(args, project, root):
     summary = args.content_file.read_text(encoding="utf-8") if args.content_file else args.summary
     if not (args.title and args.title.strip() and summary and summary.strip()):
         raise ValueError("生成需要 --title 和 --summary 或 --content-file")
-    hook, _ = cover_brief(args.title, summary, args.hook, args.badge)
     name = args.batch or datetime.now().strftime("batch-%Y%m%d-%H%M%S")
     if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", name):
         raise ValueError("生成批次需要单个目录名")
@@ -109,11 +108,19 @@ def generate(args, project, root):
     script = args.image2_script or toolkit / "local/tools/image2.py"
     rows = []
     attempts = 0
+    direct_mode = args.archetype == "direct" and not args.hook and not args.badge
+    if not direct_mode:
+        hook, _ = cover_brief(args.title, summary, args.hook, args.badge)
     for index in range(1, args.candidates+1):
-        archetype = tuple(ARCHETYPES)[(index-1) % len(ARCHETYPES)] if args.archetype == 'diverse' else args.archetype
-        _, brief = cover_brief(args.title, summary, hook, args.badge, archetype)
+        if direct_mode:
+            archetype = "direct"
+            call_title, call_summary = args.title.strip(), summary.strip()
+        else:
+            archetype = tuple(ARCHETYPES)[(index-1) % len(ARCHETYPES)] if args.archetype == 'diverse' else args.archetype
+            _, call_summary = cover_brief(args.title, summary, hook, args.badge, archetype)
+            call_title = hook
         file = batch / f'candidate-{index}.png'
-        output = run_command([python, str(script), '--title', hook, '--summary', brief, '--role', 'thumbnail',
+        output = run_command([python, str(script), '--title', call_title, '--summary', call_summary, '--role', 'thumbnail',
                               '--guard', 'light', '--thumb-guard', 'r_plus', '--candidates', '1',
                               '-o', str(file), '--json'])
         generated = json.loads(output)
@@ -190,7 +197,7 @@ def main():
     brief.add_argument("--summary")
     brief.add_argument("--content-file", type=Path)
     parser.add_argument("--candidates", type=int, default=3)
-    parser.add_argument("--archetype", choices=("diverse", *ARCHETYPES), default="diverse")
+    parser.add_argument("--archetype", choices=("direct", "diverse", *ARCHETYPES), default="direct")
     parser.add_argument("--batch")
     parser.add_argument("--image2-script", type=Path)
     parser.add_argument("--select", type=int)
