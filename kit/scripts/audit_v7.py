@@ -1081,8 +1081,8 @@ def sfx_diversity_and_sync_gate(timeline, duration):
     files_by_digest, audible_frames, deltas = {}, {}, []
     for mark in marks:
         kind, at = mark['kind'], float(mark['at'])
-        gain = float(mark.get('gain',.32))
-        if not isfinite(gain) or gain < .24:
+        gain = float(mark.get('gain',.26))
+        if not isfinite(gain) or gain < .14:
             violations.append(dict(at=at,reason='inaudible_sfx_padding',gain=gain))
             continue
         audible_frames.setdefault(round(at*30),at)
@@ -1116,7 +1116,7 @@ def sfx_diversity_and_sync_gate(timeline, duration):
         detail = kind in {'page_flip','click','click_soft','keypress','typing','counter_roll','ui_lock_bonk','paper_slap'}
         if shot.get('recipe') in {'logo_bento_stage','step_tree_focus'} and kind in {'card_thock','pop'}:
             detail = True
-        if (primary and not .55 <= gain <= .74) or (detail and not .28 <= gain <= .44):
+        if (primary and not .24 <= gain <= .68) or (detail and not .14 <= gain <= .44):
             violations.append(dict(at=at,reason='sfx_gain_tier',kind=kind,gain=gain))
         if kind in {'impact_bass_1','impact_bass_2'} and any(o['kind']=='editorial_punch' for o in shot.get('overlays',[])):
             points = [o['at'] for o in shot['overlays'] if o['kind']=='editorial_punch']
@@ -1127,18 +1127,28 @@ def sfx_diversity_and_sync_gate(timeline, duration):
         deltas.append(delta)
         if delta > .12001 or (kind == 'shutter_whip' and shot.get('recipe') != 'triptych_curtain'):
             violations.append(dict(shot=shot['id'],at=at,delta=round(delta,4),reason='action_mismatch'))
-    times = sorted({0., duration, *audible_frames.values()})
+    sorted_audible = sorted(audible_frames.values())
+    times = sorted({0., duration, *sorted_audible})
     max_gap = max((b-a for a,b in zip(times,times[1:])),default=0.)
     density = len(audible_frames)/duration if duration else 0.
+    for idx in range(len(sorted_audible) - 3):
+        if sorted_audible[idx + 3] - sorted_audible[idx] <= 1.80:
+            violations.append(dict(reason='sfx_burst_clutter', at=round(sorted_audible[idx], 3),
+                                   window_sec=round(sorted_audible[idx + 3] - sorted_audible[idx], 3)))
+            break
     if duration >= 30:
-        if density < .72:
+        if density < .12:
             violations.append(dict(reason='sfx_density_below_minimum',density=round(density,4)))
-        if max_gap > 3.60001:
+        if density > .38:
+            violations.append(dict(reason='sfx_overcrowded_spam',density=round(density,4),
+                                   per_minute=round(density*60, 1),
+                                   hint='音效过密（上限 22.8 次/分钟），请删除无关键动作的冗余音效，正常口播保持干净留白'))
+        if max_gap > 18.0001:
             violations.append(dict(reason='long_sfx_gap',seconds=round(max_gap,4)))
-        if len(counts) < 6:
-            violations.append(dict(reason='fewer_than_six_files'))
-        if counts and max(counts.values()) > .28 * len(marks):
-            violations.append(dict(reason='single_file_above_28_percent'))
+        if len(marks) >= 12 and len(counts) < 4:
+            violations.append(dict(reason='fewer_than_four_files'))
+        if len(marks) >= 8 and counts and max(counts.values()) > .34 * len(marks):
+            violations.append(dict(reason='single_file_above_34_percent'))
     return dict(ok=not violations,count=len(marks),audible_action_points=len(audible_frames),
                 density=round(density,4),max_sfx_gap=round(max_gap,4),
                 max_sync_error=round(max(deltas,default=0.),5),files=dict(counts),violations=violations)
@@ -1321,8 +1331,9 @@ def recipe_monotony_and_workbench_gate(timeline, duration):
     violations = []
     cap = max(3, int(len(shots) * 0.06))
     for diagram in ('logo_bento_stage', 'step_tree_focus', 'roadmap_thread_camera', 'handdrawn_sketch_stage'):
-        if counts[diagram] > cap:
-            violations.append(dict(reason='overused_diagram_recipe', recipe=diagram, count=counts[diagram], max_allowed=cap))
+        limit = min(cap, 2) if diagram == 'roadmap_thread_camera' else cap
+        if counts[diagram] > limit:
+            violations.append(dict(reason='overused_diagram_recipe', recipe=diagram, count=counts[diagram], max_allowed=limit))
     if len(asterisk_bento) > 1:
         violations.append(dict(reason='logo_bento_missing_real_logos', shots=asterisk_bento,
                                hint='无真实 SVG/PNG 标志时严禁反复套用默认星号白框 logo_bento_stage，请提供真实 logo 或改用带真画面的 progressive_sim_cards / perspective_video_fan'))
@@ -1330,6 +1341,105 @@ def recipe_monotony_and_workbench_gate(timeline, duration):
         violations.append(dict(reason='insufficient_prompt_iter_workbench', count=counts['prompt_iter_workbench'], minimum=2,
                                hint='实操长教程至少须有 2 个镜头真实使用 prompt_iter_workbench 展示提示词胶囊与前后画面对比'))
     return dict(ok=not violations, required=True, recipe_counts=dict(counts), violations=violations)
+
+
+PORTRAIT_CLAIM_RE = re.compile(r'(?:3\s*[:：比]\s*4|三比四|9\s*[:：比]\s*16|九比十六|小红书(?:套图|封面|图文|卡片|海报)|竖版(?:封面|海报|套图|卡片))')
+PORTRAIT_EXEMPT_RE = re.compile(r'(?:npx\s+|git\s+clone|install|安装|仓库|README|简介|协议|AGPL|Apache|MIT|授权|横版|21\s*[:：比]\s*9)', re.I)
+
+
+def _media_dimensions(path):
+    from PIL import Image
+    ext = path.suffix.lower()
+    if ext in IMAGE_EXTENSIONS and ext != '.svg':
+        with Image.open(path) as im:
+            return im.size
+    if ext in VIDEO_EXTENSIONS:
+        out = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                              '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', str(path)],
+                             capture_output=True, text=True, check=False)
+        if 'x' in (out.stdout or ''):
+            w, h = out.stdout.strip().split('x')[:2]
+            return int(w), int(h)
+    return None
+
+
+def portrait_aspect_integrity_gate(timeline, project):
+    project_path = Path(project).resolve()
+    episode_root = project_path.parent if (project_path.parent / 'episode-manifest.json').is_file() else project_path
+    mf_path = episode_root / 'episode-manifest.json'
+    mf_shots = {}
+    if mf_path.is_file():
+        try:
+            raw_mf = json.loads(mf_path.read_text(encoding='utf-8'))
+            src_shots = raw_mf.get('shots') or [s for ch in raw_mf.get('chapters', []) for s in ch.get('shots', [])]
+            mf_shots = {s['id']: s for s in src_shots if isinstance(s, dict) and 'id' in s}
+        except Exception:
+            mf_shots = {}
+
+    diagram_recipes = {'logo_bento_stage', 'step_tree_focus', 'roadmap_thread_camera',
+                       'handdrawn_sketch_stage', 'kinetic_title_bridge', 'triptych_curtain'}
+    violations = []
+    checked = 0
+    for shot in timeline.get('shots', []):
+        sid = shot.get('id')
+        orig = mf_shots.get(sid, {})
+        spec = orig.get('spatial_spec') or orig.get('onetake_spec') or shot.get('spatial_spec') or shot.get('onetake_spec') or {}
+        recipe = spec.get('recipe') or shot.get('recipe')
+        if recipe in diagram_recipes:
+            continue
+        data = spec.get('data') or {}
+        chips_txt = ' '.join(f"{c.get('role','')} {c.get('text','')}" for c in (data.get('prompt_chips') or []) if isinstance(c, dict))
+        shot_specific_txt = ' '.join(str(x or '') for x in (
+            shot.get('spoken_topic'), shot.get('visual_subject'),
+            orig.get('spoken_topic'), orig.get('visual_subject'), data.get('heading'), chips_txt,
+        )).strip()
+        combined_txt = shot_specific_txt or str(shot.get('anchor_text') or '')
+        if not PORTRAIT_CLAIM_RE.search(combined_txt) or PORTRAIT_EXEMPT_RE.search(combined_txt):
+            continue
+        multi_domain = bool(re.search(r'(?:PPT|演示|宣传片|视频|大屏|汇报)', combined_txt))
+        candidates = []
+        for src in (orig.get('media') or []):
+            if isinstance(src, str):
+                candidates.append(src)
+        for k in ('before_source', 'after_source', 'before', 'after', 'image', 'media'):
+            if isinstance(data.get(k), str):
+                candidates.append(data[k])
+        for lk in ('before_sources', 'after_sources'):
+            for v in (data.get(lk) or []):
+                if isinstance(v, str):
+                    candidates.append(v)
+        for card in (data.get('cards') or data.get('items') or orig.get('cards') or []):
+            if isinstance(card, dict) and isinstance(card.get('source'), str):
+                candidates.append(card['source'])
+            elif isinstance(card, str):
+                candidates.append(card)
+        if not candidates:
+            for f in (shot.get('files') or []):
+                if isinstance(f, str):
+                    candidates.append(f)
+        ratios = []
+        for rel in candidates:
+            full = (episode_root / rel).resolve() if (episode_root / rel).is_file() else (project_path / rel).resolve()
+            if not full.is_file():
+                continue
+            dims = _media_dimensions(full)
+            if dims and dims[1] > 0:
+                ratios.append((rel, round(dims[0] / dims[1], 3)))
+        if not ratios:
+            continue
+        checked += 1
+        if multi_domain:
+            ok_shot = any(0.48 <= r <= 0.90 for _, r in ratios)
+        else:
+            ok_shot = all(0.48 <= r <= 0.90 for _, r in ratios)
+        if not ok_shot:
+            violations.append(dict(
+                shot=sid,
+                reason='landscape_truncated_portrait_card',
+                assets=ratios,
+                hint='镜头承诺展示 3:4 / 小红书竖图，严禁用 16:9 横屏浏览器截半录屏；请用 export-html-cards.sh 导出完整 3:4 原图再放入画布或工作台'
+            ))
+    return dict(ok=not violations, checked_shots=checked, violations=violations)
 
 
 def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
@@ -1347,6 +1457,7 @@ def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
         from audit_spatial import capture_stage_backgrounds, spatial_frame_gates, spatial_measurements, subpage_repeats, three_mode_symphony_gate
         result['precheck_narrative_gate'] = precheck_narrative_gate(timeline, project, duration)
         result['recipe_monotony_and_workbench_gate'] = recipe_monotony_and_workbench_gate(timeline, duration)
+        result['portrait_aspect_integrity_gate'] = portrait_aspect_integrity_gate(timeline, project)
         editorial = any('case_tag' in shot or shot.get('stage_look') in {'swiss_paper', 'cinema_black'}
                         or any(o.get('kind') == 'editorial_punch' for o in shot.get('overlays', []))
                         for shot in shots)

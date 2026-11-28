@@ -77,6 +77,8 @@ kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --
 | `enumerated_count_gate` | 数量取 `expected_items` 或讲解列举的口播／标题，与实际显示的独立胶囊、卡片或步骤逐个核对。 |
 | `subtitle_safe_zone_gate` | 瑞士画布的核心文字、贴图和自建页面不得进入 y ≥ 860 区域。按文字位置与底层画面核对，排除字幕自身。自建实录登记 `custom_layout: true`。 |
 | `chapter_voice_completeness_gate` | 最后一个镜头须覆盖每章人声与最后一句字幕。节选章可用 `chapter_reference_manifest` 指向完整原声清单，核对实际声轨时长和内容。 |
-| `sfx_diversity_and_sync_gate` | 所有动作点增益至少 0.24，过低记为 inaudible_sfx_padding。转场、重锤、划线增益 0.55–0.74，翻页、点击、打字、胶囊展开 0.28–0.44。满 30 秒每秒至少 0.72 个不同帧的有效动作点，含片头片尾的最大空档不超过 3.6 秒。至少六个不同底层文件，任一文件占比不超过 28%。同文件同音高不能三连，落点距切点、贴图、子项或真实交互不超过 0.12 秒。 |
+| `sfx_diversity_and_sync_gate` | 音效必须克制、精准服务关键动作：有效增益 ≥ 0.14（主转场/划线 0.24–0.68，翻页/轻点/打字 0.14–0.44）。满 30 秒有效密度控制在 0.12–0.38 次/秒（即每分钟 7.2–22.8 次，超出报 `sfx_overcrowded_spam`，1.8 秒窗口内 ≥ 4 次报 `sfx_burst_clutter`），正常口播允许最长 18 秒安静留白。满 12 处音效须用至少 4 个不同文件，单文件占比 ≤ 34%，同文件同音高禁止三连，落点距可见动作 ≤ 0.12 秒。 |
+| `portrait_aspect_integrity_gate` | 口播或标题承诺展示 `3:4`、小红书套图/封面、`9:16` 竖版成品时，同镜必须包含真实竖版画幅素材（宽高比 0.48–0.90），严禁用 `16:9` 横屏浏览器截半录屏冒充（报 `landscape_truncated_portrait_card`）。 |
+| `text_box_containment_gate` | 无头浏览器实测所有组件方框、分支子节点、路线图卡片与胶囊：文字渲染像素框超出容器边界 > 2.5px 报 `text_exceeds_box`，字色与底板对比度 < 3.0 报 `low_box_text_contrast`。 |
 
 三联幕布每 85 秒最多两次，六个槽位按文件内容去重。工具按交付对象并列显示，工作流跟随实际步骤。大字采用双行高对比；优势卡默认居中弹出后依次推开，横屏素材零裁边；多卡接单卡全屏用点中推近；原件改字使用真实操作；骂丑的口播同镜出现真实反例。

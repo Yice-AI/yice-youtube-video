@@ -109,6 +109,7 @@ async function measure(page, {entry,seconds}) {
           natural:[nw,nh], layout:[el.clientWidth,el.clientHeight], crop_ratio:+crop.toFixed(4)});
       }
       const containerOverflows = [];
+      const textBoxViolations = [];
       if (phase >= 0.35) {
         const containers = Array.from(document.querySelectorAll('.bento-box,.sim-panel,.tree-branch'));
         for (const box of containers) {
@@ -131,11 +132,75 @@ async function measure(page, {entry,seconds}) {
             }
           }
         }
+        const parseRgb = str => {
+          const m = str && str.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,/\s]+([\d.]+))?/);
+          return m ? [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : +m[4]] : null;
+        };
+        const relLum = ([r, g, b]) => {
+          const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+          return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+        };
+        const effectiveBg = el => {
+          for (let cur = el; cur && cur !== document.documentElement; cur = cur.parentElement) {
+            const st = getComputedStyle(cur);
+            const c = parseRgb(st.backgroundColor);
+            if (c && c[3] >= 0.65) return c;
+            if (st.backgroundImage && st.backgroundImage !== 'none') {
+              const stops = [...st.backgroundImage.matchAll(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,/\s]+([\d.]+))?\)/g)]
+                .map(m => [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : +m[4]]).filter(x => x[3] >= 0.5);
+              if (stops.length) {
+                const avg = [0, 1, 2].map(k => stops.reduce((s, v) => s + v[k], 0) / stops.length);
+                return [...avg, 1];
+              }
+            }
+          }
+          return null;
+        };
+        const boxSelectors = '.tree-branch,.tree-child,.node,.bento-item,.workbench-chip,.workbench-label,.pill-src,.pill-dst,.chain-badge,.fan-badge,.fan-label,.hanging-plaque,.torn-main,.slidecard,.station,.stamp,.compare-pill,.compare-summary-card';
+        for (const el of document.querySelectorAll(boxSelectors)) {
+          if (!visible(el)) continue;
+          const br = el.getBoundingClientRect();
+          if (br.width < 24 || br.height < 18 || br.right <= 0 || br.left >= innerWidth) continue;
+          if (el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 3) {
+            textBoxViolations.push({reason:'text_scroll_overflow', selector:el.className || el.tagName,
+              text:el.innerText.trim().slice(0, 36), scrollWidth:el.scrollWidth, clientWidth:el.clientWidth});
+            continue;
+          }
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          let tn, outPx = 0;
+          while ((tn = walker.nextNode())) {
+            if (!tn.nodeValue || !tn.nodeValue.trim()) continue;
+            const p = tn.parentElement;
+            if (p && (p.classList.contains('tree-no') || getComputedStyle(p).position === 'absolute')) continue;
+            const range = document.createRange();
+            range.selectNodeContents(tn);
+            const rr = range.getBoundingClientRect();
+            if (!rr.width || !rr.height) continue;
+            outPx = Math.max(outPx, br.left - rr.left, rr.right - br.right, br.top - rr.top - 2, rr.bottom - br.bottom - 2);
+          }
+          if (outPx > 2.5) {
+            textBoxViolations.push({reason:'text_exceeds_box', selector:el.className || el.tagName,
+              text:el.innerText.trim().slice(0, 36), overflow_px:+outPx.toFixed(1)});
+          }
+        }
+        for (const txtEl of document.querySelectorAll('.node h2,.node p,.tree-branch,.tree-child,.bento-item-name,.workbench-chip')) {
+          if (!visible(txtEl) || !txtEl.innerText.trim()) continue;
+          const fg = parseRgb(getComputedStyle(txtEl).color);
+          const bg = effectiveBg(txtEl);
+          if (fg && bg) {
+            const l1 = relLum(fg), l2 = relLum(bg);
+            const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+            if (ratio < 3.0) {
+              textBoxViolations.push({reason:'low_box_text_contrast', selector:txtEl.className || txtEl.tagName,
+                text:txtEl.innerText.trim().slice(0, 36), contrast:+ratio.toFixed(2)});
+            }
+          }
+        }
       }
       const root = document.querySelector('[data-composition-id]') || document.body;
       const backdrop = root?.dataset?.onetakeRecipe === 'split_wipe_compare' ? root.querySelector('.compare-stage') : root;
       return {
-        phase, overlaps, containerOverflows, aspectCrops, cards, titles, stations,
+        phase, overlaps, containerOverflows, textBoxViolations, aspectCrops, cards, titles, stations,
         countClaim: root.querySelector('header')?.innerText || '',
         enumeratedItems: Array.from(root.querySelectorAll('.bento-item-name,.sim-label,.tree-branch,.chain-badge'))
           .filter(visible).map(el=>el.innerText.trim()).filter(Boolean),
@@ -199,8 +264,25 @@ async function measure(page, {entry,seconds}) {
   return frames;
 }
 
+function findChromeExecutable() {
+  if (process.env.YICE_CHROME_EXECUTABLE && fs.existsSync(process.env.YICE_CHROME_EXECUTABLE)) return process.env.YICE_CHROME_EXECUTABLE;
+  const home = os.homedir();
+  for (const base of [path.join(home, 'Library/Caches/ms-playwright'), path.join(home, '.cache/ms-playwright'), path.join(home, '.cache/hyperframes/chrome/chrome-headless-shell')]) {
+    if (!fs.existsSync(base)) continue;
+    for (const d1 of fs.readdirSync(base).sort().reverse()) {
+      const p1 = path.join(base, d1);
+      if (!fs.statSync(p1).isDirectory()) continue;
+      for (const d2 of fs.readdirSync(p1).sort().reverse()) {
+        const bin = path.join(p1, d2, 'chrome-headless-shell');
+        if (fs.existsSync(bin)) return bin;
+      }
+    }
+  }
+  return undefined;
+}
+
 (async () => {
-  const browser = await chromium.launch({headless:true,executablePath:process.env.YICE_CHROME_EXECUTABLE || undefined});
+  const browser = await chromium.launch({headless:true,executablePath:findChromeExecutable()});
   const results = {};
   try {
     for (const [id,entry] of Object.entries(JSON.parse(fs.readFileSync(0,'utf8')))) {

@@ -9,7 +9,7 @@
 | 路线 | 适用画面 | 执行与交付 |
 |---|---|---|
 | 一手高光动态原片猎手 | 学术论文 `*.github.io` 项目主页、官方 Release 演示页、公开实机推文中的高冲击对比/3D/实机视频 | `harvest-showcase-media.sh --rank-highlights` 无损抓取原生 MP4/WebM 流（拦截二创视频站域名），非 16:9 画幅自动合成 `blur_dark` 同源高斯模糊暗底，按运动能量与细节密度自动切出 `4.5s` 高光切片并输出 `showcase-candidates.jpg` 直通双擎 `.mp4` 贴图。 |
-| 网页与文档净屏实拍 | 官方发布页、技术博客、公开仓库、文档，用页面原文支撑具体论点 | `capture-web.mjs`（`30fps`、`1.25x+` 倍率、预滚解码懒加载图、自动隐藏弹窗横幅）导出 `1920×1080` 静帧、6–8 秒滚动视频及含原文像素框的 `capture.json`（直通 `evidence_spotlight`）；深色交互式操作用 `record-web-cam.sh`。 |
+| 网页与文档净屏实拍 | 官方发布页、技术博客、公开仓库、文档，用页面原文支撑具体论点 | `capture-web.mjs`（`30fps`、`1.25x+` 倍率、预滚解码懒加载图、自动隐藏弹窗横幅）导出 `1920×1080` 静帧、6–8 秒滚动视频及含原文像素框的 `capture.json`（直通 `evidence_spotlight`）；交互式操作用 `record-web-cam.sh`（竖版页面加 `--aspect 3:4` 或 `9:16`）；本地生成的 `3:4` 小红书套图或 `21:9` 封面网页必须用 `export-html-cards.sh --selector ".poster.xhs"` 按原尺寸整张导出，严禁用横屏窗口截半。 |
 | AI 产品与开源实体深扒 | 产品官网首屏、GitHub README 演示视频、官方 SVG 标志 | `collect-entity.sh` 下载官网/README 演示流并提取 `.svg` 矢量标志冻结入账（直通 `logo_bento_stage` 与角标）。 |
 | `image2` 美术与剪纸造画 | 无现成视频的抽象概念、人文历史剧场、高细节壁画/剖面拆解 | 由主脑导演撰写提示词调用 `image2.py` 生成白底独立主体（经 `cutout.sh` 抠图喂入 `cutout_parallax_stage` 三层剪纸视差）或 16:9 艺术大图（喂入 `documentary_ken_burns` 2.5D 推摇与一图拆三卡）。 |
 | 开放授权高清影像与抠像 | 真实物理特写空镜、历史公有领域资料、百科人物与实物贴图 | `find-media.sh` / `open-media.mjs` 检索 Pexels、Pixabay、Commons、Openverse，视频硬筛 `≥1920px` 横屏源；人物与实物经 `people-add.sh` / `cutout.py` 抠图并通过主体完整性校验。 |

@@ -6,13 +6,17 @@ import {createHash} from 'node:crypto';
 import {parseArgs} from 'node:util';
 import {recordBrowserFrames} from './browser-frames.mjs';
 
-const options = Object.fromEntries('project url id seconds highlight actions source scene fps theme scale hide-selectors'.split(' ').map(key => [key,{type:'string'}]));
+const options = Object.fromEntries('project url id seconds highlight actions source scene fps theme scale hide-selectors aspect'.split(' ').map(key => [key,{type:'string'}]));
 const {values:args} = parseArgs({options});
 const DEFAULT_PLAYWRIGHT_MODULE = '/opt/homebrew/lib/node_modules/openclaw/node_modules/playwright-core';
 const url = new URL(args.url);
 const duration = Number(args.seconds ?? 6), fps = Number(args.fps ?? 30);
 const scale = Number(args.scale ?? 1.5);
 const colorScheme = args.theme === 'light' ? 'light' : 'dark';
+const ASPECT_SIZES = {'16:9':[1920,1080], '3:4':[1080,1440], '9:16':[1080,1920], '1:1':[1080,1080]};
+const aspectKey = args.aspect || '16:9';
+if (!ASPECT_SIZES[aspectKey]) throw Error('aspect 仅支持 16:9、3:4、9:16、1:1');
+const [outW, outH] = ASPECT_SIZES[aspectKey];
 if (!args.project || !/^[\w-]+$/.test(args.id || '') || !['http:','https:','file:'].includes(url.protocol) || url.username || url.password)
   throw Error('需要 project、合法 id 与公开网页或本地文件 URL');
 if (!(duration >= 2 && duration <= 20 && fps === 30)) throw Error('要求 2–20 秒、30fps');
@@ -29,9 +33,25 @@ const playwrightModule = process.env.YICE_PLAYWRIGHT_MODULE ||
   (fs.existsSync(DEFAULT_PLAYWRIGHT_MODULE) ? DEFAULT_PLAYWRIGHT_MODULE : null) ||
   require.resolve('playwright-core',{paths:search});
 const {chromium} = require(playwrightModule);
-const viewport = {width:Math.round(1920/scale),height:Math.round(1080/scale)};
+const viewport = {width:Math.round(outW/scale),height:Math.round(outH/scale)};
 const cx0 = Math.round(viewport.width/2), cy0 = Math.round(viewport.height/2);
-const chromeExecutable = process.env.YICE_CHROME_EXECUTABLE;
+function findChromeExecutable() {
+  if (process.env.YICE_CHROME_EXECUTABLE && fs.existsSync(process.env.YICE_CHROME_EXECUTABLE)) return process.env.YICE_CHROME_EXECUTABLE;
+  const home = os.homedir();
+  for (const base of [path.join(home, 'Library/Caches/ms-playwright'), path.join(home, '.cache/ms-playwright'), path.join(home, '.cache/hyperframes/chrome/chrome-headless-shell')]) {
+    if (!fs.existsSync(base)) continue;
+    for (const d1 of fs.readdirSync(base).sort().reverse()) {
+      const p1 = path.join(base, d1);
+      if (!fs.statSync(p1).isDirectory()) continue;
+      for (const d2 of fs.readdirSync(p1).sort().reverse()) {
+        const bin = path.join(p1, d2, 'chrome-headless-shell');
+        if (fs.existsSync(bin)) return bin;
+      }
+    }
+  }
+  return undefined;
+}
+const chromeExecutable = findChromeExecutable();
 const browser = await chromium.launch({headless:true,...(chromeExecutable ? {executablePath:chromeExecutable} : {})});
 const events = [];
 const stills = [];
@@ -148,7 +168,7 @@ try {
     }else if(a.type==='move') log(n/fps,'move',rect,1.25);
   }});
   await page.screenshot({path:path.join(folder,'still.png')});
-  fs.writeFileSync(path.join(folder,'cursor-track.json'),JSON.stringify({url:args.url,width:1920,height:1080,cssViewport:viewport,deviceScaleFactor:scale,colorScheme,fps,duration,events},null,2));
+  fs.writeFileSync(path.join(folder,'cursor-track.json'),JSON.stringify({url:args.url,width:outW,height:outH,aspect:aspectKey,cssViewport:viewport,deviceScaleFactor:scale,colorScheme,fps,duration,events},null,2));
   const rel=path.relative(project,folder);
   if(stills.length) fs.writeFileSync(path.join(folder,'key-stills.json'),JSON.stringify(stills,null,2)+'\n');
   const entry={id:args.id,kind:'web_cam_recording',sourceType:'web_capture',url:args.url,source:args.source||url.hostname,

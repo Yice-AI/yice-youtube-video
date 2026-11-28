@@ -33,6 +33,10 @@ def label(value):
     return html.escape(str(value), quote=True)
 
 
+def _text_units(value):
+    return sum(0.60 if ord(ch) < 128 else 1.04 for ch in str(value))
+
+
 def _trim_transparent_png(path, dest_dir):
     """Trim outer fully-transparent margins from a PNG so cutout subjects fill their stage cleanly."""
     try:
@@ -131,7 +135,7 @@ def build(spec, source_dir, output, gsap):
         except (OSError, ValueError, subprocess.SubprocessError, ImportError):
             return None
 
-    def media_tag(source, *, cls='', style='', loop=False, zoom=1):
+    def media_tag(source, *, cls='', style='', loop=False, zoom=1, clean_portrait=False):
         nonlocal video_counter
         name, is_video = media_asset(source, allow_video=True)
         cls_attr = f' class="{cls}"' if cls else ''
@@ -139,17 +143,20 @@ def build(spec, source_dir, output, gsap):
         ratio = media_aspect(assets[name])
         if ratio and ratio >= 1.50 and zoom == 1:
             attributes += ' data-media-aspect="widescreen"'
+        elif ratio and ratio <= 0.90 and zoom == 1:
+            attributes += ' data-media-aspect="portrait"'
         if zoom > 1.05:
             attributes += ' data-allow-crop="true"'
         if is_video:
             video_counter += 1
             vid_id = f'{ident}-v{video_counter}'
             playback = 'loop ' if loop else ''
+            fit = 'contain' if (clean_portrait or (ratio and ratio <= 0.90 and zoom == 1)) else 'cover'
             return (f'<video id="{vid_id}"{cls_attr} src="{name}"{attributes} {playback}muted playsinline preload="auto" '
                     f'data-start="0" data-duration="{duration}" '
-                    f'style="width:100%;height:100%;object-fit:cover;{style}"></video>')
+                    f'style="width:100%;height:100%;object-fit:{fit};{style}"></video>')
         style_attr = f' style="{style}"' if style else ''
-        if ratio and not (1.28 <= ratio <= 2.05):
+        if ratio and not (1.28 <= ratio <= 2.05) and not clean_portrait:
             fg_cls = f'{cls} media-aspect-fg'.strip()
             return (f'<div class="media-aspect-box">'
                     f'<img class="media-aspect-bg" src="{name}" alt="">'
@@ -253,7 +260,9 @@ def build(spec, source_dir, output, gsap):
             previous = at
             x, y = 260 + i * 1370 / (len(nodes) - 1), 460 + (i % 2) * 135
             pts.append((x, y))
-            cards.append(f'<section class="node" style="left:{x-125}px;top:{y-88}px"><small>{label(node["no"])}</small><h2>{label(node["title"])}</h2><p>{label(node["sub"])}</p></section>')
+            nw = max(296, min(420, round(max(_text_units(node['title']) * 38, _text_units(node['sub']) * 26)) + 58))
+            nx = max(84, min(1836 - nw, x - nw / 2))
+            cards.append(f'<section class="node" style="left:{nx:.1f}px;top:{y-92}px;width:{nw}px"><small>{label(node["no"])}</small><h2>{label(node["title"])}</h2><p>{label(node["sub"])}</p></section>')
         path = f'M -60 600 C 60 570,120 {pts[0][1]},260 {pts[0][1]}'
         for (x, y), (xx, yy) in zip(pts, pts[1:]):
             path += f' C {x+210} {y-90},{xx-200} {yy+80},{xx} {yy}'
@@ -423,17 +432,18 @@ def build(spec, source_dir, output, gsap):
             children = b.get('children') or []
             if children:
                 cx_center = bx + box_w / 2
-                spread = min(200, 560 / max(1, len(children)))
-                for c_idx, ch in enumerate(children):
+                cws = [max(176, min(360, round(_text_units(ch['label']) * 30) + 54)) for ch in children]
+                spread = max(max(cws) + 28, min(340, 720 / max(1, len(children))))
+                for c_idx, (ch, cw) in enumerate(zip(children, cws)):
                     number(ch.get('at', 0.8 + c_idx * 0.3), 0, duration - 0.2, '子标签时间')
                     offset = (c_idx - (len(children) - 1) / 2) * spread
-                    cx = cx_center + offset
+                    cx = max(84 + cw / 2, min(1836 - cw / 2, cx_center + offset))
                     cy = by + 272
                     svg_paths.append(
-                        f'<path class="tree-stem" pathLength="1" d="M {cx_center} {by+148} L {cx_center} {by+206} L {cx} {by+206} L {cx} {cy-6}"/>'
+                        f'<path class="tree-stem" pathLength="1" d="M {cx_center} {by+148} L {cx_center} {by+206} L {cx:.1f} {by+206} L {cx:.1f} {cy-6}"/>'
                     )
                     child_html.append(
-                        f'<div class="tree-child" data-spatial-subject style="left:{cx-84}px;top:{cy}px">{label(ch["label"])}</div>'
+                        f'<div class="tree-child" data-spatial-subject style="left:{cx - cw / 2:.1f}px;top:{cy}px;min-width:{cw}px">{label(ch["label"])}</div>'
                     )
         body = f'<div class="tree-stage"><svg class="tree-svg" viewBox="0 0 1920 1080">{"".join(svg_paths)}</svg>{"".join(branch_html)}{"".join(child_html)}</div>'
     elif recipe == 'progressive_sim_cards':
@@ -467,9 +477,12 @@ def build(spec, source_dir, output, gsap):
                 if data.get('board'):
                     crop += f';object-position:{x}% {y}%'
                 sources = [card['source'], *(page['source'] for page in card.get('pages', []))]
-                wide = any((media_aspect((source_dir / src).resolve()) or 0) >= 1.50 for src in sources)
-                attr = ' data-media-aspect="widescreen"' if wide and zoom == 1 else ''
-                panel = f'<div class="sim-panel is-media"{attr}>{media_tag(card["source"], style=crop, loop=True, zoom=zoom)}</div>'
+                ratios = [media_aspect((source_dir / src).resolve()) for src in sources]
+                wide = any((r or 0) >= 1.50 for r in ratios)
+                portrait = bool(ratios) and all(r is not None and r <= 0.90 for r in ratios)
+                attr = (' data-media-aspect="widescreen"' if wide and zoom == 1
+                        else ' data-media-aspect="portrait"' if portrait and zoom == 1 else '')
+                panel = f'<div class="sim-panel is-media"{attr}>{media_tag(card["source"], style=crop, loop=True, zoom=zoom, clean_portrait=portrait)}</div>'
             pages = []
             last = -1.
             for page in card.get('pages', []):
@@ -477,7 +490,7 @@ def build(spec, source_dir, output, gsap):
                 if at <= last:
                     raise ValueError('框内翻页须按时间递增')
                 last = at
-                pages.append('<div class="sim-page">' + media_tag(page['source'], style=crop, loop=True, zoom=zoom) + '</div>')
+                pages.append('<div class="sim-page">' + media_tag(page['source'], style=crop, loop=True, zoom=zoom, clean_portrait=portrait) + '</div>')
             if pages:
                 panel = panel.removesuffix('</div>') + ''.join(pages) + '</div>'
             if card.get('panel_accents'):
@@ -499,10 +512,26 @@ def build(spec, source_dir, output, gsap):
         header_html = (f'<header class="workbench-heading" data-spatial-title data-title-kind="editorial_single">'
                        f'{label(data["heading"])}</header>') if data.get('heading') else ''
         frames = []
-        for side in ('before', 'after'):
-            frames.append(f'<div class="workbench-frame {side}" data-spatial-subject>'
-                          f'{media_tag(data[side + "_source"], loop=True)}</div>')
-        badge = (f'<b class="workbench-label" data-after="{label(data.get("after_label", "✦ 加词精修后"))}">'
+        deck_mode = isinstance(data.get('before_sources'), list) or isinstance(data.get('after_sources'), list)
+        portrait_single = False
+        if deck_mode:
+            for side in ('before', 'after'):
+                srcs = items(f'{side}_sources', 2, 3)
+                cards_inner = ''.join(
+                    f'<div class="workbench-deck-card">{media_tag(src, loop=True, clean_portrait=True)}</div>'
+                    for src in srcs
+                )
+                frames.append(f'<div class="workbench-frame {side} is-portrait-deck" data-spatial-subject>{cards_inner}</div>')
+        else:
+            b_ratio = media_aspect((source_dir / data['before_source']).resolve())
+            a_ratio = media_aspect((source_dir / data['after_source']).resolve())
+            portrait_single = bool(b_ratio and a_ratio and b_ratio <= 0.90 and a_ratio <= 0.90)
+            extra_cls = ' is-portrait' if portrait_single else ''
+            for side in ('before', 'after'):
+                frames.append(f'<div class="workbench-frame {side}{extra_cls}" data-spatial-subject>'
+                              f'{media_tag(data[side + "_source"], loop=True, clean_portrait=portrait_single)}</div>')
+        badge_cls = ' is-portrait-deck' if deck_mode else (' is-portrait' if portrait_single else '')
+        badge = (f'<b class="workbench-label{badge_cls}" data-after="{label(data.get("after_label", "✦ 加词精修后"))}">'
                  f'{label(data.get("before_label", "↺ 默认直出"))}</b>')
         body = f'<div class="workbench-chips">{"".join(captions)}</div>' + ''.join(frames) + badge
     elif recipe == 'formula_pill_chain':

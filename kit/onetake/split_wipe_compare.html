@@ -61,6 +61,27 @@ function drawCover(canvas, img) {
   if (canvas.width !== tw || canvas.height !== th) { canvas.width = tw; canvas.height = th; }
   const ctx = canvas.getContext('2d');
   const iw = img.naturalWidth || img.width || tw, ih = img.naturalHeight || img.height || th;
+  ctx.clearRect(0, 0, tw, th);
+  if (iw / ih < 1.15 && tw / th > 1.25) {
+    ctx.save();
+    ctx.fillStyle = '#0e131c';
+    ctx.fillRect(0, 0, tw, th);
+    ctx.globalAlpha = 0.26;
+    ctx.filter = 'blur(26px)';
+    const bgS = Math.max(tw / iw, th / ih) * 1.08;
+    ctx.drawImage(img, (tw - iw * bgS) / 2, (th - ih * bgS) / 2, iw * bgS, ih * bgS);
+    ctx.restore();
+    const fgS = Math.min((tw * 0.86) / iw, (th * 0.90) / ih);
+    const dw = iw * fgS, dh = ih * fgS;
+    const dx = (tw - dw) / 2, dy = (th - dh) / 2;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.48)';
+    ctx.shadowBlur = 28;
+    ctx.shadowOffsetY = 10;
+    ctx.drawImage(img, dx, dy, dw, dh);
+    ctx.restore();
+    return;
+  }
   const s = Math.max(tw / iw, th / ih);
   const dw = iw * s, dh = ih * s;
   ctx.drawImage(img, (tw - dw) / 2, (th - dh) / 2, dw, dh);
@@ -152,13 +173,9 @@ window.__seek = t => {
 
 window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.abs(b - a) * 260;
 window.__events = () => timed ? [
-  {t:.03,kind:'zoom_swoosh',gain:.58}, {t:cut/2,kind:'whoosh_short',gain:.56},
-  {t:cut,kind:'wipe_sweep',gain:.64}, {t:cut+.18,kind:'page_flip',gain:.32}
+  {t:cut,kind:'page_flip',gain:.28}
 ] : [
-  { t: D * .22, kind:'wipe_sweep', gain:.64 },
-  ...(mode === 'quad_race'
-    ? [{t:D*.52,kind:'ping',gain:.34}]
-    : (mode === 'diagonal_wipe' ? [.56] : [.42,.72]).map(f => ({t:D*f,kind:'page_flip',gain:.34})))
+  { t: D * (mode === 'diagonal_wipe' ? .36 : .42), kind: mode === 'quad_race' ? 'ping' : 'page_flip', gain:.28 }
 ];
 window.__ready = Promise.all([document.fonts.ready, loadMediaSlot(CFG.before), loadMediaSlot(CFG.after)])
   .then(([, a, b]) => { beforeSlot = a; afterSlot = b; window.__seek(0); });

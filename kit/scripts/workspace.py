@@ -236,6 +236,16 @@ def load_environment(environ=None, *, kaggle_voice=False):
                     parts = shlex.split(raw, comments=True)
                     if len(parts) == 1:
                         environ.setdefault(key.strip(), parts[0])
+    cur_chrome = environ.get("YICE_CHROME_EXECUTABLE")
+    if not cur_chrome or not Path(cur_chrome).is_file():
+        chrome_globs = [
+            *(home / "Library/Caches/ms-playwright").glob("chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell"),
+            *(home / ".cache/ms-playwright").glob("chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell"),
+            *(home / ".cache/hyperframes/chrome/chrome-headless-shell").glob("*/chrome-headless-shell-*/chrome-headless-shell"),
+        ]
+        found_chrome = sorted((p for p in chrome_globs if p.is_file()), reverse=True)
+        if found_chrome:
+            environ["YICE_CHROME_EXECUTABLE"] = str(found_chrome[0])
     return workspace, toolkit
 
 

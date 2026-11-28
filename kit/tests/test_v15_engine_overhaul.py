@@ -37,7 +37,7 @@ def test_cards_preserve_wide_pages_and_exit_on_every_look(tmp_path, look):
     assert source.count('class="sim-panel is-media" data-media-aspect="widescreen"') == 2
     assert 'if (!data.board && cards.length > 1)' in source
     assert '"exit_zoom_at": 4.52' in source
-    assert ('click',4.52,.42) in script('assemble-episode')._spatial_sound_marks(dict(recipe='progressive_sim_cards',data=data),5)
+    assert ('click_soft',4.52,.26) in script('assemble-episode')._spatial_sound_marks(dict(recipe='progressive_sim_cards',data=data),5)
     data['cards'][0]['zoom'] = 1.2
     assert 'data-allow-crop="true"' in scene(tmp_path, 'progressive_sim_cards', dict(data, board=True))
     with pytest.raises(ValueError, match='exit_zoom_index'):
@@ -51,7 +51,7 @@ def test_workbench_and_iteration_sound(tmp_path):
     assert 'data-stage-look="swiss_paper"' in source and '默认直出' in source and '加词精修后' in source
     assert composition_motion(source)[1] == 'M3'
     marks = script('assemble-episode')._spatial_sound_marks(dict(recipe='prompt_iter_workbench',data=data),5)
-    assert [(k,t) for k,t,_ in marks] == [('click_soft',.3),('page_flip',2.3),('click',4.54),('zoom_swoosh',4.54)]
+    assert [(k,t) for k,t,_ in marks] == [('page_flip',2.3),('click_soft',4.54),('zoom_swoosh',4.54)]
 
 
 def test_aspect_crop_gate_retains_shot_and_source():
@@ -240,4 +240,90 @@ def test_v15_sfx_uniqueness_recipe_monotony_and_boundary_guards(tmp_path):
     ]
     tl_res = timeline_gates(dict(cues=cues, shots=cb_shots), tmp_path, 10., real_range=(0., 1.))
     assert not tl_res['invalid_callbacks']
+
+
+def test_v15_3_box_containment_and_portrait_aspect_gates(tmp_path):
+    import os
+    from PIL import Image
+    from kit.spatial.block import build
+    from audit_v7 import portrait_aspect_integrity_gate
+    import workspace
+
+    gsap = workspace.resolve_gsap_runtime(root=tmp_path)
+    assert gsap is not None
+
+    # 1. step_tree_focus with 7-char CJK child tags + swiss_paper roadmap_thread_camera must have 0 text_box_containment violations
+    tree_entry = build(dict(
+        id='tree', recipe='step_tree_focus', stage_look='swiss_paper', duration=4.,
+        data=dict(
+            heading='再说一句',
+            branches=[
+                dict(no='1', title='公众号封面', at=0.2, children=[dict(label='横版 21:9', at=0.6), dict(label='方形 1:1', at=0.9)]),
+                dict(no='2', title='帮我检查一遍', at=1.4, children=[dict(label='字有没有溢出边框', at=1.8), dict(label='手机字号够不够大', at=2.1)]),
+            ],
+        )
+    ), tmp_path, tmp_path / 'tree', gsap)
+
+    road_entry = build(dict(
+        id='road', recipe='roadmap_thread_camera', stage_look='swiss_paper', duration=4.,
+        data=dict(
+            focus_step=1,
+            steps=[
+                dict(no='01', title='第二件事', sub='导出成能直接发的格式', at=0.2),
+                dict(no='02', title='PPT 网页', sub='双击就能全屏开讲', at=1.0),
+                dict(no='03', title='社交套图', sub='一键批量导出高清图', at=1.8),
+            ],
+        )
+    ), tmp_path, tmp_path / 'road', gsap)
+
+    # 2. prompt_iter_workbench 3-card 3:4 portrait deck
+    for i, col in enumerate(((245, 240, 230), (0, 47, 167))):
+        for k in range(1, 4):
+            Image.new('RGB', (1080, 1440), col).save(tmp_path / f'p{i}_{k}.png')
+    deck_entry = build(dict(
+        id='deck', recipe='prompt_iter_workbench', stage_look='swiss_paper', duration=5.,
+        data=dict(
+            heading='小红书 3:4 套图前后对比',
+            prompt_chips=[dict(role='内容', text='做成小红书 3:4 套图', at=0.2), dict(role='加一句', text='改成瑞士风', at=1.2)],
+            before_sources=['p0_1.png', 'p0_2.png', 'p0_3.png'],
+            after_sources=['p1_1.png', 'p1_2.png', 'p1_3.png'],
+            iter_at=2.0,
+        )
+    ), tmp_path, tmp_path / 'deck', gsap)
+
+    sampler = Path(__file__).parents[1] / 'scripts/sample-spatial-frames.cjs'
+    payload = json.dumps({
+        'tree': dict(entry=str(tree_entry), seconds=4.),
+        'road': dict(entry=str(road_entry), seconds=4.),
+        'deck': dict(entry=str(deck_entry), seconds=5.),
+    })
+    workspace.load_environment()
+    env = dict(os.environ)
+    sampled = json.loads(subprocess.check_output(['node', str(sampler)], input=payload, text=True, env=env))
+    for k in ('tree', 'road', 'deck'):
+        assert 'frames' in sampled[k], sampled[k]
+        for frame in sampled[k]['frames']:
+            assert frame.get('textBoxViolations') == [], (k, frame['phase'], frame.get('textBoxViolations'))
+            assert frame.get('aspectCrops') == [], (k, frame['phase'], frame.get('aspectCrops'))
+
+    # 3. portrait_aspect_integrity_gate catches 16:9 webcam truncation on 3:4 claims and passes real 3:4 cards
+    wc = tmp_path / 'assets/webcam/card-bad'
+    wc.mkdir(parents=True)
+    Image.new('RGB', (1920, 1080), (240, 240, 240)).save(wc / 'still.png')
+    (wc / 'cursor-track.json').write_text('{}', encoding='utf-8')
+    mf = dict(shots=[
+        dict(id='bad-xhs', spoken_topic='把笔记做成小红书 3:4 套图', media=['assets/webcam/card-bad/still.png']),
+        dict(id='good-xhs', spoken_topic='把笔记做成小红书 3:4 套图',
+             spatial_spec=dict(recipe='prompt_iter_workbench', data=dict(
+                 before_sources=['p0_1.png', 'p0_2.png'], after_sources=['p1_1.png', 'p1_2.png']))),
+    ])
+    (tmp_path / 'episode-manifest.json').write_text(json.dumps(mf), encoding='utf-8')
+    tl = dict(shots=[dict(id='bad-xhs', spoken_topic='把笔记做成小红书 3:4 套图'),
+                     dict(id='good-xhs', spoken_topic='把笔记做成小红书 3:4 套图')])
+    pg = portrait_aspect_integrity_gate(tl, tmp_path)
+    assert not pg['ok']
+    assert [v['shot'] for v in pg['violations']] == ['bad-xhs']
+    tl_good = dict(shots=[dict(id='good-xhs', spoken_topic='把笔记做成小红书 3:4 套图')])
+    assert portrait_aspect_integrity_gate(tl_good, tmp_path)['ok']
+
 

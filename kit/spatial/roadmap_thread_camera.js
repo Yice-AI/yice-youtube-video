@@ -12,7 +12,7 @@ tl.to(ink,{fraction:1,duration:Math.max(last+.25,dur*.59),ease:'power1.inOut',on
 nodes.forEach((node,i)=>tl.fromTo(node,{scale:.75,y:38,z:-45,opacity:.3,'--dof':'3px'},
   {scale:1,y:0,z:12,opacity:1,'--dof':'0px',duration:Math.min(.75,dur*.19),ease:'back.out(1.65)'},data.steps[i].at));
 const begin=Math.min(dur*.8,Math.max(dur*.6,last+.15));
-const x=focus.offsetLeft+144,y=focus.offsetTop+87;
+const x=focus.offsetLeft+focus.offsetWidth/2,y=focus.offsetTop+focus.offsetHeight/2;
 tl.fromTo(cam,{z:-115,rx:5,ry:-4},{z:0,rx:0,ry:0,duration:begin,ease:'power2.inOut',onUpdate:applyCamera},0);
 tl.to(cam,{x:960-x,y:540-y,z:580,rx:1,ry:-2,duration:dur-begin,ease:'power4.out',onUpdate:applyCamera},begin);
 tl.fromTo(q('.streak'),{x:-380,opacity:0},{x:500,opacity:.7,yoyo:true,repeat:1,duration:(dur-begin)*.22},begin);

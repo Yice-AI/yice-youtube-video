@@ -23,6 +23,8 @@ def composition_motion(source, declared=None):
     native_action = re.search(r'OM\.(?:shake|spring|gather|morphRect|zoomThrough)\(|SKETCH\.', scripts)
     if declared == 'M3' and '__seek' in scripts and (native_action or camera):
         return spatial, 'M3'
+    if declared == 'M1' and '__seek' in scripts and 'data-onetake-recipe="split_wipe_compare"' in source:
+        return True, 'M1'
     if tween and process:
         return spatial, 'M3'
     if spatial or (tween and recipe and recipe[1] in ('perspective_video_fan', 'logo_bento_stage', 'cutout_parallax_stage', 'documentary_ken_burns')):
@@ -284,7 +286,7 @@ def capture_stage_backgrounds(shots, project, rendered, gate):
 
 
 def spatial_frame_gates(shots, duration, measured, required):
-    overflow, crops = [], []
+    overflow, crops, box_text = [], [], []
     engines = {'hyperframes_block':dict(count=0,seconds=0.),'onetake_clip':dict(count=0,seconds=0.)}
     collisions, contrast, palette, ratios, plates = [], [], {}, {}, {}
     headers, dark, accents, tone_families = [], [], {}, {}
@@ -298,6 +300,7 @@ def spatial_frame_gates(shots, duration, measured, required):
         if not result.get('frames'):
             failure = dict(shot=key,reason='missing_frame_evidence',detail=result.get('error'))
             crops.append(failure)
+            box_text.append(failure)
             collisions.append(failure)
             contrast.append(failure)
             dark.append(failure)
@@ -306,6 +309,7 @@ def spatial_frame_gates(shots, duration, measured, required):
         shot_look = _shot_stage_look(shot)
         for frame in result['frames']:
             crops.extend(dict(shot=key, phase=frame['phase'], **item) for item in frame.get('aspectCrops', []))
+            box_text.extend(dict(shot=key, phase=frame['phase'], **item) for item in frame.get('textBoxViolations', []))
             for left,right in frame.get('stations',[]):
                 if left<130 or right>1790:
                     overflow.append(dict(shot=key,phase=frame['phase'],left=left,right=right))
@@ -376,6 +380,7 @@ def spatial_frame_gates(shots, duration, measured, required):
     if required and len(set(dominant.values()))<2:
         dark.append(dict(reason='insufficient_accent_hues',dominant=dominant))
     return dict(aspect_crop_integrity_gate=dict(ok=not crops, violations=crops),
+                text_box_containment_gate=dict(ok=not box_text, violations=box_text),
                 roadmap_overview_safe_gate=dict(ok=not overflow,violations=overflow),
                 title_card_collision=dict(ok=not collisions,violations=collisions),
                 no_ppt_slide_header_gate=dict(ok=not headers,violations=headers),

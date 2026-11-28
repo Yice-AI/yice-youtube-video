@@ -62,9 +62,20 @@ window.__seek = t => {
   const nodes = CFG.nodes || [];
   const hasMonster = Boolean(CFG.monster);
   const hasGauge = Boolean(CFG.gauge);
-  const startX = hasMonster ? 210 : (1920 - (nodes.length * 360 + (nodes.length - 1) * 70)) / 2;
-  const boxW = hasMonster ? 320 : 360;
-  const gap = 64;
+  ctx.save();
+  let neededW = hasMonster ? 320 : 360;
+  nodes.forEach(node => {
+    ctx.font = '700 30px "Source Han Sans CN", sans-serif';
+    const tw = ctx.measureText(node.title || '').width + 56;
+    ctx.font = '500 21px "Source Han Sans CN", sans-serif';
+    const sw = ctx.measureText(node.sub || '').width + 52;
+    neededW = Math.max(neededW, tw, sw);
+  });
+  ctx.restore();
+  const maxAvail = hasMonster ? 350 : (nodes.length >= 4 ? 360 : (nodes.length === 3 ? 440 : 520));
+  const boxW = Math.min(maxAvail, Math.ceil(neededW));
+  const gap = nodes.length >= 4 ? 42 : 60;
+  const startX = hasMonster ? 190 : Math.max(110, (1920 - (nodes.length * boxW + (nodes.length - 1) * gap) - (hasGauge ? 120 : 0)) / 2);
   const strokeCol = styleKind === 'riso_halftone' ? '#fff7e8' : '#231d17';
   const boxFill = styleKind === 'riso_halftone' ? '#121c56' : '#fffdf6';
 
@@ -83,13 +94,20 @@ window.__seek = t => {
     SKETCH.icon(ctx, node.icon || 'bulb', bx + boxW / 2, by + 68, 30, {
       t, color: strokeCol, fill: node.color || (styleKind === 'riso_halftone' ? '#ff48b0' : '#f4b942'), seed: 60 + i * 7
     });
+    const innerMax = boxW - 44;
     ctx.font = '700 30px "Source Han Sans CN", sans-serif';
+    const tRaw = node.title || '';
+    const tWidth = ctx.measureText(tRaw).width;
+    if (tWidth > innerMax) ctx.font = `700 ${Math.max(20, Math.floor(30 * innerMax / tWidth))}px "Source Han Sans CN", sans-serif`;
     ctx.fillStyle = strokeCol;
     ctx.textAlign = 'center';
-    ctx.fillText(node.title || '', bx + boxW / 2, by + 148);
+    ctx.fillText(tRaw, bx + boxW / 2, by + 148, innerMax);
     ctx.font = '500 21px "Source Han Sans CN", sans-serif';
+    const sRaw = node.sub || '';
+    const sWidth = ctx.measureText(sRaw).width;
+    if (sWidth > innerMax) ctx.font = `500 ${Math.max(16, Math.floor(21 * innerMax / sWidth))}px "Source Han Sans CN", sans-serif`;
     ctx.fillStyle = styleKind === 'riso_halftone' ? '#b8c8ff' : '#655849';
-    ctx.fillText(node.sub || '', bx + boxW / 2, by + 194);
+    ctx.fillText(sRaw, bx + boxW / 2, by + 194, innerMax);
     ctx.restore();
 
     if (i > 0) {
@@ -117,6 +135,6 @@ window.__seek = t => {
 };
 
 window.__motion = (a, b) => OM.screenTravel(camera(a), camera(b), camera((a + b) / 2)) + Math.abs(b - a) * 240;
-window.__events = () => [{ t: D * 0.2, kind: 'pop', gain: .32 }, { t: D * 0.5, kind: 'tick', gain: .30 }, { t: D * 0.8, kind: 'pop', gain: .32 }];
+window.__events = () => [{ t: D * 0.22, kind: 'pop', gain: .24 }];
 window.__ready = document.fonts.ready.then(() => window.__seek(0));
 </script>

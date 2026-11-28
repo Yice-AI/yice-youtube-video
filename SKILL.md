@@ -41,7 +41,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 ## 多卡与跨镜衔接（v15.0）
 
 - `progressive_sim_cards` 不写 `board`：所有 `stage_look` 下都是首卡居中弹簧跃出、后续卡片按词级 `at` 依次推开落位。`board` 开关（三框自开场全在位）只留给确需静态对照的个别镜头，不作默认。
-- 传入 `16:9` 横屏媒体且 `zoom == 1` 时面板按 `16:9` 原画幅零裁边展示，严禁把横屏 PPT 或网页塞进窄竖框 `object-fit: cover` 裁切。要看局部用 `zoom` 与百分比 `focus_x/focus_y`。
+- 传入 `16:9` 横屏媒体且 `zoom == 1` 时面板按 `16:9` 原画幅零裁边展示，严禁把横屏 PPT 或网页塞进窄竖框 `object-fit: cover` 裁切。**竖版作品（小红书 `3:4`、手机 `9:16`）严禁用 `16:9` 横屏浏览器窗口截半截录屏**：必须用 `kit/scripts/export-html-cards.sh --project . --url file:///.../cards.html --selector ".poster.xhs" --prefix xhs-v1` 直接导出原比例完整竖图（或 `record-web-cam.sh --aspect 3:4`），放入 `prompt_iter_workbench`（单张 `before_source`/`after_source` 自动立为 `3:4` 竖框，或多张 `before_sources`/`after_sources` 整套竖排平铺）、`progressive_sim_cards`、`split_wipe_compare` 或 `fullbleed_rig`（`framing: "portrait_card"`）。要看局部特写才显式填 `zoom > 1.05` 与百分比 `focus_x/focus_y`。
 - 多卡总览下一镜接某张卡的全屏实操或成品时，填 `"exit_zoom_index": 1`（目标卡下标）与可选 `"exit_zoom_at"`（默认镜末前 `0.48s`），镜头点中目标卡并推近撑满 `1920×1080` 接下一镜，禁止生硬直切。`perspective_video_fan` 用 `"exit_zoom": true` + `"exit_zoom_at"` 推近 `focus_index` 焦点卡。
 - 看板的 `cards[].pages: [{source,at}]` 在同一帧切换画面并配翻页声。大字用 `words[].line` 或 `editorial_punch.lines` 分两行。
 
@@ -92,8 +92,8 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 
 ## 声音与审计
 
-- 内置 5 首公有领域节奏型 BGM（`builtin:forward-drive`、`city-groove`、`focus-minimal`、`bright-step`、`calm-tech`）与 27 款真实动作音效（`kit/assets/sfx/`），点中推近自动配点击加推拉声，支持 `music_drops` 留白。`EpisodeAudioMixer` 校准 −14.5 ± 0.8 LUFS、真峰值 ≤ −1.0 dBTP。
-- `audit-v3.sh --v10` 新增 `aspect_crop_integrity_gate`（无 `zoom > 1.05` 声明却被裁掉超过 12% 判 `excessive_aspect_crop`）、视频帧级 `cross_stage_asset_dedup_gate`（同一视觉模板跨镜 > 2 次拦截，可登记一次 `callback_of`）、`external_showcase_diversity_gate`（90 秒以上教程独立画面簇 ≥ max(6, ⌈时长/30⌉) 且含多源外采）与 `recipe_monotony_and_workbench_gate`（单类结构框图配方 `logo_bento_stage`/`step_tree_focus` 等全片上限 `max(3, 6%镜数)`，严禁无真实 `logo` 图标时反复套用星号白框超过 1 次，且 120 秒以上实操教程至少须有 2 个镜头真实使用 `prompt_iter_workbench`）。完整门禁见[审片门禁](references/review-gates.md)。
+- 内置 5 首公有领域节奏型 BGM（`builtin:forward-drive`、`city-groove`、`focus-minimal`、`bright-step`、`calm-tech`）与 27 款真实动作音效（`kit/assets/sfx/`）。**音效奉行克制点缀（每分钟约 8–22 次，严禁无动作乱塞）**：只在章节换场、卡片弹入、点中推近、前后擦切等真实可见动作点轻配音效，正常口播与展示留足安静呼吸感（允许最长 18 秒安静讲述）。`EpisodeAudioMixer` 校准 −14.5 ± 0.8 LUFS、真峰值 ≤ −1.0 dBTP。
+- `audit-v3.sh --v10` 包含 `aspect_crop_integrity_gate`（无 `zoom > 1.05` 声明却被裁掉超过 12% 判 `excessive_aspect_crop`）、`portrait_aspect_integrity_gate`（口播承诺展示 `3:4` / 小红书套图等竖版成品却塞入横屏截半录屏直接拦截）、`text_box_containment_gate`（组件方框文字戳破右边界或字色对比度 `< 3.0` 直接拦截）、视频帧级 `cross_stage_asset_dedup_gate`（同一视觉模板跨镜 > 2 次拦截，可登记一次 `callback_of`）、`external_showcase_diversity_gate`（90 秒以上教程独立画面簇 ≥ max(6, ⌈时长/30⌉) 且含多源外采）、`sfx_diversity_and_sync_gate`（拦截每分钟超 22.8 次的音效轰炸与 1.8s 连响 ≥ 4 次的杂乱堆叠）与 `recipe_monotony_and_workbench_gate`（单类结构框图全片上限 `max(3, 6%镜数)`、`roadmap_thread_camera` 上限 2 次，无真实 `logo` 时星号白框最多 1 次，且 120 秒以上实操教程至少 2 镜使用 `prompt_iter_workbench`）。完整门禁见[审片门禁](references/review-gates.md)。
 - 精修参考音用 `./install.sh --configure-voice 参考音.wav 原文.txt` 保存，换机私下复制 `~/.config/yice-youtube-video/`。公开画面严禁出现私人路径、用户名、邮箱或凭据。
 
 主脑交片前关字幕、有声连看全章：反例与真实操作看得懂、口播数量与同屏成品一致、没有连续三秒的死镜、前六十秒不出现终端、字幕带不压核心文字、每种声音都对应可见动作。相关参考：[配音](references/voice.md)、[导演层](references/director-layer.md)、[素材采集](references/media-acquisition.md)。

@@ -268,7 +268,7 @@ def test_v13_widescreen_fan_adaptive_stamp_and_bundled_audio(tmp_path):
     assert 'data-item-count="3"' in bento_html and '"slide.png"' not in bento_html
 
     marks = assemble_mod._spatial_sound_marks({'recipe': 'logo_bento_stage', 'data': {'modules': [{'at': 0.2, 'items': [{'at': 0.5}, {'at': 0.9}]}]}}, 5.0)
-    assert len(marks) >= 3
+    assert 1 <= len(marks) <= 2
 
     # 4. Builtin groove BGM & bundled studio SFX mix cleanly
     bgm_file = resolve_bgm_path('builtin:city-groove')
@@ -424,7 +424,7 @@ def test_v14_gate_rejects_unsynced_duplicate_and_mismatched_sounds():
     for i in range(3):
         marks[i].update(source_file=f'alias{i}',source_sha256='samebytes')
     reasons={r['reason'] for r in sfx_diversity_and_sync_gate(t,35)['violations']}
-    assert {'identical_three_in_a_row','single_file_above_28_percent'} <= reasons
+    assert {'identical_three_in_a_row','single_file_above_34_percent'} <= reasons
     marks[1]['playback_rate']=1.06
     assert 'identical_three_in_a_row' not in {r['reason'] for r in sfx_diversity_and_sync_gate(t,35)['violations']}
     assert not sfx_diversity_and_sync_gate(dict(shots=[shot],sound_marks=marks[:2]),35)['ok']
@@ -439,7 +439,7 @@ def test_automatic_foley_follows_visible_page_and_layer_changes():
     card=dict(source='primary.mp4',at=.1,pages=[dict(source='second.mp4',at=1.23)])
     marks=engine._spatial_sound_marks(dict(recipe='progressive_sim_cards',stage_look='swiss_paper',
                                            data=dict(cards=[card])),4)
-    assert ('page_flip',1.23,.34) in marks
+    assert ('page_flip',1.23,.30) in marks
     names=[s[0] for s in engine._spatial_sound_marks(dict(recipe='layer_explode_3d',data=dict(count_at=.8)),4)]
     assert names==['zoom_swoosh','counter_roll','ping']
 
@@ -447,26 +447,33 @@ def test_automatic_foley_follows_visible_page_and_layer_changes():
 def test_foley_density_silence_and_gain_tiers():
     from audit_v7 import sfx_diversity_and_sync_gate
     sounds = ['page_flip','ui_lock_bonk','paper_slap','zoom_swoosh','click','typing']
-    beats = list(range(30))
-    shot = dict(id='s',start=0,end=30,beats=beats)
-    marks = [dict(kind=sounds[i%6],at=i,gain=.63 if i%6==3 else .34) for i in beats]
-    def check(rows):
-        return sfx_diversity_and_sync_gate(dict(shots=[shot],sound_marks=rows),30)
+    # Restrained human-grade pacing: 12 accents across 60s (0.20/s = 12/min, 5s natural breathing gaps)
+    beats = [i * 5.0 for i in range(12)]
+    shot = dict(id='s',start=0,end=60,beats=beats)
+    marks = [dict(kind=sounds[i%6],at=t,gain=.38 if i%6==3 else .24) for i,t in enumerate(beats)]
+    def check(rows, dur=60):
+        return sfx_diversity_and_sync_gate(dict(shots=[shot],sound_marks=rows),dur)
     assert check(marks)['ok']
-    for subset in (marks[4:], marks[:-4], marks[:5]+marks[9:]):
-        assert 'long_sfx_gap' in {v['reason'] for v in check(subset)['violations']}
-    edge = [dict(m,at=m['at']+.011) if i==4 else m for i,m in enumerate(marks) if i not in (1,2,3)]
-    edge[0]=dict(edge[0],at=.40)
-    assert check(edge)['max_sfx_gap']==pytest.approx(3.611)
-    assert 'long_sfx_gap' in {v['reason'] for v in check(edge)['violations']}
-    doubled = [dict(m) for m in marks[:15] for _ in range(2)]
-    gate=check(doubled)
-    assert gate['audible_action_points']==15
-    assert 'sfx_density_below_minimum' in {v['reason'] for v in gate['violations']}
-    gate=check([dict(marks[0],gain=.10),*marks[1:]])
-    assert gate['audible_action_points']==29
+    # Overcrowded spam (> 0.38/s = > 22.8/min) must be blocked
+    spam_beats = list(range(30))
+    spam_shot = dict(id='s',start=0,end=30,beats=spam_beats)
+    spam_marks = [dict(kind=sounds[i%6],at=i,gain=.38 if i%6==3 else .24) for i in spam_beats]
+    spam_res = sfx_diversity_and_sync_gate(dict(shots=[spam_shot],sound_marks=spam_marks),30)
+    assert 'sfx_overcrowded_spam' in {v['reason'] for v in spam_res['violations']}
+    # Burst clutter (4 sounds packed inside <= 1.8s) must be blocked
+    burst_shot = dict(id='s',start=0,end=40,beats=[1.0,1.4,1.8,2.2,12.0,22.0,32.0])
+    burst_marks = [dict(kind=sounds[i%6],at=t,gain=.36 if i%6==3 else .24) for i,t in enumerate(burst_shot['beats'])]
+    assert 'sfx_burst_clutter' in {v['reason'] for v in sfx_diversity_and_sync_gate(dict(shots=[burst_shot],sound_marks=burst_marks),40)['violations']}
+    # Gap > 18s fails long_sfx_gap
+    sparse = [m for m in marks if m['at'] not in (15.0, 20.0, 25.0, 30.0)]
+    assert 'long_sfx_gap' in {v['reason'] for v in check(sparse)['violations']}
+    # Sparse below 0.12/s fails minimum density
+    too_few = [marks[0], marks[4], marks[8]]
+    assert 'sfx_density_below_minimum' in {v['reason'] for v in check(too_few)['violations']}
+    gate=check([dict(marks[0],gain=.08),*marks[1:]])
+    assert gate['audible_action_points']==11
     assert 'inaudible_sfx_padding' in {v['reason'] for v in gate['violations']}
-    gate=check([dict(marks[0],gain=.7),*marks[1:3],dict(marks[3],gain=.4),*marks[4:]])
+    gate=check([dict(marks[0],gain=.72),*marks[1:3],dict(marks[3],gain=.15),*marks[4:]])
     assert sum(v['reason']=='sfx_gain_tier' for v in gate['violations'])==2
 
 

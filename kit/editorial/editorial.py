@@ -505,7 +505,7 @@ class EditorialStage:
                 f"repeat:1,yoyo:true,ease:'sine.inOut'}},{start:.5f});",
                 f"tl.set('{both}',{{filter:'none'}},{start+duration:.5f});",
             ))
-        self.add_sound_mark('whoosh',start,gain=.60)
+        self.add_sound_mark('whoosh',start,gain=.36)
 
     def render_visual_layers(self):
         groups = self.visual_layers()
@@ -613,10 +613,11 @@ class EditorialStage:
                 body = f'<path fill="#101b1b42" fill-rule="evenodd" d="M0 0H{outer_w}V{outer_h}H0Z {shape}"/>'
                 body += rect(x,y,w,h,'none',f'rx="10" stroke="{CORAL}" stroke-width="3"')
                 label_y = y+h+8 if y<125 else y-49
-                label_width = min(700,85+len(label)*28,outer_w-64-x)
-                fit = f'textLength="{label_width-24}" lengthAdjust="spacingAndGlyphs"' if len(label)*28>label_width-24 else ''
-                body += ('<g class="rise" data-layout-allow-overlap>'+rect(x,label_y,label_width,44,INK,'rx="8"')
-                         +txt(x+12,label_y+31,label,28,attrs=fit)+'</g>')
+                est_w = round(_text_units(label) * 31) + 46
+                label_width = min(820, max(150, est_w), outer_w-64-x)
+                fit = f'textLength="{label_width-28}" lengthAdjust="spacingAndGlyphs"' if _text_units(label)*29.5>label_width-28 else ''
+                body += ('<g class="rise" data-layout-allow-overlap>'+rect(x,label_y,label_width,46,INK,'rx="8"')
+                         +txt(x+14,label_y+32,label,28,attrs=fit)+'</g>')
                 audio = 'pop'
             elif style == 'corner_tag':
                 sublabel = str(overlay.get('sublabel',''))
@@ -624,7 +625,9 @@ class EditorialStage:
                     raise ValueError('角落铭牌需要文字')
                 logo = overlay.get('logo')
                 inset = 44 if logo else 0
-                width = min(760,max(190,57+inset+max(len(label)*28,len(sublabel)*22)))
+                est_main = round(_text_units(label) * 31)
+                est_sub = round(_text_units(sublabel) * 24) if sublabel else 0
+                width = min(820, max(196, 68 + inset + max(est_main, est_sub)))
                 pos = overlay.get('position', 'auto')
                 shot_files = ' '.join(str(f) for f in shot.get('files', []))
                 use_right = pos == 'top_right' or (pos == 'auto' and (not studio or any(tok in shot_files.lower() for tok in ('cli-', 'terminal', 'ttyd'))))
@@ -635,8 +638,8 @@ class EditorialStage:
                 else:
                     x,y = (136,34) if studio else (80,82)
                 height = (68 if studio else 80) if sublabel else 56
-                text_width = width-48-inset
-                main_fit = f'textLength="{text_width}" lengthAdjust="spacingAndGlyphs"' if len(label)*28>text_width else ''
+                text_width = width-52-inset
+                main_fit = f'textLength="{text_width}" lengthAdjust="spacingAndGlyphs"' if _text_units(label)*29.5>text_width else ''
                 body = rect(x,y,width,height,'#172322eb','rx="10"') + rect(x,y,5,height,CORAL)
                 if logo:
                     body += svg_image(x+22,y+(height-32)//2,32,32,logo)
@@ -1041,8 +1044,8 @@ class EditorialStage:
         """
         if motion not in {"push", "glide", "pull", "hold", "punch"} | BREATHING_MOTIONS:
             raise ValueError("未知运镜方式")
-        if framing not in {'fullbleed','studio_window','perspective_3d'} or not isinstance(window_title,str):
-            raise ValueError('framing 须为 fullbleed、studio_window 或 perspective_3d，window_title 须为文本')
+        if framing not in {'fullbleed','studio_window','perspective_3d','portrait_card'} or not isinstance(window_title,str):
+            raise ValueError('framing 须为 fullbleed、studio_window、perspective_3d 或 portrait_card，window_title 须为文本')
         if motion == "push" and len(self._camera_move_history) >= 2 and self._camera_move_history[-2:] == ["push", "push"]:
             raise ValueError("禁止连续三镜使用 push，请改用 glide、pull、hold 或 punch")
         self._camera_move_history.append(motion)
@@ -1050,21 +1053,39 @@ class EditorialStage:
         vid = f"vp{idx}"
         tone_cls = f" tone-{tone}" if tone != "natural" else ""
         studio = framing in {'studio_window','perspective_3d'}
+        portrait_card = framing == 'portrait_card'
         perspective = framing=='perspective_3d'
-        x,y,w,h = STUDIO_VIEW if studio else (0,0,1920,1080)
-        cls = 'studio-window-media' if studio else 'fullbleed'
+        x,y,w,h = STUDIO_VIEW if studio else ((682, 102, 556, 742) if portrait_card else (0,0,1920,1080))
+        cls = 'studio-window-media' if studio else ('portrait-card-media' if portrait_card else 'fullbleed')
         if studio:
             self.studio_window_chrome(start,end,window_title,perspective=perspective,refractive=refractive)
             if focus:
                 focus = studio_source_point(*focus)
-        media = (
-            f'<div id="{vid}" class="viewport {cls}{tone_cls}" '
-            + (f'style="left:{x}px;top:{y}px;width:{w}px;height:{h}px">' if studio else
-               'style="left:0;top:0;width:1920px;height:1080px">')
-            +
+        elif portrait_card:
+            timing = f'data-start="{start:.5f}" data-duration="{end-start:.5f}"'
+            self.bg_layers.append(f'<div class="clip bg-fill" {timing} data-track-index="1" data-studio-backdrop '
+                                  f'style="inset:0;background:radial-gradient(ellipse at 50% 42%,#f7f4ec 0%,#ece6d8 64%,#e2dac8 100%)"></div>')
+            self.light_zones.append((start, end))
+            if window_title:
+                self.plates.append(f'<div class="clip plate" {timing} data-track-index="8" data-layout-allow-occlusion>'
+                                   f'<svg viewBox="0 0 1920 1080">{txt(960, 74, window_title, 34, "#181613", anchor="middle", weight=800)}</svg></div>')
+        is_img = Path(src).suffix.lower() in IMAGE_EXTENSIONS
+        fit_mode = 'contain' if portrait_card else 'cover'
+        extra_box = 'border-radius:14px;box-shadow:0 24px 60px rgba(18,16,12,.22);overflow:hidden;' if portrait_card else ''
+        inner_tag = (
+            f'<img id="film{idx}" class="clip vp-inner" src="{html.escape(src)}" alt="" '
+            f'data-start="{start:.5f}" data-duration="{end - start:.5f}" '
+            f'data-track-index="2" style="width:100%;height:100%;object-fit:{fit_mode};transform-origin:50% 50%"/>'
+            if is_img else
             f'<video id="film{idx}" class="clip vp-inner" src="{html.escape(src)}" muted playsinline preload="auto" '
             f'data-start="{start:.5f}" data-duration="{end - start:.5f}" data-media-start="{media_start:.3f}" '
-            f'data-track-index="2" style="object-fit:cover;transform-origin:50% 50%"></video></div>'
+            f'data-track-index="2" style="object-fit:{fit_mode};transform-origin:50% 50%"></video>'
+        )
+        media = (
+            f'<div id="{vid}" class="viewport {cls}{tone_cls}" '
+            + (f'style="{extra_box}left:{x}px;top:{y}px;width:{w}px;height:{h}px">' if (studio or portrait_card) else
+               'style="left:0;top:0;width:1920px;height:1080px">')
+            + inner_tag + '</div>'
         )
         self.media_layers.append(self.perspective_plane(media,start,2) if perspective else media)
         moves = sorted(camera_moves or [], key=lambda row: row[0])

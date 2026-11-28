@@ -578,104 +578,84 @@ def _spatial_sound_marks(sp_spec, span):
     recipe = sp_spec.get('recipe', '')
     data = sp_spec.get('data') or {}
     cues = []
-    def add(kind, rel_t, gain=0.32):
+    def add(kind, rel_t, gain=0.24):
         t = float(rel_t)
         if 0.0 <= t < span - 0.04:
-            key_gains = {'marker_stroke': .74, 'card_thock': .40 if recipe in {'logo_bento_stage','step_tree_focus'} else .70, 'shutter_whip': .68, 'counter_roll': .38, 'whoosh': .60}
+            key_gains = {'marker_stroke': .42, 'card_thock': .28 if recipe in {'logo_bento_stage','step_tree_focus'} else .36, 'shutter_whip': .44, 'counter_roll': .26, 'whoosh': .34}
             cues.append((round(t, 4), kind, key_gains.get(kind, gain)))
 
     swiss = (sp_spec.get('stage_look') or data.get('stage_look')) == 'swiss_paper'
     land = 'card_thock' if swiss else 'pop'
     if recipe == 'kinetic_title_bridge':
-        for word in data.get('words', []):
-            add('pop',word['at']+.12,.30)
+        if data.get('words'):
+            add('pop', data['words'][0]['at'] + .12, .24)
         add('marker_stroke', data['underline_at'])
     elif recipe == 'triptych_curtain':
         add('shutter_whip', 0.02)
-        for i,word in enumerate(data.get('words',[])):
-            if word.get('sound',True) and (i==0 or word.get('line')!=data['words'][i-1].get('line')):
-                cues.append((round(word['at']+.12,4), 'impact_bass_2' if i==0 else 'card_thock', .38))
         if 'underline_at' in data:
-            add('marker_stroke',data['underline_at'])
+            add('marker_stroke', data['underline_at'])
     elif recipe == 'perspective_video_fan':
-        add('whoosh', 0.04, 0.30)
         focus_at = float(data.get('focus_at', span * 0.42))
-        add('click', focus_at, 0.34)
-        add('chime', focus_at + 0.08, 0.24)
+        add('click_soft', focus_at, 0.24)
         if isinstance(data.get('punch_at'), (int, float)):
-            add('impact', data['punch_at'], 0.40)
+            add('impact', data['punch_at'], 0.36)
     elif recipe == 'logo_bento_stage':
-        for idx, mod in enumerate(data.get('modules') or []):
-            mat = float(mod.get('at', 0.12 + idx * 0.28))
-            add(land, mat, 0.32)
-            for j, it in enumerate(mod.get('items') or []):
-                if isinstance(it, dict) and isinstance(it.get('at'), (int, float)):
-                    add('click_soft' if swiss else 'click', it['at'], 0.34)
-        for focus in data.get('focus_sequence',[]):
-            add('click_soft',focus['at'],.32)
+        mods = data.get('modules') or []
+        if mods:
+            add(land, float(mods[0].get('at', 0.12)), 0.26)
+        if len(mods) >= 2:
+            add('click_soft', float(mods[-1].get('at', 0.12 + (len(mods) - 1) * 0.28)), 0.22)
     elif recipe == 'progressive_sim_cards':
-        for idx, card in enumerate(data.get('cards') or []):
+        cards_list = data.get('cards') or []
+        for idx, card in enumerate(cards_list):
             cat = float(card.get('at', 0.12 + idx * 0.65))
-            if card.get('reveal', True):
-                add(land, cat, 0.34)
+            if card.get('reveal', True) and idx in (0, len(cards_list) - 1):
+                add(land, cat, 0.26)
             for page in card.get('pages',[]):
-                add('page_flip',page['at'],.34)
-            for at in card.get('panel_accents',[]):
-                add('click_soft',at,.31)
+                add('page_flip',page['at'],.30)
             if card.get('kind') == 'race_bars':
-                add('counter_roll' if swiss else 'chime', cat + 0.36, 0.26)
+                add('counter_roll' if swiss else 'chime', cat + 0.36, 0.22)
     elif recipe == 'prompt_iter_workbench':
-        for chip in data['prompt_chips']:
-            add('click_soft', chip['at'])
-        add('page_flip', data.get('iter_at', round(span*.46, 3)))
+        if len(data['prompt_chips']) >= 2:
+            add('click_soft', data['prompt_chips'][-1]['at'], 0.20)
+        add('page_flip', data.get('iter_at', round(span*.46, 3)), 0.28)
     elif recipe == 'step_tree_focus':
-        for idx, br in enumerate(data.get('branches') or []):
+        branches = data.get('branches') or []
+        for idx, br in enumerate(branches[:2]):
             bat = float(br.get('at', 0.12 + idx * 1.1))
             linked = swiss and idx and data.get('relationship') != 'parallel'
             add('marker_stroke' if linked else land,
-                max(.03,bat-.16) if linked else bat, .36)
-            for ch in (br.get('children') or []):
-                if isinstance(ch.get('at'), (int, float)):
-                    add('click_soft' if swiss else 'click', ch['at'], 0.28)
-        focus_steps = data.get('focus_sequence') or []
-        for prev,step in zip(focus_steps,focus_steps[1:]):
-            if isinstance(step.get('at'), (int, float)):
-                add(('click_soft' if prev['index']==step['index'] else 'focus_reveal') if swiss else 'whoosh', step['at'], .38)
+                max(.03,bat-.16) if linked else bat, .28)
     elif recipe == 'formula_pill_chain':
-        add('pop', 0.04, 0.30)
         rev = float(data.get('reveal_at', span * 0.32))
-        add('whoosh', rev, 0.30)
-        add('click', rev + 0.10, 0.34)
+        add('click_soft', rev, 0.24)
     elif recipe == 'carousel_3d_select':
-        add('whoosh', 0.05, 0.28)
         sel = float(data.get('select_at', span * 0.5))
-        add('impact', sel, 0.34)
+        add('click', sel, 0.28)
     elif recipe == 'layer_explode_3d':
-        add('zoom_swoosh', span*.04, .62)
-        add('counter_roll', data.get('count_at',span*.07), .34)
-        add('ping',span*.84,.36)
+        add('zoom_swoosh', span*.04, .38)
+        add('counter_roll', data.get('count_at',span*.07), .26)
+        add('ping',span*.84,.28)
     elif recipe == 'roadmap_thread_camera':
-        for idx, st in enumerate(data.get('steps') or []):
-            add('pop', float(st.get('at', 0.15 + idx * 0.8)), 0.30)
+        steps = data.get('steps') or []
+        if steps:
+            add('pop', float(steps[0].get('at', 0.15)), 0.24)
     elif recipe == 'cutout_parallax_stage':
-        add('whoosh', 0.05, 0.28)
-        add('pop', 0.28, 0.28)
+        add('pop', 0.28, 0.22)
     elif recipe == 'documentary_ken_burns':
-        add('whoosh', 0.05, 0.24)
         if isinstance(data.get('split_at'), (int, float)):
-            add('click', data['split_at'], 0.30)
+            add('page_flip', data['split_at'], 0.26)
     else:
-        add('pop', 0.08, 0.30)
-        add('click', span * 0.42, 0.28)
+        add('pop', 0.08, 0.24)
 
     if 'exit_zoom_index' in data or data.get('exit_zoom') or data.get('exit_zoom_after'):
         exit_at = data.get('exit_zoom_at', round(span - (.46 if data.get('exit_zoom_after') else .48), 3))
-        cues = [cue for cue in cues if cue[1] not in ('click', 'zoom_swoosh') or abs(cue[0]-exit_at) >= .14]
-        add('click', exit_at, .42)
-        add('zoom_swoosh', exit_at, .60)
+        cues = [cue for cue in cues if cue[1] not in ('click', 'click_soft', 'zoom_swoosh') or abs(cue[0]-exit_at) >= .18]
+        add('click_soft', exit_at, .26)
+        add('zoom_swoosh', exit_at, .36)
     deduped, last_by_kind = [], {}
     for t, kind, gain in sorted(cues):
-        if t - last_by_kind.get(kind, -9.0) >= (.035 if recipe=='logo_bento_stage' else .14):
+        if t - last_by_kind.get(kind, -9.0) >= (.08 if recipe=='logo_bento_stage' else .24):
             deduped.append((kind, t, gain))
             last_by_kind[kind] = t
     return deduped
@@ -857,6 +837,8 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
                 row['expected_items'] = data['expected_items']
             row['source_names'] += [Path(v).name for v in (data.get('videos') or [])]
             row['source_names'] += [Path(data[k]).name for k in ('before','after','before_source','after_source') if isinstance(data.get(k),str)]
+            for list_key in ('before_sources', 'after_sources'):
+                row['source_names'] += [Path(v).name for v in (data.get(list_key) or []) if isinstance(v, str)]
             row['source_names'] += [Path(card['source']).name for card in data.get('cards',[]) if isinstance(card, dict) and card.get('source')]
         if 'presenter_shortcuts' in shot:
             row['presenter_shortcuts'] = shot['presenter_shortcuts']
@@ -864,12 +846,12 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
             row['custom_layout'] = shot['custom_layout']
         if mode in {'fullbleed_rig','callout_rig'}:
             moves = shot.get('camera_moves')
-            camera = ([float(move[0]) for move in moves if (move[4] if len(move)>4 else shot.get('motion'))!='hold']
-                      if moves is not None else [0.] if shot.get('motion') in {'push','pull','focus_push','punch'} else [])
+            camera = ([float(move[0]) for move in moves if len(move) >= 2 and float(move[1]) >= 1.20 and (move[4] if len(move)>4 else shot.get('motion'))!='hold']
+                      if moves is not None else [0.] if shot.get('motion') == 'punch' else [])
             manual = [r['at'] for r in shot.get('interactions',[]) if r['action']=='camera_zoom']
             for at in camera:
                 if 0<=at<span and not any(abs(at-t)<=.12 for t in manual):
-                    stage.add_sound_mark('camera_sweep',a+at,gain=.59)
+                    stage.add_sound_mark('camera_sweep',a+at,gain=.35)
             row['camera_action_times']=camera
         if 'interactions' in shot:
             row['interactions'] = shot['interactions']
