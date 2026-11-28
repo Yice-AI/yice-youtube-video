@@ -1389,14 +1389,10 @@ def portrait_aspect_integrity_gate(timeline, project):
             continue
         data = spec.get('data') or {}
         chips_txt = ' '.join(f"{c.get('role','')} {c.get('text','')}" for c in (data.get('prompt_chips') or []) if isinstance(c, dict))
-        shot_specific_txt = ' '.join(str(x or '') for x in (
-            shot.get('spoken_topic'), shot.get('visual_subject'),
-            orig.get('spoken_topic'), orig.get('visual_subject'), data.get('heading'), chips_txt,
+        visual_promise_txt = ' '.join(str(x or '') for x in (
+            shot.get('visual_subject'), orig.get('visual_subject'), data.get('heading'), chips_txt,
         )).strip()
-        combined_txt = shot_specific_txt or str(shot.get('anchor_text') or '')
-        if not PORTRAIT_CLAIM_RE.search(combined_txt) or PORTRAIT_EXEMPT_RE.search(combined_txt):
-            continue
-        multi_domain = bool(re.search(r'(?:PPT|演示|宣传片|视频|大屏|汇报)', combined_txt))
+        combined_txt = visual_promise_txt or str(shot.get('spoken_topic') or orig.get('spoken_topic') or shot.get('anchor_text') or '')
         candidates = []
         for src in (orig.get('media') or []):
             if isinstance(src, str):
@@ -1417,6 +1413,7 @@ def portrait_aspect_integrity_gate(timeline, project):
             for f in (shot.get('files') or []):
                 if isinstance(f, str):
                     candidates.append(f)
+        truncated_local_card = []
         ratios = []
         for rel in candidates:
             full = (episode_root / rel).resolve() if (episode_root / rel).is_file() else (project_path / rel).resolve()
@@ -1424,20 +1421,41 @@ def portrait_aspect_integrity_gate(timeline, project):
                 continue
             dims = _media_dimensions(full)
             if dims and dims[1] > 0:
-                ratios.append((rel, round(dims[0] / dims[1], 3)))
-        if not ratios:
-            continue
-        checked += 1
-        if multi_domain:
-            ok_shot = any(0.48 <= r <= 0.90 for _, r in ratios)
-        else:
-            ok_shot = all(0.48 <= r <= 0.90 for _, r in ratios)
-        if not ok_shot:
+                ratio = round(dims[0] / dims[1], 3)
+                ratios.append((rel, ratio))
+                track_file = full.parent / 'cursor-track.json'
+                if ratio > 1.25 and track_file.is_file():
+                    try:
+                        tr = json.loads(track_file.read_text(encoding='utf-8'))
+                        t_url = str(tr.get('url') or '')
+                        if t_url.startswith('file://'):
+                            from urllib.parse import unquote, urlparse
+                            hp = Path(unquote(urlparse(t_url).path))
+                            if hp.is_file() and re.search(r'\.poster\.xhs|1080\s*[x×]\s*1440|aspect-ratio:\s*3\s*/\s*4', hp.read_text(encoding='utf-8', errors='ignore')):
+                                truncated_local_card.append(rel)
+                    except Exception:
+                        pass
+        if truncated_local_card:
+            checked += 1
             violations.append(dict(
                 shot=sid,
                 reason='landscape_truncated_portrait_card',
                 assets=ratios,
-                hint='镜头承诺展示 3:4 / 小红书竖图，严禁用 16:9 横屏浏览器截半录屏；请用 export-html-cards.sh 导出完整 3:4 原图再放入画布或工作台'
+                truncated_recordings=truncated_local_card,
+                hint='检测到用 16:9 横屏浏览器录制了含 3:4 竖版海报 (.poster.xhs) 的网页导致下半截被裁切；请改用 export-html-cards.sh 导出完整 3:4 原图'
+            ))
+            continue
+        if not PORTRAIT_CLAIM_RE.search(combined_txt) or PORTRAIT_EXEMPT_RE.search(combined_txt) or not ratios:
+            continue
+        checked += 1
+        multi_domain = bool(re.search(r'(?:PPT|演示|宣传片|视频|大屏|汇报)', combined_txt))
+        ok_shot = any(0.48 <= r <= 0.90 for _, r in ratios) if multi_domain else all(0.48 <= r <= 0.90 for _, r in ratios)
+        if not ok_shot:
+            violations.append(dict(
+                shot=sid,
+                reason='missing_true_portrait_asset',
+                assets=ratios,
+                hint='镜头承诺展示 3:4 / 小红书竖图，必须包含真实 3:4 竖幅素材（宽高比 0.48–0.90），严禁用横屏截半图冒充'
             ))
     return dict(ok=not violations, checked_shots=checked, violations=violations)
 
