@@ -75,6 +75,11 @@ QUOTED = re.compile(r'[「“"『‘]([^」”"』’]{4,})[」”"』’]')
 PROMPT_VERBS = re.compile(r'输入|提示词|指令|加上一句|加一句|改成|告诉它|对它说|喂给它|丢给它|让它')
 CHANGE_WORDS = re.compile(r'前后|改前|改后|之前|之后|秒变|变成|直出|默认|精修|对比|反差|立刻|马上')
 LLM_HEDGING_RE = re.compile(r'一般来说|见仁见智|仁者见仁|因人而异|各有千秋吧?|平分秋色吧?|看个人喜好吧?|某种程度上来说|仅供参考哈?')
+FLAT_CATALOG_OPENER_RE = re.compile(
+    r'^(?:先说|再说|接着说|下面说|接下来(?:我们)?(?:说|看|讲|介绍|是)|最后(?:是|说|看|讲|一个)|'
+    r'第[一二三四五六七八九十1-9][个款项](?:工具|神器|Skill|是|要讲))'
+)
+STAKES_ANCHOR_RE = re.compile(r'\d+|半小时|十分钟|三分钟|通宵|熬夜|一分钱|免费|白嫖|翻车|被骂|糊弄|抄|万赞|商单|省下|差了')
 VERSION_DECIMAL_RE = re.compile(r'(?:[vV]\d+\.\d+(?:\.\d+)?|(?:Claude|GPT|Gemini|Qwen|DeepSeek|Python|Node|Apache|MIT|Web)\s*[-A-Za-z]*\s*\d+\.\d+|\b\d+\s*[:：比]\s*\d+\b)', re.I)
 RAW_DECIMAL_RE = re.compile(r'\b\d+\.\d+%?')
 HONEST_TRADEOFF_RE = re.compile(r'缺点|毛病|短板|坑|局限|不适合|别用|但要注意|只允许|非商业|非商用|需要授权|不能直接|没法直接|弱点|代价')
@@ -384,16 +389,36 @@ def stage_script(project, script):
                                   f'{scene["id"]} 幕出现 3 个精确小数（{"、".join(decimals)}），建议换成更易记的体感分数。',
                                   scene_id=scene['id'], decimals=decimals))
     long_clauses = []
+    clause_lengths = []
     for scene in script['scenes']:
         stripped = QUOTED.sub('「词」', scene['text'])
         for clause in re.split(r'[，,。！？!?；;：:——…]', stripped):
             c = clause.strip()
-            if len(re.findall(r'[\u4e00-\u9fff]', c)) >= 30:
+            cjk_n = len(re.findall(r'[\u4e00-\u9fff]', c))
+            if cjk_n > 0:
+                clause_lengths.append(cjk_n)
+            if cjk_n >= 28:
                 long_clauses.append((scene['id'], c[:36]))
-    if len(long_clauses) >= 3:
+    avg_clause = round(sum(clause_lengths) / len(clause_lengths), 1) if clause_lengths else 0.0
+    if len(long_clauses) >= 3 or avg_clause > 16.5:
         warnings.append(issue('long_winded_clauses',
-                              f'全稿有 {len(long_clauses)} 处单分句超过 30 个汉字不断气（如 {long_clauses[0][0]}「{long_clauses[0][1]}…」），听感偏书面导购腔。请按对标口语改成 8–16 字一锤的短句。',
-                              examples=[f'{sid}:{txt}' for sid, txt in long_clauses[:4]]))
+                              f'口播短句锤击感不足（全稿分句均长 {avg_clause} 字，超 28 字长句 {len(long_clauses)} 处）。对标爆款每句宜 8–15 字一锤，请拆短长句、砍掉铺垫词。',
+                              avg_clause_cjk=avg_clause, examples=[f'{sid}:{txt}' for sid, txt in long_clauses[:4]]))
+    catalog_openers = []
+    for ch in script['chapters'][1:]:
+        if ch['scenes']:
+            s0 = ch['scenes'][0]
+            m = FLAT_CATALOG_OPENER_RE.search(s0['text'].lstrip())
+            if m:
+                catalog_openers.append(f'{s0["id"]}「{m.group(0)}」')
+    if len(catalog_openers) >= 3:
+        errors.append(issue('flat_catalog_transitions',
+                            f'连续 {len(catalog_openers)} 章用客服报菜名式开头（{"、".join(catalog_openers[:4])}），观众每章听完容易划走。请按《03-爆款逐字稿四遍炼金法》改成“上一章遗留痛点/悬念转折扣”自然推入下一章。',
+                            hits=catalog_openers))
+    opener_text = ' '.join(s['text'] for s in script['scenes'][:2])
+    if script['scenes'] and not STAKES_ANCHOR_RE.search(opener_text):
+        warnings.append(issue('opening_lacks_stakes',
+                              '前两幕缺少具体时间账、金钱账或反差事实锚点，抓人感偏弱。建议第一句直接甩出真事反差或具体成本账。'))
     tutorial = is_tutorial(project, packaging, script)
     loops = []
     if tutorial and len(script['chapters']) >= 3:

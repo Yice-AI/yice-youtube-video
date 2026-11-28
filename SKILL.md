@@ -7,7 +7,7 @@ description: 一策 YouTube 中文教程与深度科技视频制片体系 v16.0�
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。作品与操作用全屏暗场，方法拆解、选型与过场切到 `swiss_paper` 暖白点阵、黑色硬框和信号橙或克莱因蓝。
 
-先按[破圈选题与包装](references/00-破圈选题与包装铁律.md)定标题与封面，再按[五拍叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)排口播，按[一手高光素材与代码造画](references/02-一手高光素材与代码造画母法.md)备素材。
+先按[破圈选题与包装](references/00-破圈选题与包装铁律.md)定标题与封面，再按[爆款逐字稿四遍炼金法](references/03-爆款逐字稿四遍炼金法.md)与[高留存叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)打磨逐字稿，按[一手高光素材与代码造画](references/02-一手高光素材与代码造画母法.md)备素材。
 
 ## 前置三关：没过关不许往下走
 
@@ -56,7 +56,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 ## 制片入口
 
 0. **定题与包装。** 按[破圈选题与包装](references/00-破圈选题与包装铁律.md)三圈交叉选题、五维提案卡拍板，写好 `packaging.json`。封面优先用**片中真实成品原图多图参考** `kit/scripts/thumbnail.sh --project . --title "主标题" --summary "一句精炼副标" --ref 成品1.png --ref 成品2.png --ref 成品3.png` 并行出 3 张高活力真图封面（超大数字电光蓝撞色、科技亮底扇形、暗调发光视窗，兼顾冲击力与呼吸感，严禁脑补假软件图标或塞死板坐标长约束）；尚未产生成品图时可用默认零约束直出。**运行 `precheck-episode.sh --stage packaging`，过关才写分镜。**
-1. **五拍拆稿。** 依[本机 Skill 协同表](references/01-高留存叙事与三态画面铁律.md#本机-skill-协同表)用 hyperframes-creative 排证据、humanizer-zh 审口播、cheat-score 查钩子。剧本第 3 列写清每幕画面，痛点幕写明反例原件。**运行 `--stage script`，过关才配音。**
+1. **四遍炼稿 + 前 30 秒双钩子盲测。** 严格执行[爆款逐字稿四遍炼金法](references/03-爆款逐字稿四遍炼金法.md)：先立「闯关实战线」或「破案算账线」单主脊椎（严禁平行报菜名），先出 2 版前 30 秒短句钩子择优，再对初稿连削四刀（卖产品痛感前置 → 写小说章尾留扣与 2 分钟爆点 → 脑科学抽屉节拍 → 出声砍三成水分压到 8–15 字短句）。剧本第 3 列写清每幕画面，痛点幕写明反例原件。**运行 `--stage script`（拦截 `flat_catalog_transitions` 平铺转场、`llm_hedging_fluff` 等），过关才配音。**
 2. **素材与造画。** 入口均在 `kit/scripts/`，全部登记 `asset-ledger.jsonl`：
    - `harvest-showcase-media.sh --rank-highlights` 抓 `*.github.io`、官网、公开演示的高清 `.mp4`，自动切 4.5s 高光（非 16:9 自动 `blur_dark` 同源暗底）；`collect-entity.sh` 取标志与 README 演示；`capture-web.mjs` / `record-web-cam.sh` 录公开网页。
    - `rec-demo.sh` 录本机连续实操；`image2` + `cutout.sh` 造剪纸与壁画，喂 `cutout_parallax_stage`、`documentary_ken_burns`；`scout-video-scenes.sh long.mp4 --output scout` 从长片挑段；`find-media.sh`、`people-add.sh` 取实物与人物。

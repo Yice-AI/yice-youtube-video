@@ -268,6 +268,11 @@ class ScriptTests(TempCase):
         self.assertIn('llm_hedging_fluff', sc_codes)
         self.assertIn('decimal_overload', sc_codes)
 
+        catalog_script = GOOD_SCRIPT + '\n## 04 第四章\n| 幕号 | 旁白 | 画面 |\n| --- | --- | --- |\n| 4-1 | 最后是发小红书。 | 满屏展示 |\n'
+        catalog_script = catalog_script.replace('| 2-1 | ', '| 2-1 | 先说做 PPT。').replace('| 3-1 | ', '| 3-1 | 再说做短片。')
+        root_cat = make_project(self.tmp/'cat', script=catalog_script, images=0)
+        self.assertIn('flat_catalog_transitions', codes(precheck.run(root_cat, 'script'), 'script'))
+
 
 class AssetTests(TempCase):
     def test_renamed_duplicate_media_is_blocked(self):
