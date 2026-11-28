@@ -80,6 +80,7 @@ FLAT_CATALOG_OPENER_RE = re.compile(
     r'第[一二三四五六七八九十1-9][个款项](?:工具|神器|Skill|是|要讲))'
 )
 STAKES_ANCHOR_RE = re.compile(r'\d+|半小时|十分钟|三分钟|通宵|熬夜|一分钱|免费|白嫖|翻车|被骂|糊弄|抄|万赞|商单|省下|差了')
+ELITIST_SCENE_RE = re.compile(r'新品发布(?:会)?|发布会大屏|产品路演|融资路演|投资人路演')
 VERSION_DECIMAL_RE = re.compile(r'(?:[vV]\d+\.\d+(?:\.\d+)?|(?:Claude|GPT|Gemini|Qwen|DeepSeek|Python|Node|Apache|MIT|Web)\s*[-A-Za-z]*\s*\d+\.\d+|\b\d+\s*[:：比]\s*\d+\b)', re.I)
 RAW_DECIMAL_RE = re.compile(r'\b\d+\.\d+%?')
 HONEST_TRADEOFF_RE = re.compile(r'缺点|毛病|短板|坑|局限|不适合|别用|但要注意|只允许|非商业|非商用|需要授权|不能直接|没法直接|弱点|代价')
@@ -419,6 +420,13 @@ def stage_script(project, script):
     if script['scenes'] and not STAKES_ANCHOR_RE.search(opener_text):
         warnings.append(issue('opening_lacks_stakes',
                               '前两幕缺少具体时间账、金钱账或反差事实锚点，抓人感偏弱。建议第一句直接甩出真事反差或具体成本账。'))
+    if not maker_topic:
+        full_narration = ' '.join(s['text'] for s in script['scenes'])
+        elitist_hits = ELITIST_SCENE_RE.findall(full_narration)
+        if len(elitist_hits) >= 3:
+            warnings.append(issue('elitist_detached_example',
+                                  f'全稿反复使用「{elitist_hits[0]}」等脱离普通人日常的悬浮场景（共 {len(elitist_hits)} 处）。建议换成工作汇报、年终总结、毕业答辩、写笔记配图、做副业视频等大众高频场景。',
+                                  count=len(elitist_hits)))
     tutorial = is_tutorial(project, packaging, script)
     loops = []
     if tutorial and len(script['chapters']) >= 3:
