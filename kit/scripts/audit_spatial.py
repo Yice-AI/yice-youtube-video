@@ -17,7 +17,7 @@ def composition_motion(source, declared=None):
     recipe = re.search(r'<[a-zA-Z][^<>]*?\sdata-spatial-recipe=[\'"]([\w-]+)', source)
     process_recipes = (
         'literal_action_stage', 'roadmap_thread_camera',
-        'step_tree_focus', 'progressive_sim_cards', 'formula_pill_chain', 'kinetic_title_bridge',
+        'step_tree_focus', 'progressive_sim_cards', 'formula_pill_chain', 'kinetic_title_bridge', 'prompt_iter_workbench',
     )
     process = recipe and recipe[1] in process_recipes
     native_action = re.search(r'OM\.(?:shake|spring|gather|morphRect|zoomThrough)\(|SKETCH\.', scripts)
@@ -284,7 +284,7 @@ def capture_stage_backgrounds(shots, project, rendered, gate):
 
 
 def spatial_frame_gates(shots, duration, measured, required):
-    overflow = []
+    overflow, crops = [], []
     engines = {'hyperframes_block':dict(count=0,seconds=0.),'onetake_clip':dict(count=0,seconds=0.)}
     collisions, contrast, palette, ratios, plates = [], [], {}, {}, {}
     headers, dark, accents, tone_families = [], [], {}, {}
@@ -297,6 +297,7 @@ def spatial_frame_gates(shots, duration, measured, required):
         result = measured.get(key,{})
         if not result.get('frames'):
             failure = dict(shot=key,reason='missing_frame_evidence',detail=result.get('error'))
+            crops.append(failure)
             collisions.append(failure)
             contrast.append(failure)
             dark.append(failure)
@@ -304,6 +305,7 @@ def spatial_frame_gates(shots, duration, measured, required):
             continue
         shot_look = _shot_stage_look(shot)
         for frame in result['frames']:
+            crops.extend(dict(shot=key, phase=frame['phase'], **item) for item in frame.get('aspectCrops', []))
             for left,right in frame.get('stations',[]):
                 if left<130 or right>1790:
                     overflow.append(dict(shot=key,phase=frame['phase'],left=left,right=right))
@@ -373,7 +375,8 @@ def spatial_frame_gates(shots, duration, measured, required):
     dominant = {key:Counter(bands).most_common(1)[0][0] for key,bands in accents.items()}
     if required and len(set(dominant.values()))<2:
         dark.append(dict(reason='insufficient_accent_hues',dominant=dominant))
-    return dict(roadmap_overview_safe_gate=dict(ok=not overflow,violations=overflow),
+    return dict(aspect_crop_integrity_gate=dict(ok=not crops, violations=crops),
+                roadmap_overview_safe_gate=dict(ok=not overflow,violations=overflow),
                 title_card_collision=dict(ok=not collisions,violations=collisions),
                 no_ppt_slide_header_gate=dict(ok=not headers,violations=headers),
                 unified_cyber_stage_and_accent_gate=dict(ok=not dark,required=required,backgrounds=palette,

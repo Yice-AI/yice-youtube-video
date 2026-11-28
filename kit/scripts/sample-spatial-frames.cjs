@@ -94,6 +94,20 @@ async function measure(page, {entry,seconds}) {
         const bounds=el.getBoundingClientRect();
         return [bounds.left,bounds.right];
       }) : [];
+      const aspectCrops = [];
+      for (const el of document.querySelectorAll('img,video')) {
+        if (!visible(el) || el.matches('.media-aspect-bg,[data-allow-crop="true"]')) continue;
+        if (el.matches('.curtain-panel video') && !el.closest('[data-allow-crop="false"]')) continue;
+        const box = el.getBoundingClientRect();
+        if (box.width < 120 || box.height < 90 || box.right <= 0 || box.bottom <= 0 ||
+            box.left >= innerWidth || box.top >= innerHeight || getComputedStyle(el).objectFit !== 'cover') continue;
+        const nw = el.videoWidth || el.naturalWidth, nh = el.videoHeight || el.naturalHeight;
+        if (!nw || !nh || !el.clientHeight) continue;
+        const ratio = (el.clientWidth / el.clientHeight) / (nw / nh);
+        const crop = 1 - Math.min(ratio, 1 / ratio);
+        if (crop > .12) aspectCrops.push({reason:'excessive_aspect_crop', source:el.getAttribute('src'),
+          natural:[nw,nh], layout:[el.clientWidth,el.clientHeight], crop_ratio:+crop.toFixed(4)});
+      }
       const containerOverflows = [];
       if (phase >= 0.35) {
         const containers = Array.from(document.querySelectorAll('.bento-box,.sim-panel,.tree-branch'));
@@ -121,12 +135,12 @@ async function measure(page, {entry,seconds}) {
       const root = document.querySelector('[data-composition-id]') || document.body;
       const backdrop = root?.dataset?.onetakeRecipe === 'split_wipe_compare' ? root.querySelector('.compare-stage') : root;
       return {
-        phase, overlaps, containerOverflows, cards, titles, stations,
+        phase, overlaps, containerOverflows, aspectCrops, cards, titles, stations,
         countClaim: root.querySelector('header')?.innerText || '',
         enumeratedItems: Array.from(root.querySelectorAll('.bento-item-name,.sim-label,.tree-branch,.chain-badge'))
           .filter(visible).map(el=>el.innerText.trim()).filter(Boolean),
         unsafeCoreText: root.dataset.stageLook === 'swiss_paper' ? Array.from(root.querySelectorAll(
-          'header,.sim-label,.bento-item-name,.bento-cat,.tree-branch,.tree-child,.display-word,.chain-badge'
+          'header,.sim-label,.bento-item-name,.bento-cat,.tree-branch,.tree-child,.display-word,.chain-badge,.workbench-chip,.workbench-label,.workbench-heading'
         )).filter(el=>visible(el) && el.textContent.trim() && el.getBoundingClientRect().bottom >= 860)
           .map(el=>el.innerText.trim()) : [],
         stageLook: root?.dataset?.stageLook || null,

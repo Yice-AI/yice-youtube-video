@@ -1,4 +1,6 @@
-# 录屏（Codex App 实操）（v14.0）
+# 录屏（Codex App 实操）（v15.0）
+
+**v15 拍什么**：工具教程的实操镜按「输入一句大白话提示词 → 默认直出 → 加一句关键提示词 → 精修后成品交互」连续录，供 `prompt_iter_workbench` 的 `before_source` / `after_source` 与后续全屏交互使用；默认直出那一版要真实保留，正是口播里“哪里差”的反例画面。终端只录安装那一下，放在第一分钟之后。录好的文件登记 `asset-ledger.jsonl`，同一页面换不同操作也要拍出真正不同的画面状态，装片前由 `precheck-episode.sh --stage assets` 查重。
 
 ## 首选：DeepSeek Harness 常驻录屏师（2026-11-17 起）
 

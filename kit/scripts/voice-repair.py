@@ -198,8 +198,8 @@ def final_scan(chapter, audio, alignment, folder, transcribe, exceptions, thresh
 
 def repair(chapter, current, output, generate, transcribe, *, exceptions=None, threshold=.97,
            max_rounds=3, candidates_per_sentence=3, lufs=-16., anchors=(), offset=0, post_options=None, allowed_kinds=None, profile='legacy'):
-    if not 0 <= max_rounds <= 3 or candidates_per_sentence < 2:
-        raise ValueError('最多修复3轮，每句至少2个seed')
+    if not 0 <= max_rounds <= 3 or candidates_per_sentence < (1 if profile == 'natural_v7' else 2):
+        raise ValueError('修复轮数或每句候选种子数无效')
     output = Path(output)
     history = []
     for round_number in range(1, max_rounds+1):
@@ -236,7 +236,8 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
             leading = len(span_text) - len(span_text.lstrip())
             chapter_number = int(re.match(r'\d+', chapter['id'])[0]) if re.match(r'\d+', chapter['id']) else 0
             for candidate in range(candidates_per_sentence):
-                seed = 200000 + round_number*10000 + chapter_number*300 + span[0]*candidates_per_sentence + candidate
+                seed = (int(current.get('seed', 0)) + round_number*7919 + candidate
+                        if profile == 'natural_v7' else 200000 + round_number*10000 + chapter_number*300 + span[0]*candidates_per_sentence + candidate)
                 jobs.append(dict(text=span_text.strip(), pronunciations=chapter.get('pronunciations') or {},
                                  seed=seed, sentence=span[0], span=span, char_offset=lo+leading,
                                  path=str(folder/f'sentence-{span[0]:02}-seed-{seed}.wav')))
@@ -283,7 +284,9 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
                 checked = check_tool.check_chapter(processed, aligned, cache=raw.with_suffix('.check.npz'), profile=profile)
                 candidate.update(processed=str(processed), alignment=aligned, check=checked,
                                  continuity=match, ok=checked['ok'] and match['ok'])
-                if candidate['ok']:
+                original_alerts = sum(a.get('sentence') in job['span'] for a in current['check']['alerts'])
+                improved = profile == 'natural_v7' and match['ok'] and len(checked['alerts']) < original_alerts
+                if candidate['ok'] or improved:
                     prior = selections.get(job['sentence'])
                     if prior is None or abs(match['pitch_shift_semitones']) < abs(prior['continuity']['pitch_shift_semitones']):
                         selections[job['sentence']] = candidate
@@ -313,7 +316,9 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
         history.append(dict(round=round_number, flagged=flagged, selected=[dict(sentence=index, seed=take['seed'],
                             continuity=take['continuity']) for index, take in selections.items()], splices=splices,
                             clips=str(clips), ok=updated['check']['ok']))
-        current = {**updated, 'seed': current.get('seed', 0)}
+        revised = {**updated, 'seed': current.get('seed', 0)}
+        if profile != 'natural_v7' or quality.rank(revised) < quality.rank(current):
+            current = revised
     output.mkdir(parents=True, exist_ok=True)
     v.write_json(output/'repair-report.json', dict(ok=current['check']['ok'], rounds=history,
                                                   text_unchanged=current['alignment']['text'] == chapter['text']))
@@ -387,7 +392,8 @@ def process_chapter(chapter, candidates, folder, generate, transcribe, *, except
         source = next(Path(c["path"]) for c in candidates if c["seed"] == chosen["seed"])
         chunk_dir = source.with_suffix(".chunks")
         history = []
-        if max_rounds and not chosen["check"]["ok"]:
+        base_seed = chosen['seed']
+        if max_rounds and (not chosen["check"]["ok"] or not chosen["asr"]["ok"]):
             if not (chunk_dir / "chunks.json").is_file():
                 raise ValueError("云端重抽需要原始句组音频和清单")
             manifest = json.loads((chunk_dir / "chunks.json").read_text())
@@ -413,20 +419,21 @@ def process_chapter(chapter, candidates, folder, generate, transcribe, *, except
                 dest = Path(folder) / f"redraw-{attempt}"
                 dest.mkdir()
                 temps = (.65, .72, .78)
-                temp = temps[(int(chosen["seed"]) + attempt) % len(temps)]
-                resp = v._remote_batch([texts[k] for k in indexes], brand, cloud_backend, temp)
+                seed = int(base_seed) + attempt * 7919
+                temp = temps[seed % len(temps)]
+                resp = v._remote_batch([texts[k] for k in indexes], brand, cloud_backend, temp, seed=seed)
                 redrawn = paths.copy()
                 for k, wav in zip(indexes, resp):
                     redrawn[k] = dest / f"chunk-{k:03}.wav"
                     redrawn[k].write_bytes(wav)
                 master = dest / "assembled.wav"
                 v._concat_wavs(redrawn, master, pauses=pauses)
-                candidate = screen(dict(seed=1000000+attempt, path=str(master)))
+                candidate = screen(dict(seed=seed, path=str(master)))
                 better = quality.rank(candidate) < quality.rank(chosen)
-                history.append(dict(round=attempt, chunks=indexes, temperature=temp, accepted=better))
+                history.append(dict(round=attempt, seed=seed, chunks=indexes, temperature=temp, accepted=better))
                 if better:
                     paths, chosen = redrawn, candidate
-                if chosen["check"]["ok"]:
+                if chosen["check"]["ok"] and chosen["asr"]["ok"]:
                     break
         chosen["repair_rounds"] = history
         chosen["record"].update(seed=chosen["seed"], backend=cloud_backend, repair_unit="semantic_chunk")
@@ -434,7 +441,7 @@ def process_chapter(chapter, candidates, folder, generate, transcribe, *, except
     final = repair(chapter, chosen, Path(folder)/'repair', generate, transcribe, exceptions=exceptions, threshold=threshold,
                    max_rounds=max_rounds, lufs=(post_options or {}).get('lufs', -16.), anchors=anchors,
                    offset=offset, post_options=post_options, profile=profile,
-                   candidates_per_sentence=2 if profile=='natural_v7' else 3)
+                   candidates_per_sentence=1 if profile=='natural_v7' else 3)
     if cloud_backend:
         final['record'].update(backend=cloud_backend, repair_unit='whole_sentence')
     final['record'].update(seed=chosen['seed'], generated_duration=chosen['record']['generated_duration'],

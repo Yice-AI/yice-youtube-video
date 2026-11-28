@@ -1,120 +1,99 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v14.0。用全屏三联动态幕布展示作品，用瑞士暖白画布讲方法，逐句核对实录反例、可编辑操作与跨行业案例。支持 27 款真实动作音效、5 首节奏型配乐、字幕与成片审计。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v15.0。动笔前用 precheck-episode 三关硬拦截温吞标题、标题正文脱节、制作端自嗨台词、痛点无反例画面和素材单一；用「大白话提示词 → 默认直出 → 加词精修」教实操，全屏暗场展示作品、瑞士暖白画布讲方法，配 27 款真实动作音效、字幕与成片审计。
 ---
 
-# 一策 YouTube 视频制作 v14.0
+# 一策 YouTube 视频制作 v15.0
 
-以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。
+以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。作品与操作用全屏暗场，方法拆解、选型与过场切到 `swiss_paper` 暖白点阵、黑色硬框和信号橙或克莱因蓝。
 
-先按[五拍叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)排口播、镜头形态与跨镜承接，再按[一手高光素材与代码造画母法](references/02-一手高光素材与代码造画母法.md)打通 `.mp4` 真动态视频贴图与三套代码造画配方。作品与操作用全屏暗场，方法拆解、选型与过场切到 `swiss_paper` 暖白点阵、黑色硬框和信号橙或克莱因蓝。
+先按[破圈选题与包装](references/00-破圈选题与包装铁律.md)定标题与封面，再按[五拍叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)排口播，按[一手高光素材与代码造画](references/02-一手高光素材与代码造画母法.md)备素材。
 
-## 导演 × 机房分工与新题三层防翻车铁律
+## 前置三关：没过关不许往下走
 
-1. **角色死边界（锁死审美下限，严禁手搓一次性丑页面）**
-   - **主脑导演（Gemini Neon / Claude 等顶级模型）**：独占全部审美与叙事决策——① 给作品演示与方法拆解分别指定影院和瑞士编辑画布；② 写去 AI 腔口播稿；③ 审看 `showcase-candidates.jpg` 挑高光原片，为无现成画面的段落撰写 `image2` 生图提示词；④ 编写 `episode-manifest.json`（优先直接调用内建 13 套 `spatial_spec` + 7 套 `onetake_spec` 成品模具，**严禁让执行端临时手写简陋 HTML/CSS 页面**）；⑤ 成片产出后**必须亲眼逐张打开抽帧/动作条图片核验**，不盲信脚本 JSON 通过。
-   - **执行机房（Codex / 后台任务）**：仅承担零审美自由度的确定性苦力——运行 `harvest-showcase-media.sh` 抓片、`voice.sh` 原速配音、`record-web-cam.sh` 深色实操录屏、`cutout.sh` 抠图、`assemble-episode.sh` 温控压片（`workers=2, nice=10`）与 `audit-v3.sh --v10` 门禁检查，**严禁擅自改动色板、字号、版式或自造静态字卡凑数**。
-2. **换任何新主题的三层素材兜底漏斗（期期必有高光画面）**
-   - **第一层（有公开炫酷演示的新模型/视觉工具）**：先跑 `harvest-showcase-media.sh --rank-highlights` 无损抓取 `*.github.io` 论文项目页、官网发布站、GitHub/X 原生高清 `.mp4`（非 16:9 自动合成 `blur_dark` 同源模糊暗底），自动剔除白底文字死页并切出 4.5s 最高分动态切片，喂入 `perspective_video_fan`、`split_wipe_compare` 或 `formula_pill_chain`。
-   - **第二层（官网朴素的干货工具/命令行插件）**：严禁傻滚白底文档凑时长！只录最核心的深色真实操作闭环（输入 → 执行 → 结果交互，占 30%–55%），其余优势对比与流程拆解一律套用 `progressive_sim_cards`（`1% vs 100%` 实时进度 + 动态小窗）、`step_tree_focus`（连线逐笔生长 + 焦点在 `① → ② → ①` 动态跳转）、`layer_explode_3d` 或 `handdrawn_sketch_stage`。
-   - **第三层（零现成视频的抽象观点/故事/历史机制）**：直接启用 `image2` + 代码造画三公式——`cutout_parallax_stage`（白底生图抠图 + 4px 奶油剪纸白边 + 三层视差卷轴 + 烟尘粒子 + 实时计步）、`documentary_ken_burns`（16:9 艺术大图 2.5D 慢推摇飘金粉 + 一图拆三卡局部解剖）、`handdrawn_sketch_stage`（8fps 铅笔水彩微抖 / Riso 半调网点），凭空造出纪录片级动态画面。
+```bash
+kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|script|assets|all> [--json] [--output report.json]
+```
 
-亮场桥 `kinetic_title_bridge` 使用 1.2–1.8 秒、按口播触发的 `words: [{text, at}]` 与马克笔 `underline_at`。三联幕布每次使用三条不同动态视频；`case_monotony_gate` 按文件内容检验 85 秒内最多两次且不复用槽位。大字用 `words[].line` 或 `editorial_punch.lines` 分成两行。三联看板用 `board: true` 保持三框自开场都在位；`progressive_sim_cards` 的卡片用 `source`、`zoom` 与百分比 `focus_x/focus_y` 录到局部操作。划线、厚卡落位、切幕与数字翻滚使用 `marker_stroke`、`card_thock`、`shutter_whip`、`counter_roll`。
+| 关卡 | 不过关就不许 | 拦截项 |
+| --- | --- | --- |
+| `packaging` | 写分镜 | `bland_explanatory_title`（怎么选、使用指南、浅谈这类说明文标题，或不足 10 字又无痛点、收益、数字）；`promise_body_drift`（标题只承诺一类事，正文过半在讲别的，或前两章没兑现标题）；`thumbnail_candidates_insufficient`（最新一批封面不足 3 张或缺联系表） |
+| `script` | 跑配音 | `maker_plumbing_leak`（批量截图、等几秒再截、无头浏览器、临时目录、字段名这类制作端内部细节）；`slow_or_meta_opener`（前两幕“大家好我是/今天我们来聊”，或前 60 秒念命令和路径）；`unpaired_pain_point_visual`（口播说丑、翻车、模板感，却没规划真实反例画面）；`missing_hands_on_prompt_loop`（三章以上教程少于 2 章给出可照抄的提示词和前后变化） |
+| `assets` | 跑 `assemble-episode.sh` | `duplicate_asset_disguise`（同一画面换名存多份）；`insufficient_visual_clusters`（多工具教程独立画面少于 8 组）；`missing_external_showcase`（外部真实来源少于 2 个网站或不足 25%） |
 
-v14 清单为每镜填写 `case_tag`，并以 `semantic_alignment` 引用逐镜台账（`shot_id, start, end, quote, evidence, case_tag`）。同镜轮播或并列多个作品时用 `case_windows: [{tag,start,end}]` 记录镜内可见区间。审计按作品合并重叠时间并检查占比不超过 30%，逐镜核对口播、时间与画面物证。导演连看确认反例对应现场操作、开场不出现终端、每次换场有新的信息。
-精修参考音与对应原文通过 `./install.sh --configure-voice 参考音.wav 原文.txt` 保存，换机私下复制 `~/.config/yice-youtube-video/`。录屏入口会记录实际点击、键入、拖动和翻页，使用其 `video.mp4` 时组装自动读取同目录的动作记录。看板的 `cards[].pages: [{source,at}]` 在同一帧切换画面并配翻页声。新脚手架中的 `review_pack` 会随标准组装导出全镜头图墙、480p 有声版，以及两段单独渲染的无字幕盲审片。
+包装写在剧集目录的 `packaging.json` 或 `packaging.md`（`title`、`hook`、`viewer_promise`、`target_keywords`、可选 `episode_kind`）。剧本第 3 列写画面规划，也可在旁白里用 `〔画面：…〕` 注明反例原件。专门教写脚本或自动化的选题在包装里写 `"maker_topic": true` 放行工程术语。返回码 0 通过、1 有拦截、2 参数或文件缺失。
 
+## 导演与机房分工
 
-## 工具教程与老练叙事铁律（v14.0）
+- **主脑导演**（Gemini Neon / Claude 等顶级模型）独占审美与叙事：定明暗换场、写去 AI 腔口播稿、看 `showcase-candidates.jpg` 挑高光、为缺画面的段落写 `image2` 提示词、填 `episode-manifest.json`（优先用内建 14 套 `spatial_spec` 与 7 套 `onetake_spec`，严禁执行端手写一次性页面），成片后亲眼逐张核对抽帧图墙。
+- **执行机房**（Codex / 后台任务）只做确定性工作：抓片、配音、录屏、抠图、温控压片（`workers=2, nice=10`）与门禁检查，不改色板、字号与版式，不自造静态字卡。
 
-清单声明 `episode_kind: "tool_tutorial"`。**严禁写自嗨假场景（如虚构新品发布会路演）或「第 1 个工具…第 5 个工具…」说明书式报菜名！** 动笔必须走三步老练叙事：① **普通人真痛点 + 反常识钩子**（周报述职、方案改字、不用抽卡/零订阅费，开场用 `triptych_curtain` 三列成品动态幕布，需要结论时用 `editorial_punch` 压暗背景并落下无框白字，严禁不到 3 秒硬切代码提交列表）；② **一套傻瓜选型决策树主线**（先用 `progressive_sim_cards` 立住 3 个体感优势，用 `logo_bento_stage` 按交付对象并列分类，`expected_items` 核验工具数量，实际操作步骤才用 `step_tree_focus`，把工具挂在方法论分支上当论据）；③ **字到画到的 `0.18s` 干脆动效 + 全画幅实操**（子卡片 `at` 精确绑死配音词级时间戳，急停落定不慢飘；整页 PPT/网页实录锁死 `1.00 → 1.03` 全画幅不裁边字，仅在点击局部按钮时聚焦；终端录屏角标自动避让右上角）。
+## 工具教程五条铁律（v15.0）
 
-内置 **5 首公有领域节奏型 BGM**（`"bgm": ["builtin:forward-drive", "builtin:city-groove", "builtin:focus-minimal", "builtin:bright-step", "builtin:calm-tech"]`）与 **27 款专业真实动作音效**（`kit/assets/sfx/`），三联幕布用快门，暗场重锤用低音冲击，办公反例用木质锁定声或公文拍击声，翻页和镜头推拉各配专用拟音，擦除用掠过声，卡片用三档微音高，输入与回焦各用独立提示音，支持重点句 `music_drops` 停顿留白。
+1. **标题与正文一个承诺。** 标题说“省 PPT 会员”，全片就讲 PPT；要讲 PPT、短片和封面，标题就写出这三样。先过 `packaging` 关再写分镜。
+2. **口播只讲观众能照做的事。** 截图等几秒、临时目录、字段怎么填、渲染进程数都是制作端细节，一律不念。
+3. **骂丑就放丑。** 每句说难看、模板感、翻车的口播，同镜必须出现真实的难看原件或默认直出画面，用 `split_wipe_compare`、`prompt_iter_workbench` 或 `literal_action_stage` 做前后反差。
+4. **实操用提示词迭代台，不用黑底终端。** 讲工具用法时优先 `prompt_iter_workbench`：顶部大白话提示词胶囊逐拍落位，`16:9` 零裁边展示「↺ 默认直出」，到 `iter_at` 换成「✦ 加词精修后」，再推近接下一镜全屏交互。终端只留安装那一下，且放在第一分钟之后。
+5. **素材先外采再自造。** 每期先跑 `harvest-showcase-media.sh --rank-highlights` 抓官网、论文项目页、公开演示原片，`collect-entity.sh` 取标志与 README 演示，`capture-web.mjs` 录官网；本地自造页面只补缺口，同一套页面不许换名字反复播。
 
-目标每镜 4–6 秒，全片均值 ≤ 6.5 秒。满屏占实录时长至少 70%，斜框占全片至多 15%，带框镜头不能相邻。多贴图与视频墙配方均使用独立 3D 空间运动并通过 v14 审计；平面静态拼贴仍会拦截。
+叙事走三步：① 普通人真痛点 + 反常识钩子，开场用 `triptych_curtain` 三列成品幕布或 `editorial_punch` 无框结论大字；② 一棵傻瓜选型树当主线，`progressive_sim_cards` 立住体感优势，`logo_bento_stage` 按交付对象并列工具（`expected_items` 核对数量），实际步骤才用 `step_tree_focus`；③ 字到画到，子卡片 `at` 绑死词级时间戳，`0.18s` 急停落定。严禁虚构发布会路演或“第 1 个工具…第 5 个工具”报菜名。
+
+## 多卡与跨镜衔接（v15.0）
+
+- `progressive_sim_cards` 不写 `board`：所有 `stage_look` 下都是首卡居中弹簧跃出、后续卡片按词级 `at` 依次推开落位。`board` 开关（三框自开场全在位）只留给确需静态对照的个别镜头，不作默认。
+- 传入 `16:9` 横屏媒体且 `zoom == 1` 时面板按 `16:9` 原画幅零裁边展示，严禁把横屏 PPT 或网页塞进窄竖框 `object-fit: cover` 裁切。要看局部用 `zoom` 与百分比 `focus_x/focus_y`。
+- 多卡总览下一镜接某张卡的全屏实操或成品时，填 `"exit_zoom_index": 1`（目标卡下标）与可选 `"exit_zoom_at"`（默认镜末前 `0.48s`），镜头点中目标卡并推近撑满 `1920×1080` 接下一镜，禁止生硬直切。`perspective_video_fan` 用 `"exit_zoom": true` + `"exit_zoom_at"` 推近 `focus_index` 焦点卡。
+- 看板的 `cards[].pages: [{source,at}]` 在同一帧切换画面并配翻页声。大字用 `words[].line` 或 `editorial_punch.lines` 分两行。
+
+```json
+{"stage_mode":"hyperframes_block","spatial_spec":{"recipe":"prompt_iter_workbench","stage_look":"swiss_paper","data":{
+  "heading":"一句话提示词改出发布会质感",
+  "prompt_chips":[{"role":"主体","text":"深色科技新品演示页","at":0.15},{"role":"版式","text":"+ Bento 网格与大字数据卡","at":1.1},{"role":"约束","text":"+ 禁紫粉渐变模板感","at":2.0}],
+  "before_source":"media/raw-v1.mp4","after_source":"media/polished-v2.mp4",
+  "before_label":"↺ 默认直出","after_label":"✦ 加词精修后","iter_at":2.6,"exit_zoom_after":true,"exit_zoom_at":4.9}}}
+```
 
 ## 制片入口
 
-0. **定题与破圈包装（动笔前必做）。** 未定题或冷启动选品时，按 [破圈选题与包装铁律](references/00-破圈选题与包装铁律.md) 执行「小号高倍黑马库 × 本人真实底牌库 × 第 1 秒视觉炸场度」三圈交叉筛选，用五维提案卡供拍板。**先定高点击标题与封面构图，第 0–5 秒直接甩最终惊艳成品立住信任。**
-1. **五拍拆稿定证据。** 依[本机 Skill 协同表](references/01-高留存叙事与三态画面铁律.md#本机-skill-协同表)用 hyperframes-creative 排证据顺序、humanizer-zh 审口播、cheat-score 查钩子。动效与物理接力优先直接填写 v14.0 内建 `spatial_spec`（13 套空间配方）与 `onetake_spec`（7 套快门配方）。每句注明要证明的事实、实际画面主体、语义绑定和首字锚点。
-2. **按主体找素材与代码造画。** 以下入口均在 `kit/scripts/`，保留素材来源和可复查的时间窗。
-   - 本机实操用 `rec-demo.sh` 或常驻录屏师，保留连续操作。
-   - 公开网页、文档与开源仓库用 `record-web-cam.sh` 录制深色高倍率画面。
-   - 学术论文主页（`*.github.io`）、官方发布站与公开演示帖的一手高清 `.mp4` 原片用 `harvest-showcase-media.sh` 无损抓取并自动筛出 4.5s 高光切片（竖片/方片自动 `blur_dark` 同源暗底；可直接喂入 `perspective_video_fan`、`split_wipe_compare`、`progressive_sim_cards` 与 `formula_pill_chain`！）；品牌标志与页面档案用 `collect-entity.sh`。
-   - `image2` + `cutout.sh` 生产独立剪纸/壁画高光资产，喂入 `cutout_parallax_stage` 与 `documentary_ken_burns`。
-   - 往期成片或长录屏用 `scout-video-scenes.sh long.mp4 --output scout` 筛选选段。
-   - 具象实物特写和人物抠像分别用 `find-media.sh`、`people-add.sh`。
-   - 原片拆解评论使用 `reference_breakdown`，原片静音，明确频道署名和实测切点。
-3. **配音并验帧。** 执行 `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`。默认 `long_paragraph` 优先 65–115 字、最多 5 句，`natural_v7` 保留呼吸。清单写好后运行 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify`，按首、中、尾帧逐镜核对台词及因果顺序。
-4. **装配与审片。**
-   - 需要连续光学变形、前后擦除（`split_wipe_compare`）或 8fps 手绘/Riso（`handdrawn_sketch_stage`）的镜头用 `onetake_clip`。
-   - 多视频 3D 墙（`perspective_video_fan`）、Bento 拼装（`logo_bento_stage`）、剪纸视差（`cutout_parallax_stage`）、纪录片解剖（`documentary_ken_burns`）、工作流焦点树（`step_tree_focus`）、渐进装置卡（`progressive_sim_cards`）和因果胶囊链（`formula_pill_chain`）用 `hyperframes_block`。
-   - 实录优先用 `fullbleed_rig` 满屏跟焦。
-   - 执行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 装片（默认 2 个低优先级进程，`--draft` 快速试片）。最后执行 `kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
-5. **封面与打包。** 用 `kit/scripts/thumbnail.sh --project . --title "标题" --summary "内容摘要"` 走 `image2` 原生直出 3 张候选与联系表，`--select` 导出 `< 2 MB` 高清 JPG 并入账。 使用 `--hook` 与可选的 `--badge` 控制整张图最多 10 个汉字或词组，以 168px 手机预览选定实物反差最清楚的一张。
+0. **定题与包装。** 按[破圈选题与包装](references/00-破圈选题与包装铁律.md)三圈交叉选题、五维提案卡拍板，写好 `packaging.json`。封面用 `kit/scripts/thumbnail.sh --project . --title "标题" --summary "摘要" --archetype diverse` 一次出 3 张不同构图候选（`treasure_fan` 多成果 3D 扇形、`versus_shock` 丑稿对惊艳、`power_desk` 一句话指令驱动成果台）。**运行 `precheck-episode.sh --stage packaging`，过关才写分镜。**
+1. **五拍拆稿。** 依[本机 Skill 协同表](references/01-高留存叙事与三态画面铁律.md#本机-skill-协同表)用 hyperframes-creative 排证据、humanizer-zh 审口播、cheat-score 查钩子。剧本第 3 列写清每幕画面，痛点幕写明反例原件。**运行 `--stage script`，过关才配音。**
+2. **素材与造画。** 入口均在 `kit/scripts/`，全部登记 `asset-ledger.jsonl`：
+   - `harvest-showcase-media.sh --rank-highlights` 抓 `*.github.io`、官网、公开演示的高清 `.mp4`，自动切 4.5s 高光（非 16:9 自动 `blur_dark` 同源暗底）；`collect-entity.sh` 取标志与 README 演示；`capture-web.mjs` / `record-web-cam.sh` 录公开网页。
+   - `rec-demo.sh` 录本机连续实操；`image2` + `cutout.sh` 造剪纸与壁画，喂 `cutout_parallax_stage`、`documentary_ken_burns`；`scout-video-scenes.sh long.mp4 --output scout` 从长片挑段；`find-media.sh`、`people-add.sh` 取实物与人物。
+   - **运行 `--stage assets`，过关才装片。**
+3. **配音并验帧。** `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`（可用 `--tts-model` 换云端开源语音底座），`natural_v7` 拦截句内无标点停顿超 165ms、词内能量塌陷 ≥ 16dB（110–260ms）与句中拖音，异常分段自动换 seed 重抽最多 3 轮。清单写好后跑 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify` 逐镜核对首中尾帧。
+4. **装配与审片。** `kit/scripts/assemble-episode.sh episode-manifest.json --output out`（默认 2 个低优先级进程，`--draft` 快速试片），再跑 `kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
+5. **封面定稿。** `thumbnail.sh --select` 导出 `< 2 MB` JPG 并入账。钩子加可选数字胶囊合计 ≤ 10 个汉字或词组，右下角 `x>78%, y>80%` 留给时长，按 168px 手机预览挑最清楚的一张。
 
-## 反简陋 PPT 铁律
+## 视觉路由
 
-| 镜头任务 | 视觉路由（详见 [双擎高阶视觉路由](references/10-双擎高阶视觉路由.md)） |
+| 镜头任务 | 路由（详见[双擎高阶视觉路由](references/10-双擎高阶视觉路由.md)） |
 | --- | --- |
-| 需要连续变形、激光擦除对比、2×2 竞速或手绘线沸 | `onetake_clip`：`split_wipe_compare`、`handdrawn_sketch_stage`、`duplicate_laser_sweep`、`bitmap_lock_glitch`、`energy_roadmap_dive`、`live_control_sync`、`capsule_archive_seal`（默认 180° 真实快门积分）。 |
-| 多视频 3D 阵、剪纸视差、古画拆卡、焦点树与渐进对比卡 | `hyperframes_block`：`perspective_video_fan`、`logo_bento_stage`、`cutout_parallax_stage`、`documentary_ken_burns`、`step_tree_focus`、`progressive_sim_cards`、`formula_pill_chain`、`carousel_3d_select`、`layer_explode_3d`、`roadmap_thread_camera`、`literal_action_stage`。 |
-| 真实网页与录屏实证（目标占全片 ≥ 50%） | `fullbleed_rig` / `callout_rig` 配合 `focus_push` 或分段 `camera_moves`。 |
+| 连续变形、前后擦除、竞速、手绘线沸 | `onetake_clip`：`split_wipe_compare`、`handdrawn_sketch_stage`、`duplicate_laser_sweep`、`bitmap_lock_glitch`、`energy_roadmap_dive`、`live_control_sync`、`capsule_archive_seal`（默认 180° 快门积分） |
+| 提示词迭代、多视频 3D 阵、剪纸视差、焦点树、渐进卡 | `hyperframes_block`：`prompt_iter_workbench`、`triptych_curtain`、`kinetic_title_bridge`、`perspective_video_fan`、`logo_bento_stage`、`cutout_parallax_stage`、`documentary_ken_burns`、`step_tree_focus`、`progressive_sim_cards`、`formula_pill_chain`、`carousel_3d_select`、`layer_explode_3d`、`roadmap_thread_camera`、`literal_action_stage` |
+| 真实网页与录屏实证 | `fullbleed_rig` / `callout_rig` 配 `focus_push` 或分段 `camera_moves` |
 
-新片直接在 `episode-manifest.json` 填 `spatial_spec` 或 `onetake_spec`，引用本地真实截图或 `.mp4/.webm` 视频。`sample-spatial-frames.cjs` 采样时自动 seek `<video>` 并等待 `seeked`；Onetake 构建期自动预解 24fps 确定性帧序列，彻底杜绝闪黑与死截图。
+目标每镜 4–6 秒，全片均值 ≤ 6.5 秒；满屏占实录时长 ≥ 70%，斜框 ≤ 全片 15%，带框镜头不相邻。亮场桥 `kinetic_title_bridge` 用 1.2–1.8 秒、按口播触发的 `words: [{text, at}]` 与 `underline_at`。三联幕布每次三条不同视频，85 秒内最多两次。
 
 ## episode-manifest.json
 
-所有时间用秒。镜头 `start`、`end`、旁白 `at` 和 `firstCharTime` 以全片起点为零。`overlays[].at` 是镜内相对时间。素材路径相对清单解析。
-
-用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成 30 fps 分镜草稿（轮换 HyperFrames v14 空间配方、Onetake v14 过程配方和满屏实录）。清单和单镜可设 `theme` 为 `pine`、`obsidian`、`aurora_indigo`、`paper_cool` 或 `paper_warm`，并按作品展示或方法拆解选择 `stage_look`。
-
-`gsap` 是可选覆盖项，省略时自动发现本机 GSAP。
+时间单位为秒，镜头 `start`、`end`、旁白 `at` 和 `firstCharTime` 以全片起点为零，`overlays[].at` 为镜内相对时间，素材路径相对清单。`kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成 30fps 分镜草稿。清单声明 `episode_kind: "tool_tutorial"`，每镜填 `case_tag`，并以 `semantic_alignment` 引用逐镜台账（`shot_id, start, end, quote, evidence, case_tag`）；同镜并列多个作品用 `case_windows: [{tag,start,end}]`，单一作品占比不超过 30%。
 
 ```json
-{
-  "title": "实操样片",
-  "filename": "episode",
-  "voice_manifest": "voice/voice-manifest.json",
-  "shots": [
-    {
-      "id": "fan-open",
-      "act": "act-1",
-      "anchor_cue_id": "0-1",
-      "start": 0,
-      "end": 5,
-      "stage_mode": "hyperframes_block",
-      "spatial_spec": {
-        "recipe": "perspective_video_fan",
-        "data": {
-          "badge": "✦ 修改后",
-          "items": [
-            {"source": "media/demo-1.mp4", "label": "01 · 3D 视窗"},
-            {"source": "media/demo-2.mp4", "label": "02 · 物理弹簧"},
-            {"source": "media/demo-3.mp4", "label": "03 · 核心高光"}
-          ],
-          "focus_index": 2,
-          "focus_at": 2.2
-        }
-      },
-      "spoken_topic": "先看重制后的多组真实动效成品",
-      "visual_subject": "多卡片 3D 扇形动态视频墙",
-      "semantic_tags": ["动效", "修改后对比"],
-      "semantic_binding": "conceptual_explainer"
-    }
-  ]
-}
+{"id":"fan-open","act":"act-1","anchor_cue_id":"0-1","start":0,"end":5,"stage_mode":"hyperframes_block",
+ "spatial_spec":{"recipe":"perspective_video_fan","data":{"badge":"✦ 修改后",
+   "items":[{"source":"media/demo-1.mp4","label":"01 · 3D 视窗"},{"source":"media/demo-2.mp4","label":"02 · 物理弹簧"},{"source":"media/demo-3.mp4","label":"03 · 核心高光"}],
+   "focus_index":2,"focus_at":2.2,"exit_zoom":true}},
+ "spoken_topic":"先看重制后的多组真实动效成品","visual_subject":"多卡片 3D 扇形动态视频墙",
+ "semantic_tags":["动效","修改后对比"],"semantic_binding":"conceptual_explainer"}
 ```
 
-- 音频与人声轨、字幕 `captions`、实录框 `callout_rig` / `fullbleed_rig`、`triptych_cards`、`evidence_spotlight`、`reference_breakdown` 与 `studio_ui` 字段契约保持向下兼容。
-- 轻量化浅底舞台（`editorial_paper`、`scroll_paper`、`pencil_watercolor`、`paper` / `tabletop` / `riso` / `ember`）装配时自动登记 `light_zones`，字幕自动切为烟熏深底白字胶囊保证对比度。
+音频与人声轨、`captions`、`callout_rig` / `fullbleed_rig`、`triptych_cards`、`evidence_spotlight`、`reference_breakdown`、`studio_ui` 字段保持向下兼容；浅底舞台自动登记 `light_zones` 并切深底白字胶囊字幕。录屏入口记录实际点击、键入、拖动和翻页，镜头内用 `interactions: [{action, at}]` 标注可见动作。新脚手架的 `review_pack` 随组装导出全镜头图墙、480p 有声版与两段无字幕盲审片。
 
-## 应用与审计
+## 声音与审计
 
-- `natural_v7` 保留自然呼吸；`EpisodeAudioMixer` 校准 −14.5 ± 0.8 LUFS、真峰值 ≤ −1.0 dBTP。
-- `audit-v3.sh --v10` 统一执行双调性一致性校验、合规短题/文物角标放行、标题与主体 30fps 防碰撞检查、三态与双擎占比校验、`vframes_*` 单视频归并去重、OCR 防泄露与声学母带验收。
-- 实测数字保留可核对底账，严禁公开屏幕出现私人本机路径、用户名、邮箱或凭据。
+- 内置 5 首公有领域节奏型 BGM（`builtin:forward-drive`、`city-groove`、`focus-minimal`、`bright-step`、`calm-tech`）与 27 款真实动作音效（`kit/assets/sfx/`），点中推近自动配点击加推拉声，支持 `music_drops` 留白。`EpisodeAudioMixer` 校准 −14.5 ± 0.8 LUFS、真峰值 ≤ −1.0 dBTP。
+- `audit-v3.sh --v10` 新增 `aspect_crop_integrity_gate`（无 `zoom > 1.05` 声明却被裁掉超过 12% 判 `excessive_aspect_crop`）、视频帧级 `cross_stage_asset_dedup_gate`（同一视觉模板跨镜 > 2 次拦截，可登记一次 `callback_of`）与 `external_showcase_diversity_gate`（90 秒以上教程独立画面簇 ≥ max(6, ⌈时长/30⌉) 且含多源外采）。完整门禁见[审片门禁](references/review-gates.md)。
+- 精修参考音用 `./install.sh --configure-voice 参考音.wav 原文.txt` 保存，换机私下复制 `~/.config/yice-youtube-video/`。公开画面严禁出现私人路径、用户名、邮箱或凭据。
 
-相关参考见 [一手高光素材与代码造画母法](references/02-一手高光素材与代码造画母法.md)、[双擎高阶视觉路由](references/10-双擎高阶视觉路由.md)、[配音规则](references/voice.md)、[导演层](references/director-layer.md) 和 [审片门禁](references/review-gates.md)。
-
-影院暗场展示成品和对比，瑞士亮场承接分类与方法。主脑交片前关字幕、有声连看全章。逐项确认反例与真实操作看得懂、口播数量与同屏成品一致、没有连续三秒的死镜、前六十秒不出现终端、字幕带不压核心文字、每种声音都对应可见动作。 [交片审计](references/review-gates.md)
+主脑交片前关字幕、有声连看全章：反例与真实操作看得懂、口播数量与同屏成品一致、没有连续三秒的死镜、前六十秒不出现终端、字幕带不压核心文字、每种声音都对应可见动作。相关参考：[配音](references/voice.md)、[导演层](references/director-layer.md)、[素材采集](references/media-acquisition.md)。

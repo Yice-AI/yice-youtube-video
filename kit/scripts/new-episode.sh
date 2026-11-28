@@ -43,7 +43,11 @@ config['id'] = ep
 if not (project / 'episode.json').exists():
     (project / 'episode.json').write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
 copy_missing(project / 'beats.example.json', project / 'beats.json')
-copy_missing(project / 'episode-manifest.example.json',project / 'episode-manifest.json')
+manifest = project / 'episode-manifest.json'
+if not manifest.exists():
+    draft = json.loads((project / 'episode-manifest.example.json').read_text())
+    draft['version'] = 'v15.0'
+    manifest.write_text(json.dumps(draft, ensure_ascii=False, indent=2) + '\n')
 scripts = shlex.quote(str(kit/'scripts'))
 steps = [
     f'{scripts}/record-web-cam.sh --project . --url "$PUBLIC_URL" --id shot-a --seconds 7',

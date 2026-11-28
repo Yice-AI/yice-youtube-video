@@ -6,6 +6,8 @@ import math
 from pathlib import Path
 import re
 import shutil
+import subprocess
+from functools import lru_cache
 
 HERE = Path(__file__).parent
 IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.webp', '.svg'}
@@ -14,7 +16,7 @@ RECIPES = (
     'carousel_3d_select', 'layer_explode_3d', 'roadmap_thread_camera', 'literal_action_stage',
     'perspective_video_fan', 'logo_bento_stage', 'cutout_parallax_stage',
     'documentary_ken_burns', 'step_tree_focus', 'progressive_sim_cards', 'formula_pill_chain',
-    'kinetic_title_bridge', 'triptych_curtain',
+    'kinetic_title_bridge', 'triptych_curtain', 'prompt_iter_workbench',
 )
 ACTIONS = ('bad_slides_pileup', 'dead_image_locked', 'slot_lock_fill', 'folder_pack_outro')
 LIGHT_LOOKS = {'editorial_paper', 'scroll_paper', 'swiss_paper'}
@@ -64,7 +66,7 @@ def _default_look(recipe, data):
         return explicit
     if recipe == 'cutout_parallax_stage':
         return 'scroll_paper'
-    if recipe == 'kinetic_title_bridge':
+    if recipe in ('kinetic_title_bridge', 'prompt_iter_workbench'):
         return 'swiss_paper'
     if recipe == 'triptych_curtain':
         return 'cinema_black'
@@ -113,35 +115,46 @@ def build(spec, source_dir, output, gsap):
     def picture(source):
         return media_asset(source, allow_video=False)[0]
 
-    def _is_non_widescreen_raster(path):
-        if path.suffix.lower() not in {'.png', '.jpg', '.jpeg', '.webp'}:
-            return False
+    @lru_cache(maxsize=None)
+    def media_aspect(path):
         try:
-            from PIL import Image
-            with Image.open(path) as opened:
-                w, h = opened.size
-            return h > 0 and not (1.28 <= (w / h) <= 2.05)
-        except Exception:
-            return False
+            if path.suffix.lower() in VIDEO_EXTS:
+                probe = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                    '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', str(path)],
+                    capture_output=True, text=True, check=True)
+                w, h = map(int, probe.stdout.strip().split('x'))
+            else:
+                from PIL import Image
+                with Image.open(path) as image:
+                    w, h = image.size
+            return w / h
+        except (OSError, ValueError, subprocess.SubprocessError, ImportError):
+            return None
 
-    def media_tag(source, *, cls='', style='', loop=False):
+    def media_tag(source, *, cls='', style='', loop=False, zoom=1):
         nonlocal video_counter
         name, is_video = media_asset(source, allow_video=True)
         cls_attr = f' class="{cls}"' if cls else ''
+        attributes = ''
+        ratio = media_aspect(assets[name])
+        if ratio and ratio >= 1.50 and zoom == 1:
+            attributes += ' data-media-aspect="widescreen"'
+        if zoom > 1.05:
+            attributes += ' data-allow-crop="true"'
         if is_video:
             video_counter += 1
             vid_id = f'{ident}-v{video_counter}'
             playback = 'loop ' if loop else ''
-            return (f'<video id="{vid_id}"{cls_attr} src="{name}" {playback}muted playsinline preload="auto" '
+            return (f'<video id="{vid_id}"{cls_attr} src="{name}"{attributes} {playback}muted playsinline preload="auto" '
                     f'data-start="0" data-duration="{duration}" '
                     f'style="width:100%;height:100%;object-fit:cover;{style}"></video>')
         style_attr = f' style="{style}"' if style else ''
-        if _is_non_widescreen_raster(assets[name]):
+        if ratio and not (1.28 <= ratio <= 2.05):
             fg_cls = f'{cls} media-aspect-fg'.strip()
             return (f'<div class="media-aspect-box">'
                     f'<img class="media-aspect-bg" src="{name}" alt="">'
-                    f'<img class="{fg_cls}" src="{name}" alt=""{style_attr}></div>')
-        return f'<img{cls_attr} src="{name}" alt=""{style_attr}>'
+                    f'<img class="{fg_cls}" src="{name}"{attributes} alt=""{style_attr}></div>')
+        return f'<img{cls_attr} src="{name}"{attributes} alt=""{style_attr}>'
 
     def img(source):
         return media_tag(source)
@@ -436,6 +449,8 @@ def build(spec, source_dir, output, gsap):
             number(card.get('at', 0.15 + idx * 0.8), 0, duration - 0.3, '卡片时间')
             kind = card.get('kind', 'live_media')
             if kind == 'race_bars':
+                if card.get('pages'):
+                    raise ValueError('框内翻页需要 live_media 卡片')
                 slow_lbl = label(card.get('slow_label', '视频模型'))
                 fast_lbl = label(card.get('fast_label', '代码'))
                 panel = (
@@ -451,7 +466,10 @@ def build(spec, source_dir, output, gsap):
                 crop = f'transform:scale({zoom});transform-origin:{x}% {y}%' if zoom != 1 else ''
                 if data.get('board'):
                     crop += f';object-position:{x}% {y}%'
-                panel = f'<div class="sim-panel is-media">{media_tag(card["source"], style=crop, loop=True)}</div>'
+                sources = [card['source'], *(page['source'] for page in card.get('pages', []))]
+                wide = any((media_aspect((source_dir / src).resolve()) or 0) >= 1.50 for src in sources)
+                attr = ' data-media-aspect="widescreen"' if wide and zoom == 1 else ''
+                panel = f'<div class="sim-panel is-media"{attr}>{media_tag(card["source"], style=crop, loop=True, zoom=zoom)}</div>'
             pages = []
             last = -1.
             for page in card.get('pages', []):
@@ -459,7 +477,7 @@ def build(spec, source_dir, output, gsap):
                 if at <= last:
                     raise ValueError('框内翻页须按时间递增')
                 last = at
-                pages.append('<div class="sim-page">' + media_tag(page['source'],loop=True) + '</div>')
+                pages.append('<div class="sim-page">' + media_tag(page['source'], style=crop, loop=True, zoom=zoom) + '</div>')
             if pages:
                 panel = panel.removesuffix('</div>') + ''.join(pages) + '</div>'
             if card.get('panel_accents'):
@@ -471,6 +489,22 @@ def build(spec, source_dir, output, gsap):
             cards_html.append(f'<article class="sim-card" data-spatial-subject>{panel}<div class="sim-label">{label(card["label"])}</div></article>')
         row_class = "sim-row board" if data.get("board") else "sim-row"
         body = f'<div class="{row_class}">{"".join(cards_html)}</div>'
+    elif recipe == 'prompt_iter_workbench':
+        chips = items('prompt_chips', 1, 4)
+        data['iter_at'] = number(data.get('iter_at', round(duration * .46, 3)), .18, duration-.2, 'iter_at')
+        captions = []
+        for chip in chips:
+            number(chip['at'], 0, duration-.18, '提示词时间')
+            captions.append(f'<div class="workbench-chip"><b>{label(chip["role"])}</b>{label(chip["text"])}</div>')
+        header_html = (f'<header class="workbench-heading" data-spatial-title data-title-kind="editorial_single">'
+                       f'{label(data["heading"])}</header>') if data.get('heading') else ''
+        frames = []
+        for side in ('before', 'after'):
+            frames.append(f'<div class="workbench-frame {side}" data-spatial-subject>'
+                          f'{media_tag(data[side + "_source"], loop=True)}</div>')
+        badge = (f'<b class="workbench-label" data-after="{label(data.get("after_label", "✦ 加词精修后"))}">'
+                 f'{label(data.get("before_label", "↺ 默认直出"))}</b>')
+        body = f'<div class="workbench-chips">{"".join(captions)}</div>' + ''.join(frames) + badge
     elif recipe == 'formula_pill_chain':
         reveal_at = number(data.get('reveal_at', round(duration * 0.35, 3)), 0.15, duration - 0.35, 'reveal_at')
         data['reveal_at'] = reveal_at
@@ -521,6 +555,16 @@ def build(spec, source_dir, output, gsap):
         'focal_to', 'split_at', 'branches', 'focus_sequence', 'reveal_at',
         'card_aspect', 'punch_at', 'words', 'underline_at', 'board',
     )
+    if 'exit_zoom_index' in data:
+        idx = data['exit_zoom_index']
+        if recipe != 'progressive_sim_cards' or type(idx) is not int or not 0 <= idx < len(cards):
+            raise ValueError('exit_zoom_index 超出卡片范围')
+    if 'exit_zoom_index' in data or data.get('exit_zoom') or data.get('exit_zoom_after'):
+        tail = .46 if recipe == 'prompt_iter_workbench' else .48
+        data['exit_zoom_at'] = number(data.get('exit_zoom_at', round(duration-tail, 3)), .3, duration-.22, 'exit_zoom_at')
+        if recipe == 'prompt_iter_workbench' and data['exit_zoom_at'] < data['iter_at'] + .18:
+            raise ValueError('exit_zoom_at 须在对比切换后')
+    keep_keys += ('exit_zoom_index', 'exit_zoom_at', 'exit_zoom', 'exit_zoom_after', 'prompt_chips', 'iter_at')
     settings_data = {key: data[key] for key in keep_keys if key in data}
     if 'modules' in data:
         clean_mods = []

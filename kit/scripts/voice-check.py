@@ -31,9 +31,9 @@ NATURAL_V7 = {
     'comma_pause_ms': [0., 950.],
     'contrast_pause_ms': [0., 1250.],
     'sentence_pause_ms': [0., 1250.],
-    'nonpunct_pause_max_ms': 340.,
-    'intra_word_drop_db': 28.,
-    'intra_word_min_ms': 230.,
+    'nonpunct_pause_max_ms': 165.,
+    'intra_word_drop_db': 16.,
+    'intra_word_min_ms': 105.,
 }
 
 
@@ -121,7 +121,7 @@ def threshold_arguments(args):
         if not all(np.isfinite(v) and v >= 0 for v in items):
             raise ValueError('Thresholds must be finite and nonnegative')
         if isinstance(value, list) and (value[1] <= 0 or value[0] > value[1] or
-                                        (value[0] == 0 and name != 'comma_pause_ms')):
+                                        (value[0] == 0 and profile != 'natural_v7' and name != 'comma_pause_ms')):
             raise ValueError('Only ordinary commas allow a zero minimum pause')
     if min(values['single_character_N'], values['active_character_N'], values['onset_character_N'], -values['falling_end_st']) <= 0:
         raise ValueError('Duration ratios and fall threshold must be positive')
@@ -271,6 +271,10 @@ def measure(path, alignment, cache=None, thresholds=None):
         gaps = [(a, b) for a, b in quiet if b > lo and a < hi and a >= left['e'] - .09
                 and (abs(a - left['e']) <= .14 or abs(b - right['s']) <= .14
                      or left['e'] <= a <= right['e'])]
+        if (thresholds or {}).get('profile') == 'natural_v7' and kind == 'none':
+            # Silence extending beyond the next syllable belongs to a later
+            # boundary (often the end of the sentence).
+            gaps = [(a, b) for a, b in gaps if b <= right['e']]
         gap = max(gaps, key=lambda ab: ab[1] - ab[0], default=None)
         duration = (gap[1] - gap[0]) * 1000 if gap else 0.
         boundaries.append(dict(index=i, char_boundary=left['charEnd'], left=left['w'],
@@ -299,10 +303,11 @@ def measure(path, alignment, cache=None, thresholds=None):
                 relative_quiet_threshold_dbfs=round(threshold, 3),
                 absolute_silence_45db=absolute, relative_quiet=quiet,
                 db=np.asarray(ac['db']).tolist(),
+                voiced_hz=np.where(ac['voiced'], np.nan_to_num(ac['f0']), 0).round().astype(int).tolist(),
                 characters=chars, boundaries=boundaries,
                 sentences=[dict(start=a, end=b, text=s) for a, b, s in sranges],
                 chunk_seams=alignment.get('chunk_seams', []),
-                measurement_version=4, duplicate_boundary_attributions_suppressed=suppressed,
+                measurement_version=5, duplicate_boundary_attributions_suppressed=suppressed,
                 method='Whisper word alignment; multi-character words evenly apportioned; '
                        'raw-to-post mapping follows exact edits; pYIN 60–450Hz/10ms hop; '
                        'relative low-energy pauses may be audible, not digital silence.')
@@ -359,6 +364,20 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
                                   deviation=round(deviation, 3)))
     times = np.arange(len(envelope)) * HOP
     seen_valleys = set()
+    pitch_track = np.asarray(d.get('voiced_hz', []))
+    def inside_voiced_syllable(first, last, pair):
+        for syllable in pair:
+            start, end = round(syllable['s']/HOP), round(syllable['e']/HOP)
+            if first-start < 2 or end-last < 2:
+                continue
+            before = pitch_track[max(start, first-6):first]
+            after = pitch_track[last:min(end, last+6)]
+            before, after = before[before>0], after[after>0]
+            if len(before)>=2 and len(after)>=2:
+                shift = 12*np.log2(np.median(after)/np.median(before))
+                if abs(shift) <= thresholds['seam_pitch_st']:
+                    return True
+        return False
     for b in d['boundaries']:
         i = b['index']
         left, right = chars[i], chars[i + 1]
@@ -369,6 +388,10 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
             duration = b['pause_ms']
             fall = left['f0_change_st']
             reasons = []
+            if natural and duration >= 115.0 and ratio >= 1.85:
+                reasons.append('low_energy_plus_long_onset')
+            if natural and b.get('asr_gap_ms', 0) >= 180.0 and duration >= 95.0:
+                reasons.append('aligned_nonpunct_break')
             if not natural and duration >= thresholds['nonpunct_low_energy_min_ms'] and ratio >= thresholds['onset_character_N']:
                 reasons.append('low_energy_plus_long_onset')
             if not natural and fall is not None and fall <= thresholds['falling_end_st'] and duration >= thresholds['nonpunct_low_energy_min_ms'] and left['duration_ms'] / median >= thresholds['onset_character_N']:
@@ -413,6 +436,15 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
                 if (interval in seen_valleys or not thresholds['intra_word_min_ms']
                         <= duration_ms <= thresholds['intra_word_max_ms']):
                     continue
+                if natural and len(pitch_track):
+                    # A consonant closure or a gap between unrelated syllables
+                    # also drops in level. Verify vocal continuity on both sides,
+                    # or a real aligned breath at this same acoustic interval.
+                    quiet = b.get('pause_interval')
+                    aligned_break = (quiet and b.get('asr_gap_ms', 0)>0 and
+                                     quiet[0] < interval[1]*HOP and quiet[1] > interval[0]*HOP)
+                    if not aligned_break and not inside_voiced_syllable(*interval, (left, right)):
+                        continue
                 seen_valleys.add(interval)
                 flags.append(dict(kind='intra_word_stutter', index=i, sentence=right['sentence'],
                                   char_start=left['charStart'], char_end=right['charEnd'],

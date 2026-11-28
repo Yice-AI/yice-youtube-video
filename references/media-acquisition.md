@@ -1,6 +1,8 @@
-# 素材采集（v14.0）
+# 素材采集（v15.0）
 
 先说明画面要证明什么，再找素材。需求单可用 `kit/template/asset-needs.example.md` 规划，用同目录 JSON 模板驱动批量网页采集。每项写清：论点、素材类型、候选 URL、截取方式（静帧/滚动秒数/高亮原句）、许可和镜头号；采集结果统一原子写入每期 `asset-ledger.jsonl`。文件下载成功不等于该使用方式已获授权。
+
+**外采优先，装片前过第三关。** 每期先跑外部采集再录本地页面；素材备齐后运行 `kit/scripts/precheck-episode.sh --project . --stage assets`，它按画面指纹拦截换名重复的素材（`duplicate_asset_disguise`），要求多工具教程至少 8 组独立画面（`insufficient_visual_clusters`），并要求账本里至少 2 个外部网站、占 25% 以上（`missing_external_showcase`）。账本每条写清 `url`（外部原始地址）与 `sourceType`（如 `harvest-showcase-media`、`collect-entity`、`capture-web`），本机 `127.0.0.1` 页面不算外采。成片阶段 `external_showcase_diversity_gate` 再按成片核对：90 秒以上教程独立画面簇 ≥ max(6, ⌈时长/30⌉) 且含多源外采。
 
 ## 核心采集路线
 
@@ -32,4 +34,5 @@
 - 只截取支撑论点所需的短片段，标明来源；长视频选段先跑 `scout-video-scenes.sh` 自动剔除纯色字卡、跨镜硬切与底部旧烧录字幕。
 - 第三方创作者画面仅用于针对其内容或剪辑的评论拆解（Fair Use），全程静音并在 `reference_breakdown` 或对比卡显式标注 `channel` 署名。
 - 无头采集不复制个人浏览器登录态；遇到登录墙、付费墙或人机验证码如实跳过回报，改用脱敏截图或 `onetake` `UIK` 动态界面重建。
+- 同一套网页或 PPT 不许换文件名反复播放；成片的 `cross_stage_asset_dedup_gate` 会对内嵌视频中帧和版式色彩签名去重，同一视觉模板跨镜超过 2 次（除一次 `callback_of`）直接拦截。
 - 洁净室纪律：迭代 Skill 代码的会话不触碰历史已发布剧集目录；制作新剧集时统一调用 `kit/scripts/` 标准 CLI，不在剧集目录私写一次性拼片脚本绕过门禁。

@@ -624,6 +624,10 @@ def _spatial_sound_marks(sp_spec, span):
                 add('click_soft',at,.31)
             if card.get('kind') == 'race_bars':
                 add('counter_roll' if swiss else 'chime', cat + 0.36, 0.26)
+    elif recipe == 'prompt_iter_workbench':
+        for chip in data['prompt_chips']:
+            add('click_soft', chip['at'])
+        add('page_flip', data.get('iter_at', round(span*.46, 3)))
     elif recipe == 'step_tree_focus':
         for idx, br in enumerate(data.get('branches') or []):
             bat = float(br.get('at', 0.12 + idx * 1.1))
@@ -664,6 +668,11 @@ def _spatial_sound_marks(sp_spec, span):
         add('pop', 0.08, 0.30)
         add('click', span * 0.42, 0.28)
 
+    if 'exit_zoom_index' in data or data.get('exit_zoom') or data.get('exit_zoom_after'):
+        exit_at = data.get('exit_zoom_at', round(span - (.46 if data.get('exit_zoom_after') else .48), 3))
+        cues = [cue for cue in cues if cue[1] not in ('click', 'zoom_swoosh') or abs(cue[0]-exit_at) >= .14]
+        add('click', exit_at, .42)
+        add('zoom_swoosh', exit_at, .60)
     deduped, last_by_kind = [], {}
     for t, kind, gain in sorted(cues):
         if t - last_by_kind.get(kind, -9.0) >= (.035 if recipe=='logo_bento_stage' else .14):
@@ -817,9 +826,9 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
         if recipe_spec:
             row['recipe'] = recipe_spec.get('recipe')
             data = recipe_spec.get('data') or {}
-            if row['recipe'] in {'triptych_curtain','kinetic_title_bridge','progressive_sim_cards','logo_bento_stage','step_tree_focus'}:
+            if row['recipe'] in {'triptych_curtain','kinetic_title_bridge','progressive_sim_cards','prompt_iter_workbench','logo_bento_stage','step_tree_focus'}:
                 action_times = [0.]
-                for group in ('words','cards','modules','branches','focus_sequence'):
+                for group in ('words','cards','modules','branches','focus_sequence','prompt_chips'):
                     for item in data.get(group,[]):
                         if not isinstance(item,dict):
                             continue
@@ -831,11 +840,17 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
                         for child in item.get('children',[]) + item.get('items',[]):
                             if isinstance(child,dict) and 'at' in child:
                                 action_times.append(child['at'])
+                if row['recipe'] == 'prompt_iter_workbench':
+                    action_times.append(data.get('iter_at', round(span*.46, 3)))
                 if 'underline_at' in data:
                     action_times.append(data['underline_at'])
                 if row['recipe']=='step_tree_focus':
                     action_times.extend(max(.03,b['at']-.16) for b in data['branches'][1:] if 'at' in b)
                 row['visual_action_times'] = sorted(set(action_times))
+            if 'exit_zoom_index' in data or data.get('exit_zoom') or data.get('exit_zoom_after'):
+                at = data.get('exit_zoom_at', round(span - (.46 if data.get('exit_zoom_after') else .48), 3))
+                row['camera_action_times'] = [at]
+                row['visual_action_times'] = sorted(set([*row.get('visual_action_times', row.get('beats', [])), at]))
             if row['recipe']=='layer_explode_3d':
                 row['visual_action_times']=[span*.04,data.get('count_at',span*.07),span*.84]
             if 'expected_items' in data:

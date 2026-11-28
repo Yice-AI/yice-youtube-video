@@ -129,12 +129,12 @@ class VoiceCheckTests(unittest.TestCase):
         self.assertFalse(any(a.get("pause_class") == "sentence" for a in result["alerts"]))
 
     def test_natural_v7_tolerates_short_unpunctuated_breath_and_flags_long_pause(self):
-        audio, aligned = self.synth(gaps={1: .20})
+        audio, aligned = self.synth(gaps={1: .08})
         natural = check.check_chapter(audio, aligned, profile="natural_v7")
         kinds = {a["kind"] for a in natural["alerts"]}
         self.assertFalse(kinds & {"hesitation", "intra_word_stutter"})
+        audio, aligned = self.synth(gaps={1: .20})
         self.assertTrue(any("nonpunct_pause" in a.get("reasons", []) for a in self.scan(audio, aligned)["alerts"]))
-        audio, aligned = self.synth(gaps={1: .40})
         natural = check.check_chapter(audio, aligned, profile="natural_v7")
         self.assertTrue(any("nonpunct_pause" in a.get("reasons", []) for a in natural["alerts"]))
 

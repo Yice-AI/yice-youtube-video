@@ -158,7 +158,7 @@ def scaffold(manifest, timing, output, title, captions=None):
         ledger = output.with_name(output.stem+'.semantic-alignment.json')
     if ledger.exists():
         raise FileExistsError(f'画面账本已存在：{ledger}')
-    result = dict(version='v14.0',review_pack=True,episode_kind='tool_tutorial',theme='obsidian',semantic_alignment=ledger.name,
+    result = dict(version='v15.0',review_pack=True,episode_kind='tool_tutorial',theme='obsidian',semantic_alignment=ledger.name,
                   audio=dict(bgm=['builtin:forward-drive','builtin:city-groove','builtin:bright-step'],
                              bgm_cuts=[round(duration*f,3) for f in (1/3,2/3)],crossfade=min(5,duration/12)),
                   title=title,filename='episode',duration=duration,cues=sorted(anchors,key=lambda cue:cue['firstCharTime']),

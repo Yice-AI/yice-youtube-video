@@ -24,7 +24,7 @@ class NewEpisodeTests(unittest.TestCase):
             self.assertEqual((project / 'script.md').read_text(), '已经完成的剧本')
             self.assertTrue((project / 'assets/ref-clips').is_dir())
             manifest = json.loads((project / 'episode-manifest.json').read_text())
-            self.assertEqual(manifest['version'], 'v14.0')
+            self.assertEqual(manifest['version'], 'v15.0')
             self.assertEqual(manifest['shots'][0]['spatial_spec']['recipe'], 'triptych_curtain')
             self.assertTrue((project/manifest['semantic_alignment']).is_file())
             manifest['title'] = '已有标题'

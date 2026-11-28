@@ -1,17 +1,19 @@
-# 一策 YouTube 视频制作 v14.0
+# 一策 YouTube 视频制作 v15.0
 
-把中文深度科技与商业视频的导演方法、素材采集、原速配音、**Onetake + HyperFrames 双擎真动态视频贴图与代码造画**、封面直出与机器审片整合在一套可复现工具链中：**`SKILL.md` 管导演路由与审美铁律，`kit/` 管采集、配音、双擎渲染、混音和成片门禁**。公开仓库只分发方法、代码与离线测试，不放私人录音、成片或凭据。
+把中文深度科技与商业视频的前置三关、导演方法、素材采集、原速配音、**Onetake + HyperFrames 双擎真动态视频贴图与代码造画**、封面直出与机器审片整合在一套可复现工具链中：**`SKILL.md` 管导演路由与审美铁律，`kit/` 管采集、配音、双擎渲染、混音和成片门禁**。公开仓库只分发方法、代码与离线测试，不放私人录音、成片或凭据。
 
 先按[五拍叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)排口播、镜头形态与跨镜承接，再按[一手高光素材与代码造画母法](references/02-一手高光素材与代码造画母法.md)为双擎接入真实 `.mp4` 视频贴图与代码造画配方。
 
-## 核心能力一览（v14.0）
+## 核心能力一览（v15.0）
 
-- **双擎 `.mp4 / .webm` 真动态视频贴图（告别卡片死截图）**。`kit/spatial/block.py` 原生嵌入可寻帧 `<video>` 并在离线采样前自动 seek 等待 `seeked`；`kit/onetake/scene.py` 构建期用 `ffmpeg` 预解 24fps 确定性帧序列并全量预解码，在 180° 快门模糊下实现丝滑无闪黑的动态视频对比与擦除。
-- **影院暗场与瑞士亮场的高阶配方**。HyperFrames 使用 `triptych_curtain` 开场、`kinetic_title_bridge` 划线转场，以及 `perspective_video_fan`（3D 视频扇形墙）、`logo_bento_stage`（Bento 模块拼装）、`cutout_parallax_stage`（剪纸白边三层视差）、`documentary_ken_burns`（2.5D 纪录片推摇 + 一图拆三卡）、`step_tree_focus`（SVG 生长树焦点跳转）、`progressive_sim_cards`（1% vs 100% 渐进装置卡）、`formula_pill_chain`（因果胶囊链）；Onetake 新增 `split_wipe_compare`（中线扫描 / 45° 斜切擦除 / 双栏竞速）与 `handdrawn_sketch_stage`（离线 `sketch_brush.js` 8fps 铅笔水彩 + Riso 半调）。支持 `cyber_glass` 暗黑玻璃与 `editorial_paper` / `scroll_paper` 暖米白画布双母版贯穿全片。
-- **导演×机房锁死审美分工 + 新题三层素材兜底**。顶级模型（Gemini Neon / Claude）担任主脑导演负责定调、挑片、`image2` 提示词、填 20 套成品双擎模具与逐帧目检；Codex 仅做抓片、配音、录屏与温控压片（零自创丑页面）。新题按「① `harvest-showcase-media.sh` 扒 `*.github.io`/官网/X 一手高清 `.mp4` 高光切片 → ② 深色实操录屏 + 生长流程图/进度对比卡 → ③ `image2` 剪纸视差与 2.5D 壁画拆卡代码造画」三层漏斗兜底，彻底杜绝白底滚网页与死截图 PPT。
-- **工具教程三段实拍与六路净屏采集**。0–5 秒展示复杂成品或改前改后对比，跟拍输入命令与 Agent 执行，1080p 满屏多点跟焦验证交互。满屏占实录 ≥ 70%，斜框 ≤ 全片 15%。六路采集脚本覆盖 `*.github.io`/官网一手高光原片猎手（`harvest-showcase-media.sh`）、高倍率深色网页录屏、实体 SVG 提取、横屏图库、长片去重复与 Vision 抠图防撞字。
-- **原速克隆配音、精排字幕与广播级母带**。Kaggle 免费 GPU 原速配音保留自然呼吸，`captions.json` 配合深浅自适应烟熏胶囊字幕（浅底舞台自动切换），BGM 等功率余弦循环与 `-14.5 ± 0.8 LUFS` 校准。
-- **`image2` 封面直出与 `v14` 机器审片**。`thumbnail.sh` 直出 3 张候选与联系表，`audit-v3.sh --v10` 执行双调性一致性、合规短题/文物角标放行、标题防碰撞、双擎动效与声学门禁。
+- **前置三关硬拦截。** `kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|script|assets|all>` 在写分镜、配音和装片前分别拦下温吞说明文标题、标题与正文承诺脱节、口播里的制作端内部细节（批量截图等几秒、临时目录、字段名）、骂丑却不放丑的痛点台词、缺少可照抄提示词的干讲教程，以及换名重复、只有本地自造页面的素材池。
+- **提示词迭代台教实操。** 第 14 套空间配方 `prompt_iter_workbench` 把大白话提示词拆成胶囊逐拍落位，`16:9` 零裁边展示「默认直出 → 加词精修后」，再推近接下一镜全屏交互，取代黑底终端敲命令。
+- **多卡点中推近衔接。** `progressive_sim_cards` 在所有画布下居中弹出再依次推开，横屏素材按原画幅零裁边展示；`exit_zoom_index` / `exit_zoom_at` 点中目标卡推近撑满全屏接下一镜，`perspective_video_fan` 用 `exit_zoom` 推近焦点卡。
+- **双擎 `.mp4 / .webm` 真动态视频贴图。** `kit/spatial/block.py` 嵌入可寻帧 `<video>`，采样前 seek 并等待 `seeked`；`kit/onetake/scene.py` 构建期预解 24fps 确定性帧序列，在 180° 快门模糊下丝滑擦除与竞速。
+- **影院暗场与瑞士亮场。** 作品与对比用暗场，方法与选型切 `swiss_paper`；`triptych_curtain` 开场、`kinetic_title_bridge` 划线转场，配 `perspective_video_fan`、`logo_bento_stage`、`cutout_parallax_stage`、`documentary_ken_burns`、`step_tree_focus`、`formula_pill_chain` 等配方与 Onetake `split_wipe_compare`、`handdrawn_sketch_stage`。
+- **外采优先的三层素材漏斗。** 先用 `harvest-showcase-media.sh` 抓官网、论文项目页和公开演示原片，`collect-entity.sh` 取标志与 README 演示，`capture-web.mjs` 录官网；再录深色实操；最后用 `image2` 剪纸视差与 2.5D 壁画补缺。
+- **原速配音与广播级母带。** Kaggle 免费 GPU 原速配音，`--tts-model` 可换开源语音底座；`natural_v7` 拦截句内 165ms 以上无标点停顿与词内能量塌陷并自动换 seed 重抽；深浅自适应字幕，`-14.5 ± 0.8 LUFS` 校准。
+- **三套高点击封面母版与成片审计。** `thumbnail.sh --archetype diverse` 一次出 `treasure_fan`、`versus_shock`、`power_desk` 三种构图候选；`audit-v3.sh --v10` 新增画幅裁切、视频帧级去重与外采多样性门禁。
 
 ## 在新电脑安装与体检
 
@@ -33,10 +35,10 @@ env -i HOME="$HOME" PATH="$PATH" ./install.sh --check
 
 ## 开新一期标准流程
 
-1. **初始化与母版选型**：运行 `kit/scripts/new-episode.sh ep04` 创建工程，用 `kit/scripts/visual-palette.sh` 选择色板与蓝图，确定整片使用 `cyber_glass` 或 `editorial_paper` 母版。
-2. **配音与分镜草稿**：运行 `kit/scripts/voice.sh script.md --backend kaggle --speed 1.0 --output voice`，再用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成对齐首字时间的 30fps 骨架。
-3. **高光采集、造画与验帧**：按三层素材漏斗运行 `harvest-showcase-media.sh`、`collect-entity.sh`、`record-web-cam.sh`、`find-media.sh` 或 `image2` + `cutout.sh` 备齐真动态 `.mp4`、截图与透明剪纸/壁画素材，由主脑导演填好 `episode-manifest.json`，跑 `scout-video-scenes.sh --verify-manifest` 做首中尾帧与贴图防撞字核验。
-4. **装片、逐帧终审与封面**：运行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out` 导出成片与字幕，执行 `kit/scripts/audit-v3.sh --v10` 机器门禁并由主脑导演逐张目检抽帧图墙，最后用 `kit/scripts/thumbnail.sh` 生成并选定封面。
+1. **定题、包装与第一关**：运行 `kit/scripts/new-episode.sh ep04` 创建工程，写 `packaging.json`（标题、钩子、观众承诺、关键词），`thumbnail.sh --archetype diverse` 出 3 张候选，然后 `kit/scripts/precheck-episode.sh --project . --stage packaging`。
+2. **写稿与第二关**：剧本第 3 列写清每幕画面，痛点幕注明反例原件，实操章写出可照抄的提示词与前后变化；`--stage script` 通过后运行 `kit/scripts/voice.sh script.md --backend kaggle --speed 1.0 --output voice`，再用 `kit/scripts/scaffold-manifest.sh --voice-manifest voice/voice-manifest.json --output episode-manifest.json` 生成 30fps 骨架。
+3. **外采、造画与第三关**：按三层漏斗运行 `harvest-showcase-media.sh`、`collect-entity.sh`、`capture-web.mjs` / `record-web-cam.sh`、`find-media.sh` 或 `image2` + `cutout.sh`，全部登记 `asset-ledger.jsonl`；`--stage assets` 通过后由主脑导演填 `episode-manifest.json`，跑 `scout-video-scenes.sh --verify-manifest` 核对首中尾帧。
+4. **装片、终审与封面**：运行 `kit/scripts/assemble-episode.sh episode-manifest.json --output out`，执行 `kit/scripts/audit-v3.sh --v10` 并由主脑导演逐张目检图墙，最后 `thumbnail.sh --select` 定稿封面。
 
 完整字段契约与路由细则见 [SKILL.md](SKILL.md) 与 [references/10-双擎高阶视觉路由.md](references/10-双擎高阶视觉路由.md)。
 

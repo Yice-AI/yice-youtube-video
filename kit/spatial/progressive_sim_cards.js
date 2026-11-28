@@ -18,7 +18,7 @@ cards.forEach((card, i) => {
     }
   } else tl.fromTo(card,
     { y: 26, z: -40, scale: 0.9, opacity: 0 },
-    { y: 0, z: 0, scale: 1, opacity: 1, duration: 0.2, ease: 'expo.out' },
+    { y: 0, z: 0, scale: 1, opacity: 1, duration: 0.19, ease: 'expo.out' },
     at);
 
   const slowFill = card.querySelector('.sim-bar-fill.is-slow');
@@ -50,7 +50,7 @@ cards.forEach((card, i) => {
 tl.fromTo(cam, { x: 0, y: 4, z: -14, ry: 0 }, { x: 0, y: 0, z: 12, ry: 0, duration: dur, ease: 'sine.out', onUpdate: applyCamera }, 0);
 
 // Keep the revealed evidence centered until the next card needs its column.
-if (root.dataset.stageLook === 'swiss_paper' && !data.board && cards.length > 1) {
+if (!data.board && cards.length > 1) {
   const row = q('.sim-row');
   const shiftFor = i => row.clientWidth / 2 - (cards[0].offsetLeft + cards[i].offsetLeft + cards[i].offsetWidth) / 2;
   tl.set(cards, { x: shiftFor(0) }, 0);
@@ -72,3 +72,8 @@ cards.forEach((card,i) => {
     tl.fromTo(outlines[k], {opacity:1}, {opacity:0,duration:.28,immediateRender:false}, at);
   });
 });
+
+if (Number.isInteger(data.exit_zoom_index)) {
+  const card = cards[data.exit_zoom_index];
+  zoomToFrame(card.querySelector('.sim-panel'), [...cards.filter(c => c !== card), heading, ...all('.sim-label')]);
+}

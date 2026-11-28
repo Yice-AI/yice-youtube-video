@@ -56,3 +56,11 @@ if (punch && typeof data.punch_at === 'number') {
 
 tl.fromTo(q('.fan-badge'), { y: -14, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: 0.2, ease: 'expo.out' }, 0.03);
 tl.fromTo(cam, { x: -24, y: 6, z: -50, ry: 4, rx: -2 }, { x: 0, y: 0, z: 18, ry: 0, rx: 0, duration: Math.min(dur, focusAt + 0.35), ease: 'power3.out', onUpdate: applyCamera }, 0);
+
+if (data.exit_zoom) {
+  const target = fanCards[focusIndex];
+  tl.to(target, {width:640, height:360, padding:0, borderWidth:0, borderRadius:0,
+    duration:dur-data.exit_zoom_at, ease:'power3.inOut'}, data.exit_zoom_at);
+  zoomToFrame(target.querySelector('.fan-card-inner'),
+    [...fanCards.filter((_, i) => i !== focusIndex), ...all('.fan-label,.fan-punch,.fan-badge')]);
+}

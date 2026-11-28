@@ -1,12 +1,12 @@
-# v14.0 导演层与画面路由
+# v15.0 导演层与画面路由
 
 由主脑导演（Gemini Neon / Claude）定作品演示与方法拆解的明暗换场、挑高光素材并填写声明式模具清单；执行机房（Codex）仅负责抓片、配音、录屏与温控渲染，严禁临时手写一次性页面。按旁白首字安排画面，默认输出 `1920×1080`、`30fps`，支持五套主舞台主题（`obsidian`、`aurora_indigo`、`paper_cool`、`paper_warm`、`pine`）以及 `onetake` 六套电影色板或产品截图自动吸色（`look_from_shots`）。核心文字留在 `y < 860`，字幕使用下方安全区，浅底舞台自动切换烟熏深色胶囊字幕。
 
-教程前 5 秒放官方复杂成品或高冲击改前/改后对比，接真实界面动作与可编辑成品，终端实录安排在第一分钟之后，长等待注明倍速。随后用满屏多点推焦拆解真实成品并验证边界。以 4–6 秒一个镜头排台词，全片均值 ≤6.5 秒，满屏占实录 ≥70%，斜框占全片 ≤15%，带框镜不相邻。多贴图与 `.mp4` 真视频墙统一走内建双擎空间配方。
+动笔前过 `precheck-episode.sh` 的包装与剧本两关，装片前过素材关。教程前 5 秒放官方复杂成品或高冲击改前/改后对比，接真实界面动作与可编辑成品；讲工具用法优先 `prompt_iter_workbench`（提示词胶囊 → 默认直出 → 加词精修 → 推近接全屏），终端实录只留安装那一下且安排在第一分钟之后，长等待注明倍速。口播骂丑的地方同镜必须出现真实反例原件。随后用满屏多点推焦拆解真实成品并验证边界。以 4–6 秒一个镜头排台词，全片均值 ≤6.5 秒，满屏占实录 ≥70%，斜框占全片 ≤15%，带框镜不相邻。多贴图与 `.mp4` 真视频墙统一走内建双擎空间配方。
 
 ## 选材、选型与因果核验
 
-1. **三层选材兜底与视觉选型**：① 有公开炫酷演示时优先跑 `kit/scripts/harvest-showcase-media.sh --rank-highlights` 抓 `*.github.io` 论文页/官网/X 一手高清 `.mp4` 切 4.5s 高光（非 16:9 自动 `blur_dark`）；② 界面朴素的工具走深色实操录屏 + `step_tree_focus` / `progressive_sim_cards`；③ 无现成视频的抽象/人文段落走 `image2` + `cutout.sh` 驱动 `cutout_parallax_stage` / `documentary_ken_burns` 或纯代码 `handdrawn_sketch_stage`（详见 [02-一手高光素材与代码造画母法](02-一手高光素材与代码造画母法.md) 与 [10-双擎高阶视觉路由](10-双擎高阶视觉路由.md)）。
+1. **三层选材兜底与视觉选型**（外采优先，素材池须过 `--stage assets`：独立画面 ≥ 8 组、外部来源 ≥ 2 个网站且占 25% 以上）：① 有公开炫酷演示时优先跑 `kit/scripts/harvest-showcase-media.sh --rank-highlights` 抓 `*.github.io` 论文页/官网/X 一手高清 `.mp4` 切 4.5s 高光（非 16:9 自动 `blur_dark`）；② 界面朴素的工具走深色实操录屏 + `step_tree_focus` / `progressive_sim_cards`；③ 无现成视频的抽象/人文段落走 `image2` + `cutout.sh` 驱动 `cutout_parallax_stage` / `documentary_ken_burns` 或纯代码 `handdrawn_sketch_stage`（详见 [02-一手高光素材与代码造画母法](02-一手高光素材与代码造画母法.md) 与 [10-双擎高阶视觉路由](10-双擎高阶视觉路由.md)）。
 2. **七路实证与造画工具**：一手高光原片猎手 `harvest-showcase-media.sh`、本机交互 `rec-demo.sh`、公开深色网页 `record-web-cam.sh` / `capture-web.mjs`、品牌实体与 SVG 标志 `collect-entity.sh`、长片挑镜 `scout-video-scenes.sh`、高清横屏图库与 Vision 抠像 `find-media.sh` / `people-add.sh` / `cutout.sh`、`image2` 美术造画与静音原片评论拆解 `reference_breakdown`。
 3. **装片前验帧**：渲染前运行 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify`，逐镜对照首、中、尾帧和台词因果顺序（如「改前/改后」「挡住/移开」），并自动执行贴图存续期首、中、尾三点 OCR 防撞字检查，确保贴图不遮挡底层画面文字。
 
@@ -17,7 +17,7 @@
 | 舞台 | 用途与核心字段 |
 |---|---|
 | `onetake_clip` | **单主体相机推拉、连续变形与机制高潮**。新镜填 `onetake_spec` 的配方与数据，已有合成可填 `comp`。填 `shutter`（默认 `180`），可选 `look` 或 `look_from_shots`。用 `OM` 物理弹簧/相机跟随/连续变形（Carry）与真实快门动态模糊替代多框文字堆砌。 |
-| `hyperframes_block` | **多阶段架构、3D 卡片阵列、数据流与交互状态推演**。新镜填 `spatial_spec` 直编空间动效，已有项目可填 `composition` 挂载独立子合成（Registry 组件或 Animation 22 套蓝图），自动离线注入 GSAP 与打包字体。 |
+| `hyperframes_block` | **多阶段架构、3D 卡片阵列、提示词迭代台、数据流与交互状态推演**。新镜填 `spatial_spec` 直编空间动效（14 套配方；多卡接单卡全屏用 `exit_zoom_index` / `exit_zoom` 推近），已有项目可填 `composition` 挂载独立子合成（Registry 组件或 Animation 22 套蓝图），自动离线注入 GSAP 与打包字体。 |
 | `callout_rig` / `fullbleed_rig` | **真实网页与实操录屏主力舞台**。填 `source`、`media_start`、`motion`（支持 `focus_push` / `spring_glide` 两段呼吸运镜），默认采用 `fullbleed` 满屏跟焦，暗场视窗只用于单镜强调。 |
 | `evidence_spotlight` | **原文、截图或架构图局部推近检视台**。传网页采集的 `capture_meta` 自动复用原文像素框与来源署名，或显式填 `highlight_box` 与 `highlight_at`。 |
 | `triptych_cards` | **两至四项多格式对照展台**（支持视频、GIF、WebP、PNG、安全 SVG）。现代主题下自动启用圆角毛玻璃立体展台卡与逐卡 `reveal_at` 弹性点亮。 |

@@ -64,7 +64,8 @@ with (base.parents[2]/"calls.jsonl").open("a") as log:
 outputs = []
 font = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
 for i, (bg, accent) in enumerate((("#172d45", "#43d9df"), ("#211542", "#cc9bf5"), ("#283722", "#d4e777")), 1):
-    target = base.with_name(f"candidate-{i}.png")
+    if i != int(base.stem.rsplit("-",1)[1]): continue
+    target = base.with_stem(base.stem+"-1")
     image = Image.new("RGB", (1920,1080), bg)
     draw = ImageDraw.Draw(image)
     draw.ellipse((1100,-120,2060,840), fill=accent)
@@ -79,7 +80,7 @@ for i, (bg, accent) in enumerate((("#172d45", "#43d9df"), ("#211542", "#cc9bf5")
         draw.text((1560,910), "12:34", fill="white", font=ImageFont.truetype(font, 100))
     image.save(target)
     outputs.append({"output":str(target),"width":1920,"height":1080,"model":"fixture","elapsed_seconds":0})
-print(json.dumps({"outputs":outputs,"candidates":3,"attempts":3}))
+print(json.dumps({"outputs":outputs,"candidates":1,"attempts":1}))
 ''', encoding="utf-8")
             entry = [str(SCRIPTS / "thumbnail.sh"), "--project", str(project), "--json"]
             generation = ["--batch", "fixture", "--title", "采集画质", "--summary", "本地验收。",
@@ -89,14 +90,16 @@ print(json.dumps({"outputs":outputs,"candidates":3,"attempts":3}))
             batch = json.loads(result.stdout)
             self.assertEqual((batch["candidates"], batch["attempts"]), (3, 3))
             calls = project / "calls.jsonl"
-            call = json.loads(calls.read_text())
+            logged = [json.loads(line) for line in calls.read_text().splitlines()]
+            self.assertEqual(len(logged), 3)
+            call = logged[0]
             self.assertIn('仅供选择实物题材', call[3])
             self.assertIn('本地验收。', call[3])
             self.assertIn('右下 x>78%、y>80%', call[3])
             self.assertEqual(call, [
                 "--title", "采集画质", "--summary", call[3], "--role", "thumbnail", "--guard", "light",
-                "--thumb-guard", "r_plus", "--candidates", "3",
-                "-o", str(project/"thumbnails/fixture/candidate.png"), "--json",
+                "--thumb-guard", "r_plus", "--candidates", "1",
+                "-o", str(project/"thumbnails/fixture/candidate-1.png"), "--json",
             ])
             invalid = subprocess.run([*entry, '--title','演示评测', '--hook','一二三四五六七八九十多一个字',
                                       '--summary','实际案例', '--image2-script',str(fake)],
@@ -130,7 +133,7 @@ print(json.dumps({"outputs":outputs,"candidates":3,"attempts":3}))
                     self.assertEqual(small.size, (width,height))
             ledger = [json.loads(line) for line in (project/"asset-ledger.jsonl").read_text().splitlines()]
             self.assertEqual([(row["kind"],row["sourceType"]) for row in ledger], [("thumbnail","image2")]*2)
-            self.assertEqual(len(calls.read_text().splitlines()), 1)
+            self.assertEqual(len(calls.read_text().splitlines()), len(logged))
 
     @unittest.skipUnless(PLAYWRIGHT.exists(), "需要本机 Playwright 和 Chrome")
     def test_browser_lazy_scroll_and_native_github_and_site_video(self):

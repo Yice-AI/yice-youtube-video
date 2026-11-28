@@ -2,7 +2,7 @@
 from collections import defaultdict
 import hashlib
 import json
-from math import isfinite
+from math import ceil, isfinite
 from pathlib import Path
 import re
 import subprocess
@@ -824,8 +824,11 @@ def visual_fingerprint(image):
     return difference_hash(content)
 
 
-def cross_stage_asset_dedup_gate(timeline, project, rendered):
+def stage_visuals(timeline, project, rendered):
     from PIL import Image
+    from audit_spatial import page_signature
+    from io import BytesIO
+    cache = {}
     fingerprints, errors = [], []
     project = Path(project)
     for shot in timeline['shots']:
@@ -837,10 +840,34 @@ def cross_stage_asset_dedup_gate(timeline, project, rendered):
             images.update(project/c['source'] for c in cards if Path(c['source']).suffix.lower() in RASTER)
             if mode in {'onetake_clip','hyperframes_block'}:
                 entry = composition_entry_for_audit(shot,project)
-                images.update(composition_material(entry)[1])
+                source, stills = composition_material(entry)
+                images.update(stills)
+                for directory in {p.parent for p in stills if p.parent.name.startswith('vframes_')}:
+                    sequence = sorted(directory.glob('f_*.jpg'))
+                    if sequence:
+                        images.add(sequence[len(sequence)//2])
+                # Source manifests may also name the original input. Only DOM media
+                # links and existing script-referenced assets are part of the composition.
+                video_refs = re.findall(r"""<(?:video|source)\b[^>]*?\bsrc=["']([^"']+)["']""", source, re.I)
+                images.update((entry.parent/ref).resolve() for ref in video_refs
+                              if Path(ref).suffix.lower() in VIDEO_EXTENSIONS)
+                for ref in re.findall(r"""[\w./%+@-]+\.(?:mp4|webm)\b""", source, re.I):
+                    media = entry.parent / ref
+                    if media.is_file():
+                        images.add(media.resolve())
             for path in sorted(images):
-                with path.open('rb') as stream, Image.open(path) as image:
-                    fingerprints.append((key,path.name,hashlib.file_digest(stream,'sha256').hexdigest(),visual_fingerprint(image)))
+                path = path.resolve()
+                if path not in cache:
+                    if path.suffix.lower() in VIDEO_EXTENSIONS:
+                        midpoint = probe_video(path) / 2
+                        cmd = ['ffmpeg','-nostdin','-v','error','-ss',str(midpoint),'-threads','2','-i',str(path),
+                               '-frames:v','1','-vf','scale=320:-1','-threads','1','-c:v','png','-f','image2pipe','-']
+                        stream = BytesIO(subprocess.run(cmd, check=True, capture_output=True).stdout)
+                    else:
+                        stream = path.open('rb')
+                    with stream, Image.open(stream) as image:
+                        cache[path] = page_signature(image)
+                fingerprints.append((key, *cache[path]))
             if mode in REAL or mode in {'triptych_cards','evidence_spotlight','studio_ui'}:
                 videos = [(p,shot.get('media_start',0),0) for p in files if Path(p).suffix.lower() in VIDEO_EXTENSIONS]
                 if cards:
@@ -851,16 +878,24 @@ def cross_stage_asset_dedup_gate(timeline, project, rendered):
                 for video,start,reveal in videos:
                     frame = capture_frame(dict(shot,media_start=start,start=shot['start']+reveal),
                                           project,rendered,(shot_span(shot)-reveal)/2,video)
-                    fingerprints.append((key,Path(video).name if video else 'rendered',None,visual_fingerprint(frame)))
+                    fingerprints.append((key, *page_signature(frame)))
         except (OSError,ValueError,subprocess.SubprocessError) as exc:
             errors.append(dict(shot=key,reason=str(exc)))
+    return fingerprints, errors
+
+
+def cross_stage_asset_dedup_gate(timeline, project, rendered, *, samples=None):
+    import numpy as np
+    fingerprints, errors = samples if samples is not None else stage_visuals(timeline, project, rendered)
     callbacks = {s['id']:s.get('callback_of') for s in timeline['shots']}
     collisions = set()
-    for _,_,sha,perceptual in fingerprints:
+    for _, perceptual, colors in fingerprints:
+        if perceptual is None:
+            continue
         matched = []
-        for key,_,other_sha,other_hash in fingerprints:
-            if ((sha and sha==other_sha) or (perceptual is not None and other_hash is not None
-                                            and (perceptual^other_hash).bit_count()<=5)) and key not in matched:
+        for key, other_hash, other_colors in fingerprints:
+            if (key not in matched and other_hash is not None and
+                    (perceptual ^ other_hash).bit_count() <= 6 and np.abs(colors-other_colors).mean() < 11):
                 matched.append(key)
         if len(matched) > 2:
             valid_callback = any(callbacks[key] in matched[:i] for i,key in enumerate(matched))
@@ -868,6 +903,59 @@ def cross_stage_asset_dedup_gate(timeline, project, rendered):
                 collisions.add(tuple(matched))
     violations = errors + [dict(shots=list(ids),reason='repeated_visual') for ids in sorted(collisions)]
     return dict(ok=not violations,fingerprints=len(fingerprints),violations=violations)
+
+
+def external_showcase_diversity_gate(timeline, project, rendered, duration, *, samples=None):
+    from urllib.parse import urlsplit
+    from ipaddress import ip_address
+    required = timeline.get('episode_kind') == 'tool_tutorial' and duration >= 90
+    clusters, tools, urls, violations = [], set(), set(), []
+    minimum = max(6, ceil(duration / 30)) if required else 0
+    if required:
+        visuals, errors = samples if samples is not None else stage_visuals(timeline, project, rendered)
+        violations.extend(errors)
+        for _, fingerprint, _ in visuals:
+            if fingerprint is not None and all((fingerprint ^ other).bit_count() > 8 for other in clusters):
+                clusters.append(fingerprint)
+        if len(clusters) < minimum:
+            violations.append(dict(reason='insufficient_visual_clusters', minimum=minimum))
+        root = Path(project)
+        ledger = root/'asset-ledger.jsonl'
+        if not ledger.exists() and (root.parent/'episode-manifest.json').exists():
+            ledger = root.parent/'asset-ledger.jsonl'
+        if ledger.is_file():
+            for line in ledger.read_text().splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                    url = next((row[k] for k in ('sourceUrl','source_url','url','prompt_or_url','source') if row.get(k)), '')
+                    address = urlsplit(url)
+                    host = address.hostname or ''
+                    if address.scheme not in ('https','http') or '.' not in host or host.endswith(('.local','.localhost','.test','.invalid')):
+                        continue
+                    try:
+                        if not ip_address(host).is_global:
+                            continue
+                    except ValueError:
+                        pass
+                    tool = Path(row.get('tool') or '').stem
+                    if not tool and row.get('sourceType') == 'web_capture':
+                        tool = 'record-web-cam' if row.get('kind') == 'web_cam_recording' else 'capture-web'
+                    if not tool and row.get('usage') == '正文来源证据' and row.get('sourceName'):
+                        tool = 'collect-entity'
+                    if tool not in ('harvest-showcase-media','collect-entity','capture-web','rec-demo','record-web-cam','find-media'):
+                        continue
+                    if row.get('status') in ('failed','skipped') or not row.get('path') or not (ledger.parent/row['path']).exists():
+                        continue
+                    tools.add(tool)
+                    urls.add(address._replace(fragment='').geturl())
+                except (ValueError, AttributeError, TypeError):
+                    violations.append(dict(reason='invalid_asset_record'))
+            if len(tools) < 2 and len(urls) < 3:
+                violations.append(dict(reason='insufficient_external_sources'))
+    return dict(ok=not violations, required=required, distinct_clusters=len(clusters), minimum=minimum,
+                tools=sorted(tools), external_sources=len(urls), violations=violations)
 
 
 def tutorial_workflow_gate(timeline):
@@ -1183,17 +1271,42 @@ def subtitle_safe_zone_gate(timeline, measured, frames, project=None):
     return dict(ok=not violations,violations=violations)
 
 
+def precheck_narrative_gate(timeline, project, duration):
+    import importlib.util
+    episode_dir = Path(project).resolve().parent
+    script_path = episode_dir / 'script.md'
+    has_packaging = (episode_dir / 'packaging.json').is_file() or (episode_dir / 'packaging.md').is_file()
+    required = bool(script_path.is_file() and (timeline.get('version') == 'v15.0' or has_packaging))
+    if not required:
+        return dict(ok=True, required=False, violations=[])
+    spec = importlib.util.spec_from_file_location('precheck_episode', Path(__file__).with_name('precheck-episode.py'))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    violations = []
+    for stg in ('packaging', 'script'):
+        try:
+            rep = mod.run(episode_dir, stage=stg, require_thumbnails=False)
+            for err in rep['stages'][stg]['errors']:
+                violations.append(dict(stage=stg, code=err['code'], message=err['message']))
+        except Exception as exc:
+            violations.append(dict(stage=stg, code='precheck_error', message=str(exc)))
+    return dict(ok=not violations, required=True, violations=violations)
+
+
 def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
     shots = timeline['shots']
     richness = visual_richness_gate(timeline,project,rendered)
+    samples = stage_visuals(timeline,project,rendered)
     result = dict(pacing_and_rhythm_gate=pacing_and_rhythm_gate(shots,duration),
                   framing_and_variety_gate=framing_and_variety_gate(shots,duration),
                   visual_richness_gate=richness,
                   dual_engine_craft_gate=dual_engine_craft_gate(shots,project,v10=v10),
-                  cross_stage_asset_dedup_gate=cross_stage_asset_dedup_gate(timeline,project,rendered),
+                  cross_stage_asset_dedup_gate=cross_stage_asset_dedup_gate(timeline,project,rendered,samples=samples),
+                  external_showcase_diversity_gate=external_showcase_diversity_gate(timeline,project,rendered,duration,samples=samples),
                   tutorial_workflow_gate=tutorial_workflow_gate(dict(timeline,capture_scores=richness['checked'])))
     if v10:
         from audit_spatial import capture_stage_backgrounds, spatial_frame_gates, spatial_measurements, subpage_repeats, three_mode_symphony_gate
+        result['precheck_narrative_gate'] = precheck_narrative_gate(timeline, project, duration)
         editorial = any('case_tag' in shot or shot.get('stage_look') in {'swiss_paper', 'cinema_black'}
                         or any(o.get('kind') == 'editorial_punch' for o in shot.get('overlays', []))
                         for shot in shots)

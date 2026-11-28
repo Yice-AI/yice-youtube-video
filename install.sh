@@ -159,7 +159,7 @@ hints = {
     '图库配置':'在 ~/.config/yice-video/stock.env 配好 Pexels 或 Pixabay 凭证。',
     '品牌参考音':'检查所用品牌的 voice.json、参考音频实文件及参考文本。',
 }
-print(json.dumps({'repository': str(repo), 'links': links, 'backups': backups, 'config': str(config),
+print(json.dumps({'version': 'v15.0', 'repository': str(repo), 'links': links, 'backups': backups, 'config': str(config),
                   'workspace': str(workspace), 'toolkit': str(toolkit), 'dependencies': checks,
                   'voice_dependencies': voice_dependencies, 'check_only': args.check,
                   'onetake_ready': resolve_onetake(env) is not None,

@@ -306,7 +306,7 @@ def _kaggle_async_batch(base, body, headers, timeout):
     raise RuntimeError(f'Kaggle 异步任务超过 {timeout:g} 秒等待上限')
 
 
-def _remote_batch(texts, brand, backend, temperature):
+def _remote_batch(texts, brand, backend, temperature, *, seed=None):
     """通过 HTTPS 直传 Base64 参考音频，严禁把 clone 请求改写为 R2。"""
     env_name = "MODAL_QWEN3_TTS_ENDPOINT_URL" if backend == "modal" else "KAGGLE_TTS_ENDPOINT_URL"
     endpoint = os.environ.get(env_name)
@@ -324,6 +324,8 @@ def _remote_batch(texts, brand, backend, temperature):
         "ref_text": ref_text,
         "temperature": temperature,
     }
+    if backend == "kaggle":
+        payload.update(tts_model=os.environ.get("YICE_TTS_MODEL", "qwen3"), seed=seed)
     headers = {"Content-Type": "application/json", "User-Agent": "yice-youtube-video/7.0"}
     if backend == "kaggle" and os.environ.get("KAGGLE_TTS_TOKEN"):
         headers["Authorization"] = "Bearer " + os.environ["KAGGLE_TTS_TOKEN"]
@@ -359,6 +361,8 @@ def _remote_batch(texts, brand, backend, temperature):
     for start_idx in range(0, len(texts), 4):
         sub_texts = texts[start_idx:start_idx + 4]
         result = _post_subbatch(sub_texts)
+        if backend == 'kaggle' and payload['tts_model'] != 'qwen3' and result.get('tts_model') != payload['tts_model']:
+            raise RuntimeError('Kaggle 服务未确认所选模型，请在私有会话加载当前版本')
         outputs = result.get("outputs") if isinstance(result, dict) else None
         if not isinstance(outputs, list):
             item = result if isinstance(result, dict) and result.get("audio_base64") else None
@@ -575,7 +579,7 @@ def generate_modal_job(job, brand, backend="modal"):
     folder = target.with_suffix(".chunks")
     folder.mkdir(exist_ok=True)
     raw = []
-    for index, data in enumerate(_remote_batch(chunks, brand, backend, temperature)):
+    for index, data in enumerate(_remote_batch(chunks, brand, backend, temperature, seed=job.get('seed'))):
         path = folder / f"chunk-{index:03}.wav"
         path.write_bytes(data)
         raw.append(path)
@@ -615,6 +619,8 @@ def make_generator(brand, folder, reuse=None, backend="modal", candidates=3):
             if target.exists():
                 raise ValueError(f"拒绝覆盖候选原音：{target}")
             previous = index.get((job["text"], job["seed"]))
+            if previous and previous.get('tts_model', 'qwen3') != os.environ.get('YICE_TTS_MODEL', 'qwen3'):
+                previous = None
             if previous:
                 source = Path(previous["path"])
                 if hashlib.sha256(source.read_bytes()).hexdigest() != previous["sha256"]:
@@ -1103,7 +1109,8 @@ def main():
     parser.add_argument("--chapters", help="只处理指定章号，如 00,01")
     parser.add_argument("--pause-after", action="append", help="在完整句组后留停顿，如 0-3=3.0")
     parser.add_argument("--reuse-candidates", type=Path, default=os.environ.get("YICE_VOICE_REUSE_CANDIDATES"), help="显式哈希候选缓存；复跑时保留原始生成证据")
-    parser.add_argument("--max-repair-rounds", type=int, default=3)
+    parser.add_argument("--max-rerolls", "--max-repair-rounds", dest="max_repair_rounds", type=int, choices=range(4), default=3)
+    parser.add_argument("--tts-model", choices=("qwen3", "f5"), default=os.environ.get("YICE_TTS_MODEL","qwen3"))
     parser.add_argument("--generation-jobs", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--generate-only", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--skip-post", action="store_true", help="保留原音；ASR/韵律仍必须通过")
@@ -1114,6 +1121,12 @@ def main():
     parser.add_argument("--fade-ms", type=float, default=10.)
     parser.add_argument("--lufs", type=float, default=-16.)
     args = parser.parse_args()
+    os.environ['YICE_TTS_MODEL'] = args.tts_model
+    if args.tts_model != 'qwen3' and args.backend not in ('auto','kaggle'):
+        parser.error('F5 配音需要 Kaggle 后端')
+    if args.tts_model == 'f5':
+        args.backend = 'kaggle'
+
     if args.concat_wavs:
         if args.script:
             parser.error('拼接现有 WAV 与从旁白稿生成是两种入口')
@@ -1224,6 +1237,7 @@ def main():
                 speed=args.speed, breath_db=args.breath_db, breath_cut_ms=args.breath_cut_ms,
                 breath_target_ms=args.breath_target_ms, fade_ms=args.fade_ms, lufs=args.lufs))
         record = result["record"]
+        record["tts_model"] = args.tts_model
         if not result["check"]["ok"] or not result["asr"]["ok"]:
             failed.append(chapter["id"])
         target = output / f"chapter-{chapter['id']}.wav"
