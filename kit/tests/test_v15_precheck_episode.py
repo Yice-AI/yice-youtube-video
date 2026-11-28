@@ -273,6 +273,21 @@ class ScriptTests(TempCase):
         root_cat = make_project(self.tmp/'cat', script=catalog_script, images=0)
         self.assertIn('flat_catalog_transitions', codes(precheck.run(root_cat, 'script'), 'script'))
 
+        infomercial = GOOD_SCRIPT.replace('同一份提纲，左边', '不知道你有没有过这种经历：同一份提纲，左边')
+        root_info = make_project(self.tmp/'info', script=infomercial, images=0)
+        self.assertIn('slow_or_meta_opener', codes(precheck.run(root_info, 'script'), 'script'))
+
+        brochure = (
+            GOOD_SCRIPT
+            .replace('版式立刻变成发布会质感。', '质感马上就不一样了。')
+            + '\n## 05 安装\n| 幕号 | 旁白 | 画面 |\n| --- | --- | --- |\n'
+              '| 5-1 | 打开 Codex 帮我把这个工具装好，注意 OneTake 只允许非商业使用。 | 安装画面 |\n'
+        )
+        root_brochure = make_project(self.tmp/'brochure', script=brochure, images=0)
+        warn_codes = [w['code'] for w in precheck.run(root_brochure, 'script')['stages']['script']['warnings']]
+        self.assertIn('vague_brochure_fluff', warn_codes)
+        self.assertIn('late_or_missing_setup_onboarding', warn_codes)
+
 
 class AssetTests(TempCase):
     def test_renamed_duplicate_media_is_blocked(self):

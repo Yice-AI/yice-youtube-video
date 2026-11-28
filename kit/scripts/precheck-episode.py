@@ -60,7 +60,10 @@ MAKER_LEAKS = (
     ('脚手架内部', re.compile(r'脚手架|清单文件|manifest', re.I), None),
     ('渲染进程', re.compile(r'渲染进程|并发数|workers?\b', re.I), None),
 )
-META_OPENERS = re.compile(r'大家好[，, ]?我是|哈喽大家好|欢迎来到|今天我们来聊|今天(我们)?(来)?(聊聊|讲讲|说说)|废话不多说')
+META_OPENERS = re.compile(
+    r'大家好[，, ]?我是|哈喽大家好|欢迎来到|今天我们来聊|今天(我们)?(来)?(聊聊|讲讲|说说)|废话不多说|'
+    r'不知道你有没有过|你是不是也经常遇到|在日常生活中我们经常|随着人工智能的发展'
+)
 EARLY_COMMANDS = re.compile(
     r'git\s+clone|npm\s+(i|install)\b|npx\s|pip3?\s+install|brew\s+install|uv\s+(pip|run|tool)|curl\s+-|~/\.|/Users/|[A-Z]:\\')
 SPEECH_CHARS_PER_SEC = 4.5
@@ -81,6 +84,8 @@ FLAT_CATALOG_OPENER_RE = re.compile(
 )
 STAKES_ANCHOR_RE = re.compile(r'\d+|半小时|十分钟|三分钟|通宵|熬夜|一分钱|免费|白嫖|翻车|被骂|糊弄|抄|万赞|商单|省下|差了')
 ELITIST_SCENE_RE = re.compile(r'新品发布(?:会)?|发布会大屏|产品路演|融资路演|投资人路演')
+BROCHURE_FLUFF_RE = re.compile(r'用的时候特别省事|用起来特别省事|质感马上就不一样|质感一下子就上来了|轻松拿捏|一键搞定所有')
+SETUP_ONBOARDING_RE = re.compile(r'安装|装上|装好|新建.*文件夹|工作目录|打开\s*(?:Codex|Claude)', re.I)
 VERSION_DECIMAL_RE = re.compile(r'(?:[vV]\d+\.\d+(?:\.\d+)?|(?:Claude|GPT|Gemini|Qwen|DeepSeek|Python|Node|Apache|MIT|Web)\s*[-A-Za-z]*\s*\d+\.\d+|\b\d+\s*[:：比]\s*\d+\b)', re.I)
 RAW_DECIMAL_RE = re.compile(r'\b\d+\.\d+%?')
 HONEST_TRADEOFF_RE = re.compile(r'缺点|毛病|短板|坑|局限|不适合|别用|但要注意|只允许|非商业|非商用|需要授权|不能直接|没法直接|弱点|代价')
@@ -444,6 +449,17 @@ def stage_script(project, script):
             if not HONEST_TRADEOFF_RE.search(full_text):
                 warnings.append(issue('missing_honest_tradeoff',
                                       '多工具教程全篇未见任何真实短板/适用边界提醒（如协议限制、不适合场景），全吹成神仙水会损失活人信任感，建议直接点明各工具边界。'))
+            fluff_hits = BROCHURE_FLUFF_RE.findall(full_text)
+            if fluff_hits:
+                warnings.append(issue('vague_brochure_fluff',
+                                      f'口播含空泛导购宣传套话（{"、".join(sorted(set(fluff_hits)))}）。请删掉空话，改成具体的输入素材、第一版哪里翻车及第二版怎么修好。',
+                                      phrases=sorted(set(fluff_hits))))
+        if len(script['chapters']) >= 5:
+            early_ch_text = ' '.join(s['text'] for c in script['chapters'][:2] for s in c['scenes'])
+            tail_ch_text = ' '.join(s['text'] for s in script['chapters'][-1]['scenes'])
+            if not SETUP_ONBOARDING_RE.search(early_ch_text) and SETUP_ONBOARDING_RE.search(tail_ch_text):
+                warnings.append(issue('late_or_missing_setup_onboarding',
+                                      '多工具长教程把“在哪儿打开、怎么装好”拖到了最后一章才提，纯新手前几分钟容易看懵。建议在拉开第一个工具前用 20 秒先把通用底座和装法打通。'))
     metrics = dict(chapters=len(script['chapters']), scenes=len(script['scenes']),
                    tutorial=tutorial, maker_topic=maker_topic, prompt_loop_chapters=loops)
     return dict(ok=not errors, errors=errors, warnings=warnings, metrics=metrics)
