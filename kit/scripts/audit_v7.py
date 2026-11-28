@@ -1301,7 +1301,8 @@ def precheck_narrative_gate(timeline, project, duration):
 
 def recipe_monotony_and_workbench_gate(timeline, duration):
     from collections import Counter
-    required = bool(timeline.get('version') == 'v15.0' and timeline.get('episode_kind') == 'tool_tutorial' and duration >= 90)
+    required = bool((timeline.get('version') == 'v15.0' or 'semantic_alignment' in timeline)
+                    and timeline.get('episode_kind') == 'tool_tutorial' and duration >= 90)
     if not required:
         return dict(ok=True, required=False, violations=[])
     shots = timeline.get('shots') or []

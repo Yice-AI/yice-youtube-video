@@ -1063,6 +1063,8 @@ def assemble(manifest, output, *, build_only=False, force_render=False, run=subp
         ledger = locate(root, raw['semantic_alignment'])
         timeline['semantic_alignment'] = json.loads(ledger.read_text())
         write(output/'semantic-alignment.json', timeline['semantic_alignment'])
+    if 'version' in raw:
+        timeline['version'] = raw['version']
     if 'episode_kind' in raw:
         timeline['episode_kind'] = raw['episode_kind']
     if 'custom_entities' in raw:
