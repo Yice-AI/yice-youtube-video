@@ -388,19 +388,27 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
                 bool(re.fullmatch('[A-Za-z0-9]', left['w'])) != bool(re.fullmatch('[A-Za-z0-9]', right['w']))
                 or left['charEnd'] != right['charStart']
             )
+            near_punct = (
+                (i > 0 and d['boundaries'][i - 1]['kind'] != 'none')
+                or (i + 1 < len(d['boundaries']) and d['boundaries'][i + 1]['kind'] != 'none')
+            )
+            exempt = code_switch or (natural and near_punct)
             ratio = right['duration_ms'] / median
             duration = b['pause_ms']
             fall = left['f0_change_st']
             reasons = []
-            if natural and not code_switch and duration >= 115.0 and ratio >= 1.85:
+            if natural and not exempt and duration >= 115.0 and ratio >= 1.85:
                 reasons.append('low_energy_plus_long_onset')
-            if natural and not code_switch and b.get('asr_gap_ms', 0) >= 180.0 and duration >= 95.0:
+            if natural and not exempt and b.get('asr_gap_ms', 0) >= 180.0 and duration >= 95.0:
                 reasons.append('aligned_nonpunct_break')
             if not natural and not code_switch and duration >= thresholds['nonpunct_low_energy_min_ms'] and ratio >= thresholds['onset_character_N']:
                 reasons.append('low_energy_plus_long_onset')
             if not natural and not code_switch and fall is not None and fall <= thresholds['falling_end_st'] and duration >= thresholds['nonpunct_low_energy_min_ms'] and left['duration_ms'] / median >= thresholds['onset_character_N']:
                 reasons.append('mid_sentence_falling_end')
-            max_nonpunct = max(thresholds['nonpunct_pause_max_ms'], 290.0) if (natural and code_switch) else thresholds['nonpunct_pause_max_ms']
+            max_nonpunct = (
+                max(thresholds['nonpunct_pause_max_ms'], 340.0 if near_punct else 290.0)
+                if (natural and exempt) else thresholds['nonpunct_pause_max_ms']
+            )
             if duration > max_nonpunct:
                 reasons.append('nonpunct_pause')
             if reasons:
@@ -415,6 +423,7 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
             # Compare the local 10ms envelope around adjacent syllables. This
             # catches a short relative collapse that never reaches -42 dBFS.
             if (left['sentence'] != right['sentence'] or left['charEnd'] != right['charStart']
+                    or (natural and near_punct)
                     or bool(re.fullmatch('[A-Za-z]', left['w'])) != bool(re.fullmatch('[A-Za-z]', right['w']))):
                 continue
             ids = np.flatnonzero((times >= left['s']) & (times < right['e']))

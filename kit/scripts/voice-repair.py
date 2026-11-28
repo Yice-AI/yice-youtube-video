@@ -58,7 +58,7 @@ def cuts_for(audio, alignment, flagged=None, *, natural=False):
         cuts = [0.] + [pt for pt, _ in quiet_points] + [sf.info(audio).duration]
     else:
         flagged_set = set(flagged)
-        changed = not natural
+        changed = True
         while changed:
             changed = False
             for idx, (_, is_q) in enumerate(quiet_points):
@@ -214,13 +214,6 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
             break
         sentences, groups, (cuts, expanded_flagged, quiet_flags) = cuts_for(current['audio'], current['alignment'], flagged=flagged, natural=profile=='natural_v7')
         flagged = expanded_flagged
-        if profile == 'natural_v7':
-            flagged = [idx for idx in flagged
-                       if (idx == 0 or quiet_flags[idx-1])
-                       and (idx == len(groups)-1 or quiet_flags[idx])]
-            if not flagged:
-                history.append(dict(round=round_number, error='有实质告警，但无法定位保护吸气的安全整句剪点'))
-                break
         # Merge adjacent flagged sentences ONLY when the boundary between them lacks verified natural quiet
         spans = []
         for idx in flagged:
@@ -228,6 +221,13 @@ def repair(chapter, current, output, generate, transcribe, *, exceptions=None, t
                 spans[-1].append(idx)
             else:
                 spans.append([idx])
+        if profile == 'natural_v7':
+            spans = [sp for sp in spans
+                     if (sp[0] == 0 or quiet_flags[sp[0] - 1])
+                     and (sp[-1] == len(groups) - 1 or quiet_flags[sp[-1]])]
+            if not spans:
+                history.append(dict(round=round_number, error='有实质告警，但无法定位保护吸气的安全整句剪点'))
+                break
         samples, rate = sf.read(current['audio'])
         jobs = []
         for span in spans:
