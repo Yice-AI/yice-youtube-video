@@ -28,21 +28,22 @@ def cuts_for(audio, alignment, flagged=None, *, natural=False):
     if any(not group for group in groups):
         raise ValueError('修复句子缺少完整字时间')
     waveform, rate = sf.read(audio)
-    intervals = (check_tool.runs(np.asarray(measurement['db']) < -55.) if natural
+    q_db = min(-40., float(measurement.get('relative_quiet_threshold_dbfs', -44.)) + 2.)
+    intervals = (check_tool.runs(np.asarray(measurement['db']) < q_db) if natural
                  else measurement.get('absolute_silence_45db', []))
     quiet_points = []
     for left, right in zip(groups, groups[1:]):
         center = (left[-1]['e'] + right[0]['s']) / 2
         if natural:
-            limit = right[0]['s'] - .14
+            limit = right[0]['s'] - .06
             quiet = [(max(a,left[-1]['e']), min(b,limit))
-                     for a,b in intervals if min(b,limit)-max(a,left[-1]['e']) >= .10]
+                     for a,b in intervals if min(b,limit)-max(a,left[-1]['e']) >= .055]
         else:
             quiet = [(a, b) for a, b in intervals if b-a >= .04 and a >= left[-1]['s']
                      and b <= right[0]['e'] + .05 and abs((a+b)/2-center) <= .4]
         if quiet:
             a, b = min(quiet, key=lambda pair: abs(sum(pair)/2-center))
-            margin = .05 if natural else .015
+            margin = .022 if natural else .015
             lo, hi = round((a + margin) * rate), round((b - margin) * rate)
             window = waveform[lo:hi]
             zero = np.flatnonzero(window[:-1] * window[1:] <= 0) + lo
@@ -388,8 +389,9 @@ def process_chapter(chapter, candidates, folder, generate, transcribe, *, except
     chosen = min(screened, key=quality.rank)
     v.write_json(Path(folder)/'selection.json', dict(selected_seed=chosen['seed'], candidates=[
         dict(seed=x['seed'], asr_ok=x['asr']['ok'], ratio=x['asr']['ratio'], alerts=len(x['check']['alerts'])) for x in screened]))
-    if cloud_backend and profile == 'legacy':
-        source = next(Path(c["path"]) for c in candidates if c["seed"] == chosen["seed"])
+    source_cand = next((Path(c["path"]) for c in candidates if c["seed"] == chosen["seed"]), None)
+    if cloud_backend and (profile == 'legacy' or (source_cand and (source_cand.with_suffix(".chunks") / "chunks.json").is_file())):
+        source = source_cand or next(Path(c["path"]) for c in candidates if c["seed"] == chosen["seed"])
         chunk_dir = source.with_suffix(".chunks")
         history = []
         base_seed = chosen['seed']

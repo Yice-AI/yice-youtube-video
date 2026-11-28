@@ -384,19 +384,24 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
         if b['kind'] == 'none':
             if re.fullmatch('[A-Za-z]', left['w']) and re.fullmatch('[A-Za-z]', right['w']):
                 continue
+            code_switch = (
+                bool(re.fullmatch('[A-Za-z0-9]', left['w'])) != bool(re.fullmatch('[A-Za-z0-9]', right['w']))
+                or left['charEnd'] != right['charStart']
+            )
             ratio = right['duration_ms'] / median
             duration = b['pause_ms']
             fall = left['f0_change_st']
             reasons = []
-            if natural and duration >= 115.0 and ratio >= 1.85:
+            if natural and not code_switch and duration >= 115.0 and ratio >= 1.85:
                 reasons.append('low_energy_plus_long_onset')
-            if natural and b.get('asr_gap_ms', 0) >= 180.0 and duration >= 95.0:
+            if natural and not code_switch and b.get('asr_gap_ms', 0) >= 180.0 and duration >= 95.0:
                 reasons.append('aligned_nonpunct_break')
-            if not natural and duration >= thresholds['nonpunct_low_energy_min_ms'] and ratio >= thresholds['onset_character_N']:
+            if not natural and not code_switch and duration >= thresholds['nonpunct_low_energy_min_ms'] and ratio >= thresholds['onset_character_N']:
                 reasons.append('low_energy_plus_long_onset')
-            if not natural and fall is not None and fall <= thresholds['falling_end_st'] and duration >= thresholds['nonpunct_low_energy_min_ms'] and left['duration_ms'] / median >= thresholds['onset_character_N']:
+            if not natural and not code_switch and fall is not None and fall <= thresholds['falling_end_st'] and duration >= thresholds['nonpunct_low_energy_min_ms'] and left['duration_ms'] / median >= thresholds['onset_character_N']:
                 reasons.append('mid_sentence_falling_end')
-            if duration > thresholds['nonpunct_pause_max_ms']:
+            max_nonpunct = max(thresholds['nonpunct_pause_max_ms'], 290.0) if (natural and code_switch) else thresholds['nonpunct_pause_max_ms']
+            if duration > max_nonpunct:
                 reasons.append('nonpunct_pause')
             if reasons:
                 flags.append(dict(kind='hesitation', reasons=reasons, index=i,
@@ -457,6 +462,8 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
             if not natural:
                 low -= thresholds['punctuation_tolerance_ms']
                 high += thresholds['punctuation_tolerance_ms']
+            elif re.fullmatch('[A-Za-z0-9]', right['w']):
+                high += 180.0
             if not low <= measured_pause <= high:
                 flags.append(dict(kind='punctuation_pause', index=i, sentence=left['sentence'],
                                   char_start=left['charStart'], char_end=right['charEnd'],

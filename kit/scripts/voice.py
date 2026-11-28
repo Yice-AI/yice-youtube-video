@@ -699,7 +699,11 @@ def transcribe_in_sections(y, sr, recognize):
     return dict(text="".join(texts), segments=segments)
 
 
-def kaggle_transcriber(folder):
+def kaggle_transcriber(folder, *, prefer_local=False, model=None, prompt=""):
+    if prefer_local:
+        resolved_local = resolve_asr_model(model)
+        if Path(resolved_local).is_dir() and valid_whisper_directory(Path(resolved_local)):
+            return make_transcriber(resolved_local, prompt, folder)
     endpoint = os.environ.get('KAGGLE_TTS_ENDPOINT_URL','').removesuffix('/').removesuffix('/tts')
     token = os.environ.get('KAGGLE_TTS_TOKEN')
     if urlsplit(endpoint).scheme != 'https' or not urlsplit(endpoint).hostname or not token:
@@ -1111,6 +1115,7 @@ def main():
     parser.add_argument("--reuse-candidates", type=Path, default=os.environ.get("YICE_VOICE_REUSE_CANDIDATES"), help="显式哈希候选缓存；复跑时保留原始生成证据")
     parser.add_argument("--max-rerolls", "--max-repair-rounds", dest="max_repair_rounds", type=int, choices=range(4), default=3)
     parser.add_argument("--tts-model", choices=("qwen3", "f5"), default=os.environ.get("YICE_TTS_MODEL","qwen3"))
+    parser.add_argument("--asr-backend", choices=("auto", "local", "kaggle"), default=os.environ.get("YICE_ASR_BACKEND", "auto"))
     parser.add_argument("--generation-jobs", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--generate-only", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--skip-post", action="store_true", help="保留原音；ASR/韵律仍必须通过")
@@ -1180,8 +1185,12 @@ def main():
     write_json(output / "analysis/script-manifest.json", {"chapters": chapters})
     generate = make_generator(args.brand, output / "generation", args.reuse_candidates, args.backend, args.candidates)
     asr_cache = Path(os.environ["YICE_ASR_CACHE_DIR"]) if os.environ.get("YICE_ASR_CACHE_DIR") else (output / "analysis/asr")
-    transcribe = (kaggle_transcriber(asr_cache) if args.backend=='kaggle' else
-                  make_transcriber(resolve_asr_model(args.asr_model), args.asr_prompt, asr_cache))
+    if args.asr_backend == 'local' or args.backend != 'kaggle':
+        transcribe = make_transcriber(resolve_asr_model(args.asr_model), args.asr_prompt, asr_cache)
+    elif args.asr_backend == 'auto':
+        transcribe = kaggle_transcriber(asr_cache, prefer_local=True, model=args.asr_model, prompt=args.asr_prompt)
+    else:
+        transcribe = kaggle_transcriber(asr_cache)
     jobs = [dict(chapter=chapter["id"], text=chapter["text"], pronunciations=chapter.get("pronunciations") or {},
                  seed=seed, chunk_mode=args.chunk_mode,
                  path=str(output / "raw" / f"seed{seed}" / f"chapter-{chapter['id']}-raw.wav"))
