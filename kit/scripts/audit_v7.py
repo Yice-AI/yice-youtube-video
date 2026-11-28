@@ -691,9 +691,16 @@ def stat_badge_occlusions(row, source, overlay, binary=OCR, reader=overlay_ocr):
     return hits, unavailable
 
 
+def corner_title_violation(shot, overlay):
+    if overlay.get('kind') == 'corner_tag' and shot.get('framing', 'fullbleed') == 'fullbleed' and overlay.get('position') == 'top_left':
+        return dict(shot=shot['id'], reason='corner_tag_over_source_title', severity='error')
+    return None
+
+
 def quadrant_overlay_gate(shots, project):
     violations = []
     for shot in shots:
+        violations.extend(hit for o in shot.get('overlays',[]) if (hit := corner_title_violation(shot,o)))
         badges = [o for o in shot.get('overlays',[]) if o.get('kind')=='stat_badge']
         if not badges:
             continue
@@ -769,6 +776,11 @@ def composition_material(entry):
     return '\n'.join(sources), sorted(images)
 
 
+def legacy_pink_outline(source):
+    color = r'(?:#(?:ec4899|f43f5e|e61e72|ff5497|ff6398|ff488f|ff3e8d)(?:[0-9a-f]{2})?\b|rgba?\(\s*(?:244\s*,\s*63\s*,\s*94|236\s*,\s*72\s*,\s*153)\b)'
+    return bool(re.search(r'(?:border(?:-[\w-]+)?|outline(?:-color)?|box-shadow)\s*:[^;{}]*?' + color, source, re.I))
+
+
 def dual_engine_craft_gate(shots, project, manifest_root=None, *, v10=False):
     checked, violations, modes = {}, [], {}
     for shot in shots:
@@ -778,6 +790,8 @@ def dual_engine_craft_gate(shots, project, manifest_root=None, *, v10=False):
         try:
             entry = composition_entry_for_audit(shot,project,manifest_root)
             source,images = composition_material(entry)
+            if v10 and shot.get('stage_look')=='cinema_black' and legacy_pink_outline(source):
+                violations.append(dict(shot=shot['id'],reason='legacy_pink_outline'))
             checked[shot['id']] = [p.name for p in images]
             spatial = False
             if v10:

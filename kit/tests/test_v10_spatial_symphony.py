@@ -249,7 +249,11 @@ def test_v13_widescreen_fan_adaptive_stamp_and_bundled_audio(tmp_path):
             'punch_text': '零订阅费', 'punch_at': 4.2,
         }
     }, tmp_path, tmp_path / 'fan', gsap).read_text()
-    assert '<div class="fan-stage">' in fan_html and 'fan-punch-box' in fan_html
+    assert '<div class="fan-stage">' in fan_html and 'fan-editorial-punch' in fan_html
+
+    from audit_v7 import legacy_pink_outline
+    assert not legacy_pink_outline(fan_html)
+    assert '<i>✦</i>' not in fan_html
 
     bento_html = build({
         'id': 'bento13', 'recipe': 'logo_bento_stage', 'duration': 6.0,
@@ -508,3 +512,22 @@ def test_v14_voice_gate_catches_cut_off_chapter_and_truncated_source(tmp_path):
     assert not chapter_voice_completeness_gate(early,tmp_path,3)['ok']
     sf.write(voice,np.ones(1500)*.1,1000)
     assert not chapter_voice_completeness_gate(t,tmp_path,2)['ok']
+
+def test_dark_stage_outlines_and_fullbleed_source_titles():
+    from audit_v7 import corner_title_violation, legacy_pink_outline
+    for color in ('#ec4899', '#F43F5E88', 'rgba(244, 63, 94, .35)', '#ff5497cc'):
+        assert legacy_pink_outline(f'.badge {{box-shadow:0 0 14px {color}}}')
+    assert not legacy_pink_outline('.badge {border:1px solid rgba(255,255,255,.16)}')
+    assert not legacy_pink_outline('.poster {color:#ec4899}')
+    shot = dict(id='retail', framing='fullbleed')
+    assert corner_title_violation(shot,dict(kind='corner_tag',position='top_left'))
+    assert not corner_title_violation(shot,dict(kind='corner_tag',position='top_right'))
+
+def test_parallel_delivery_cards_have_no_ordered_arrow(tmp_path,materials):
+    _,gsap=materials
+    branches=[dict(title='交文件给同事改字',children=[dict(label='已搞定')]),
+              dict(title='自己上台投屏镇场',children=[dict(label='二选一')])]
+    spec=dict(id='choice',recipe='step_tree_focus',duration=4,data=dict(branches=branches,relationship='parallel'))
+    html=build(spec,tmp_path,tmp_path/'choice',gsap).read_text()
+    assert '<path class="tree-link"' not in html and '<span class="tree-no">' not in html
+    assert '交文件给同事改字' in html and '自己上台投屏镇场' in html

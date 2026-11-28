@@ -356,3 +356,15 @@ def test_headless_browser_sampling_for_v12_video_and_paper(tmp_path, media_pack)
     assert gates['no_ppt_slide_header_gate']['ok']
     lumas = [f['samples']['background']['luma'] for f in measured['tree-test']['frames'] if 'samples' in f]
     assert lumas and all(l >= 185 for l in lumas)
+
+def test_narrated_wipe_keeps_its_absolute_cue(tmp_path):
+    from PIL import Image
+    Image.new('RGB',(80,60),'red').save(tmp_path/'before.png')
+    Image.new('RGB',(80,60),'blue').save(tmp_path/'after.png')
+    data=dict(mode='diagonal_wipe',before='before.png',after='after.png',wipe_at=3.47)
+    spec=dict(id='voice-cut',recipe='split_wipe_compare',duration=4.,data=data)
+    html=build_onetake(spec,tmp_path,tmp_path/'comparison').read_text()
+    assert '"wipe_at": 3.47' in html
+    data['wipe_at']=3.95
+    with pytest.raises(ValueError,match='口播擦切点'):
+        build_onetake(spec,tmp_path,tmp_path/'invalid')

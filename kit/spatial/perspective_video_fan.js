@@ -45,10 +45,11 @@ fanCards.forEach((card, i) => {
 });
 
 const punch = q('.fan-punch');
-const punchBox = q('.fan-punch-box');
+const punchBox = q('.fan-editorial-punch');
 if (punch && typeof data.punch_at === 'number') {
   tl.fromTo(punch, { opacity: 0 }, { opacity: 1, duration: 0.16, ease: 'power3.out' }, data.punch_at);
   if (punchBox) {
+    tl.fromTo(punchBox, { '--underline': 0 }, { '--underline': 1, duration: .18, ease: 'power2.out' }, data.punch_at + .15);
     tl.fromTo(punchBox, { scale: 0.86, y: 20 }, { scale: 1, y: 0, duration: 0.2, ease: 'expo.out' }, data.punch_at);
   }
 }

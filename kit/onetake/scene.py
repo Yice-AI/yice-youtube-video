@@ -113,6 +113,11 @@ def build(spec, source_dir, output):
             'before': media_slot(data['before']),
             'after': media_slot(data['after']),
         }
+        if 'wipe_at' in data:
+            cut = float(data['wipe_at'])
+            if mode != 'diagonal_wipe' or not isfinite(cut) or not 0 < cut < duration - .18:
+                raise ValueError('口播擦切点须在斜切镜头内，并保留至少 0.18 秒切换时间')
+            cfg['wipe_at'] = cut
         values.update(
             BEFORE_LABEL=escape(data.get('before_label', '↺ 修改前')),
             AFTER_LABEL=escape(data.get('after_label', '✦ 修改后')),

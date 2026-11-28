@@ -13,7 +13,7 @@ import tempfile
 
 from PIL import Image, ImageDraw, ImageFont
 
-from audit_v7 import OCR, overlay_ocr, stat_badge_occlusions, VERIFIED_OVERLAYS, VIDEO_EXTENSIONS, difference_hash, frame_scores, effective_frame, shell_metrics, probe_video
+from audit_v7 import corner_title_violation, OCR, overlay_ocr, stat_badge_occlusions, VERIFIED_OVERLAYS, VIDEO_EXTENSIONS, difference_hash, frame_scores, effective_frame, shell_metrics, probe_video
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
 from kit.editorial.editorial import STUDIO_VIEW, cutout_overlay_box
 
@@ -225,7 +225,7 @@ def make_verification_rows(manifest):
                              framing=shot.get('framing','fullbleed'), times=[round(at,5) for at in times],
                              spoken_topic=topic,anchor_text=anchor,spotlight_boxes=[box for box in boxes if box]))
             overlays = [overlay for overlay in shot.get('overlays',[])
-                        if overlay['kind'] in {'prop_badge','reaction_cutout','stat_badge'}]
+                        if overlay['kind'] in {'prop_badge','reaction_cutout','stat_badge','corner_tag'}]
             if overlays:
                 rows[-1]['overlays'] = overlays
                 rows[-1]['viewport'] = STUDIO_VIEW if shot.get('framing') in {'studio_window','perspective_3d'} else (0,0,1920,1080)
@@ -235,6 +235,10 @@ def make_verification_rows(manifest):
 def overlay_text_check(row, source, binary=OCR):
     collisions, unavailable = [], []
     for overlay in row.get('overlays',[]):
+        if overlay['kind']=='corner_tag':
+            issue = corner_title_violation(row,overlay)
+            if issue:collisions.append(issue)
+            continue
         if overlay['kind']=='stat_badge':
             hits,missing = stat_badge_occlusions(row,source,overlay,binary,overlay_ocr)
             collisions.extend(hits)

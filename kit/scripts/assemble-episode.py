@@ -627,8 +627,9 @@ def _spatial_sound_marks(sp_spec, span):
     elif recipe == 'step_tree_focus':
         for idx, br in enumerate(data.get('branches') or []):
             bat = float(br.get('at', 0.12 + idx * 1.1))
-            add('marker_stroke' if swiss and idx else land,
-                max(.03,bat-.16) if swiss and idx else bat, .36)
+            linked = swiss and idx and data.get('relationship') != 'parallel'
+            add('marker_stroke' if linked else land,
+                max(.03,bat-.16) if linked else bat, .36)
             for ch in (br.get('children') or []):
                 if isinstance(ch.get('at'), (int, float)):
                     add('click_soft' if swiss else 'click', ch['at'], 0.28)
@@ -714,6 +715,8 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
         for i,original in enumerate(shot.get('overlays',[])):
             overlay = original
             if overlay['kind']=='corner_tag':
+                if shot.get('framing','fullbleed')=='fullbleed' and overlay.get('position','auto')=='auto':
+                    overlay = dict(overlay,position='top_right')
                 overlay = with_logo(overlay,f'overlay-{i}-logo')
             if overlay['kind'] in {'prop_badge','reaction_cutout'}:
                 overlay = dict(overlay,source=attach(overlay.get('source'),f'overlay-{i}-cutout',LOGO_EXTENSIONS))

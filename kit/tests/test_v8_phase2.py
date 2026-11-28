@@ -131,8 +131,8 @@ class Phase2Tests(unittest.TestCase):
         callout = self.build(self.shot('callout_rig',source='motion.gif',
                                       overlays=[dict(kind='corner_tag',at=.15,label='实证',logo='brand.svg')]))
         self.assertEqual(callout.shots[0]['aux_files'],['assets/demo-overlay-0-logo.svg'])
-        self.assertIn('<image x="102"',callout.plates[-1])
-        self.assertIn('<text x="148"',callout.plates[-1])
+        self.assertIn('<image x="1672"',callout.plates[-1])
+        self.assertIn('<text x="1718"',callout.plates[-1])
         self.assertEqual(audit_v7.primary_files(callout.shots[0]),['assets/demo-0.mp4'])
 
     def test_evidence_svg_and_video_audit_and_invalid_box(self):

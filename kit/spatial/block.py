@@ -257,8 +257,8 @@ def build(spec, source_dir, output, gsap):
         if aspect not in ('widescreen', 'portrait'):
             raise ValueError('card_aspect 仅支持 widescreen 或 portrait')
         data['card_aspect'] = aspect
-        badge = label(data.get('badge', '✦ 修改后'))
-        header_html = f'<div class="fan-badge" data-spatial-title data-title-kind="editorial_single"><i>✦</i><span>{badge.lstrip("✦ ")}</span></div>'
+        badge = label(data.get('badge', '修改后'))
+        header_html = f'<div class="fan-badge" data-spatial-title data-title-kind="editorial_single"><span>{badge.lstrip("✦ ")}</span></div>'
         cards_html = []
         for idx, item in enumerate(raw_items):
             src = item['source'] if isinstance(item, dict) else item
@@ -270,7 +270,7 @@ def build(spec, source_dir, output, gsap):
             punch_at = number(data.get('punch_at', round(duration * 0.72, 3)), 0.2, duration - 0.2, 'punch_at')
             data['punch_at'] = punch_at
             psub = f'<span>{label(data["punch_sub"])}</span>' if data.get('punch_sub') else ''
-            overlay = f'<div class="fan-punch"><div class="fan-punch-box"><strong>{label(data["punch_text"])}</strong>{psub}</div></div>'
+            overlay = f'<div class="fan-punch"><div class="fan-editorial-punch" data-overlay-kind="editorial_punch"><strong>{label(data["punch_text"])}</strong>{psub}</div></div>'
         body = f'<div class="{stage_cls}">{"".join(cards_html)}</div>'
     elif recipe == 'logo_bento_stage':
         modules = items('modules', 2, 4)
@@ -395,11 +395,12 @@ def build(spec, source_dir, output, gsap):
             number(b.get('at', 0.2 + idx * 1.2), 0, duration - 0.3, '分支时间')
             bx = xs[idx]
             by = 285
+            numeral = '' if data.get('relationship')=='parallel' else f'<span class="tree-no">{label(b["no"])}</span>'
             branch_html.append(
                 f'<section class="tree-branch" data-spatial-subject style="left:{bx}px;top:{by}px;width:{box_w}px">'
-                f'<span class="tree-no">{label(b["no"])}</span><span>{label(b["title"])}</span></section>'
+                f'{numeral}<span>{label(b["title"])}</span></section>'
             )
-            if idx > 0:
+            if idx > 0 and data.get('relationship') != 'parallel':
                 x0 = xs[idx - 1] + box_w + 14
                 x1 = bx - 16
                 ym = by + 74

@@ -627,7 +627,7 @@ class EditorialStage:
                 width = min(760,max(190,57+inset+max(len(label)*28,len(sublabel)*22)))
                 pos = overlay.get('position', 'auto')
                 shot_files = ' '.join(str(f) for f in shot.get('files', []))
-                use_right = pos == 'top_right' or (pos == 'auto' and any(tok in shot_files.lower() for tok in ('cli-', 'terminal', 'ttyd')))
+                use_right = pos == 'top_right' or (pos == 'auto' and (not studio or any(tok in shot_files.lower() for tok in ('cli-', 'terminal', 'ttyd'))))
                 if use_right:
                     x,y = (1784-width,34) if studio else (1840-width,56)
                 elif pos == 'bottom_right':
