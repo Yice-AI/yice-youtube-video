@@ -82,6 +82,9 @@ FLAT_CATALOG_OPENER_RE = re.compile(
     r'^(?:先说|再说|接着说|下面说|接下来(?:我们)?(?:说|看|讲|介绍|是)|最后(?:是|说|看|讲|一个)|'
     r'第[一二三四五六七八九十1-9][个款项](?:工具|神器|Skill|是|要讲))'
 )
+CHAPTER_CLOSURE_STOP_RE = re.compile(
+    r'(?:省心了|搞定了|做完了|讲完了|齐活了|齐了|都有了)[，,。！？!?\s]*(?:可要是|要是|如果|那要是|那如果|接下来|下面)'
+)
 STAKES_ANCHOR_RE = re.compile(r'\d+|半小时|十分钟|三分钟|通宵|熬夜|一分钱|免费|白嫖|翻车|被骂|糊弄|抄|万赞|商单|省下|差了')
 ELITIST_SCENE_RE = re.compile(r'新品发布(?:会)?|发布会大屏|产品路演|融资路演|投资人路演')
 BROCHURE_FLUFF_RE = re.compile(r'用的时候特别省事|用起来特别省事|质感马上就不一样|质感一下子就上来了|轻松拿捏|一键搞定所有')
@@ -421,6 +424,21 @@ def stage_script(project, script):
         errors.append(issue('flat_catalog_transitions',
                             f'连续 {len(catalog_openers)} 章用客服报菜名式开头（{"、".join(catalog_openers[:4])}），观众每章听完容易划走。请按《03-爆款逐字稿四遍炼金法》改成“上一章遗留痛点/悬念转折扣”自然推入下一章。',
                             hits=catalog_openers))
+    closure_stops = []
+    for ch in script['chapters'][:-1]:
+        if ch['scenes']:
+            last_s = ch['scenes'][-1]
+            m = CHAPTER_CLOSURE_STOP_RE.search(last_s['text'])
+            if m:
+                closure_stops.append(f'{last_s["id"]}「{m.group(0)}」')
+    if len(closure_stops) >= 2:
+        errors.append(issue('chapter_closure_stop_signal',
+                            f'多章结尾出现“XX搞定了/省心了，要是做另一件事怎么办”的假衔接结案词（{"、".join(closure_stops[:4])}），等于每章提醒观众下车。请改成同一文件夹主线中“上一环产出当场撞上下一环死结”的真因果咬合。',
+                            hits=closure_stops))
+    elif len(closure_stops) == 1:
+        warnings.append(issue('chapter_closure_stop_signal',
+                              f'{closure_stops[0]} 出现结案换题式过渡，容易削弱跨章完播率，建议改成上一步产出直接触发下一步麻烦。',
+                              hits=closure_stops))
     opener_text = ' '.join(s['text'] for s in script['scenes'][:2])
     if script['scenes'] and not STAKES_ANCHOR_RE.search(opener_text):
         warnings.append(issue('opening_lacks_stakes',

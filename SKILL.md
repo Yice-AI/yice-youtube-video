@@ -18,7 +18,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 | 关卡 | 不过关就不许 | 拦截项 |
 | --- | --- | --- |
 | `packaging` | 写分镜 | `bland_explanatory_title`（怎么选、使用指南、浅谈等说明文腔）；`narrow_gatekeeping_title`（“什么是大模型 / XX 架构拆解”这类给外行设门槛的窄标题，过不了前 2 秒四问：跟我有关吗/在乎吗/反直觉吗/一秒懂吗）；`promise_body_drift`（标题正文承诺脱节）；`thumbnail_candidates_insufficient`（封面候选不足 3 张或缺联系表）；并检查 `target_keywords` 搜索动作词埋点 |
-| `script` | 跑配音 | `maker_plumbing_leak`（截图等几秒、无头浏览器、临时目录等内部细节）；`llm_hedging_fluff`（“一般来说、见仁见智、因人而异”等大模型和稀泥叠甲词）；`decimal_overload`（单幕堆砌 ≥4 个冷冰冰精确小数，须改成“省一半 / 六分之一”体感账）；`slow_or_meta_opener`（报幕、“不知道你有没有过这种经历”电视购物慢热铺垫、或前 60 秒念命令）；`flat_catalog_transitions`（平铺报菜名转场）；`unpaired_pain_point_visual`（痛点无真实反例画面）；`missing_hands_on_prompt_loop`（少于 2 章给可照抄提示词与前后变化）；并检查多工具教程是否讲清前置安装底座（`late_or_missing_setup_onboarding`）、是否直说真实边界/短板（`missing_honest_tradeoff`）及是否含空泛导购套话 |
+| `script` | 跑配音 | `maker_plumbing_leak`（截图等几秒、无头浏览器、临时目录等内部细节）；`llm_hedging_fluff`（“一般来说、见仁见智、因人而异”等大模型和稀泥叠甲词）；`decimal_overload`（单幕堆砌 ≥4 个冷冰冰精确小数，须改成“省一半 / 六分之一”体感账）；`slow_or_meta_opener`（报幕、“不知道你有没有过这种经历”电视购物慢热铺垫、或前 60 秒念命令）；`flat_catalog_transitions`（平铺报菜名转场）；`chapter_closure_stop_signal`（章尾“XX搞定了/省心了，要是做另一件事怎么办”催人下车的假衔接结案词）；`unpaired_pain_point_visual`（痛点无真实反例画面）；`missing_hands_on_prompt_loop`（少于 2 章给可照抄提示词与前后变化）；并检查多工具教程是否讲清前置安装底座（`late_or_missing_setup_onboarding`）、是否直说真实边界/短板（`missing_honest_tradeoff`）及是否含空泛导购套话 |
 | `assets` | 跑 `assemble-episode.sh` | `duplicate_asset_disguise`（同一画面换名存多份）；`insufficient_visual_clusters`（多工具教程独立画面少于 8 组）；`missing_external_showcase`（外部真实来源少于 2 个网站或不足 25%） |
 
 包装写在剧集目录的 `packaging.json` 或 `packaging.md`（`title`、`hook`、`viewer_promise`、`target_keywords`、可选 `episode_kind`）。剧本第 3 列写画面规划，也可在旁白里用 `〔画面：…〕` 注明反例原件。专门教写脚本或自动化的选题在包装里写 `"maker_topic": true` 放行工程术语。返回码 0 通过、1 有拦截、2 参数或文件缺失。
@@ -36,7 +36,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 4. **实操用提示词迭代台，不用黑底终端。** 讲工具用法时优先 `prompt_iter_workbench`：顶部大白话提示词胶囊逐拍落位，`16:9` 零裁边展示「↺ 默认直出」，到 `iter_at` 换成「✦ 加词精修后」，再推近接下一镜全屏交互。终端只留安装那一下，且放在第一分钟之后。
 5. **素材先外采再自造。** 每期先跑 `harvest-showcase-media.sh --rank-highlights` 抓官网、论文项目页、公开演示原片，`collect-entity.sh` 取标志与 README 演示，`capture-web.mjs` 录官网；本地自造页面只补缺口，同一套页面不许换名字反复播。
 
-叙事与实操按脑科学减负与真教学标准排五步：① **前 10 秒亮真成品砸预期 + 摆好抽屉**（禁报幕与“不知道你有没有过…”慢热铺垫）：第一秒直接指着眼前的真成品或日常冤枉账甩出结论，给足零代码定心丸，用 `triptych_curtain` 或 `chapter_drawer_grid`（3–6 格章节抽屉柜）摆清全片模块；② **讲第一个工具前用 20 秒打通零基础底座**：先交代清楚打开哪个软件、新建工作文件夹、怎么粘链接装好并调用，别让新手带着“在哪儿输字”的疑惑看完全片；③ **单模块真教学四步闭环（禁念导购宣传单）**：每个核心工具必须讲透「喂什么具体原始素材（如一篇干货加两张截图） → 怎么给具体动作/版式指令 → **第一版（V1）真实哪里翻车、补哪句话改出第二版（V2）** → 实话实说能力死角与协议红线」，并在 **第 2 分钟走神点** 放强视觉反差或硬核实操窍门拽回注意力；④ **出声砍废稿**：砍掉“用的时候特别省事、质感马上就不一样”等空洞套话与和稀泥叠甲词，单分句压在 8–15 字，英文词当场翻成动作人话，小数点换成体感比值；⑤ **片尾截屏速查表 + 交稿盲评四问**：结尾用 `saveable_cheat_sheet` 压成一页总表停稳拉收藏；交稿前必须与头部零基础标杆稿并排过「前 8 秒、零基础复现、含水量、同题 PK」盲评四问，半成品严禁进配音。
+叙事与实操按五分钟高完播率「一环扣一环」四道锁编排：① **前 15 秒亮成品立赌约 + 埋跨章悬念扣**（禁报幕与“不知道你有没有过…”慢热铺垫）：第一秒亮出桌面上**同一个工作文件夹**生出来的全套成品，用 3 格任务抽屉减负，并埋下留到后半程揭晓的红线悬念；② **前置 25 秒打通零基础底座 + 单文件夹一鱼多吃通关**：进第 1 个工具前先演清建空文件夹、粘链接装好并敲 `/` 调用；全片死咬同一份日常底料连续闯关（上一步的产出直接变成下一步的输入，严禁每章换无关新案例）；③ **章尾危机硬咬合（禁写“搞定了/省心了”结案休止符）**：每章结尾必须是上一环成品当场撞上下一环的现实死结（如手机竖图没法投会议室横屏电视、干录静态翻页发短视频没人看），`precheck` 硬查 `chapter_closure_stop_signal` 与 `flat_catalog_transitions`；④ **每 45 秒微观翻车秒修 + 第 2 分钟强爽点**：每个工具走完「拖入具体素材 → 具体结构/动作指令 → **V1 真瑕疵当场修成 V2**（如第 2 分钟实录按 `T` 秒切 36 套配色、按 `S` 弹隐藏提词器，或截图修第 4 秒错位高亮）→ 能力死角与协议红线」，砍光导购空话与叠甲词；⑤ **同文件夹大验收闭环 + 截屏速查表**：片尾拉回同一个文件夹核验全套成品首尾闭合，再用 `saveable_cheat_sheet` 停稳拉收藏，交稿前必过盲评五问。
 
 ## 多卡与跨镜衔接（v15.0）
 

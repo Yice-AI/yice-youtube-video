@@ -288,6 +288,14 @@ class ScriptTests(TempCase):
         self.assertIn('vague_brochure_fluff', warn_codes)
         self.assertIn('late_or_missing_setup_onboarding', warn_codes)
 
+        closure = (
+            GOOD_SCRIPT
+            .replace('版式立刻变成发布会质感。', '日常汇报省心了，要是你想做短视频怎么办？')
+            .replace('短片节奏马上紧凑起来。', '静态短片齐了，那要是想做封面怎么弄？')
+        )
+        root_closure = make_project(self.tmp/'closure', script=closure, images=0)
+        self.assertIn('chapter_closure_stop_signal', codes(precheck.run(root_closure, 'script'), 'script'))
+
 
 class AssetTests(TempCase):
     def test_renamed_duplicate_media_is_blocked(self):
