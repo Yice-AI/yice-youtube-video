@@ -49,6 +49,8 @@ kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --
 | `tutorial_workflow_gate` | 工具教程须有可核验的实际输入／执行镜和复杂成品交互镜。 |
 | `aspect_crop_integrity_gate` | 无头浏览器逐帧比对 `<video>` / `<img>` 原始宽高比与实际渲染框，无 `zoom > 1.05` 特写声明却因 `object-fit: cover` 裁掉宽或高超过 12% 的，报 `excessive_aspect_crop`。 |
 | `external_showcase_diversity_gate` | `tool_tutorial` 长片（≥ 90 秒）独立视觉指纹簇 ≥ max(6, ⌈时长/30⌉)，且须含 `harvest-showcase-media.sh`、`collect-entity.sh`、`capture-web.mjs` 等多源真实画面，不许全靠本地自编三四个页面撑满全片。 |
+| `recipe_monotony_and_workbench_gate` | 单类结构框图配方（`logo_bento_stage`、`step_tree_focus`、`roadmap_thread_camera`、`handdrawn_sketch_stage`）全片上限 `max(3, int(总镜数 * 0.06))`；严禁无真实 `logo` 图标时反复套用默认星号白框 `logo_bento_stage` 超过 1 次；120 秒以上实操教程至少须有 2 个镜头真实使用 `prompt_iter_workbench`。 |
+| `precheck_narrative_gate` | 当剧集含 `script.md` 与包装文件时，成片终审同步复核包装与剧本前置关卡（标题承诺一致、零制作端内部自嗨细节、痛点配反例、具备可照抄中文提示词迭代闭环）。 |
 
 ## 八项硬门禁与前置防线
 

@@ -856,8 +856,8 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
             if 'expected_items' in data:
                 row['expected_items'] = data['expected_items']
             row['source_names'] += [Path(v).name for v in (data.get('videos') or [])]
-            row['source_names'] += [Path(data[k]).name for k in ('before','after') if isinstance(data.get(k),str)]
-            row['source_names'] += [Path(card['source']).name for card in data.get('cards',[]) if card.get('source')]
+            row['source_names'] += [Path(data[k]).name for k in ('before','after','before_source','after_source') if isinstance(data.get(k),str)]
+            row['source_names'] += [Path(card['source']).name for card in data.get('cards',[]) if isinstance(card, dict) and card.get('source')]
         if 'presenter_shortcuts' in shot:
             row['presenter_shortcuts'] = shot['presenter_shortcuts']
         if 'custom_layout' in shot:

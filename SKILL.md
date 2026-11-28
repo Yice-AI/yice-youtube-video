@@ -93,7 +93,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 ## 声音与审计
 
 - 内置 5 首公有领域节奏型 BGM（`builtin:forward-drive`、`city-groove`、`focus-minimal`、`bright-step`、`calm-tech`）与 27 款真实动作音效（`kit/assets/sfx/`），点中推近自动配点击加推拉声，支持 `music_drops` 留白。`EpisodeAudioMixer` 校准 −14.5 ± 0.8 LUFS、真峰值 ≤ −1.0 dBTP。
-- `audit-v3.sh --v10` 新增 `aspect_crop_integrity_gate`（无 `zoom > 1.05` 声明却被裁掉超过 12% 判 `excessive_aspect_crop`）、视频帧级 `cross_stage_asset_dedup_gate`（同一视觉模板跨镜 > 2 次拦截，可登记一次 `callback_of`）与 `external_showcase_diversity_gate`（90 秒以上教程独立画面簇 ≥ max(6, ⌈时长/30⌉) 且含多源外采）。完整门禁见[审片门禁](references/review-gates.md)。
+- `audit-v3.sh --v10` 新增 `aspect_crop_integrity_gate`（无 `zoom > 1.05` 声明却被裁掉超过 12% 判 `excessive_aspect_crop`）、视频帧级 `cross_stage_asset_dedup_gate`（同一视觉模板跨镜 > 2 次拦截，可登记一次 `callback_of`）、`external_showcase_diversity_gate`（90 秒以上教程独立画面簇 ≥ max(6, ⌈时长/30⌉) 且含多源外采）与 `recipe_monotony_and_workbench_gate`（单类结构框图配方 `logo_bento_stage`/`step_tree_focus` 等全片上限 `max(3, 6%镜数)`，严禁无真实 `logo` 图标时反复套用星号白框超过 1 次，且 120 秒以上实操教程至少须有 2 个镜头真实使用 `prompt_iter_workbench`）。完整门禁见[审片门禁](references/review-gates.md)。
 - 精修参考音用 `./install.sh --configure-voice 参考音.wav 原文.txt` 保存，换机私下复制 `~/.config/yice-youtube-video/`。公开画面严禁出现私人路径、用户名、邮箱或凭据。
 
 主脑交片前关字幕、有声连看全章：反例与真实操作看得懂、口播数量与同屏成品一致、没有连续三秒的死镜、前六十秒不出现终端、字幕带不压核心文字、每种声音都对应可见动作。相关参考：[配音](references/voice.md)、[导演层](references/director-layer.md)、[素材采集](references/media-acquisition.md)。

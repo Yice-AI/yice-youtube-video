@@ -400,7 +400,10 @@ def timeline_gates(timeline, project, duration, *, real_range=(.45,.72)):
             media_start = float(shot.get('media_start',0.))
             video_windows.extend((path,media_start,span) for path in videos)
         callback_of = shot.get('callback_of')
-        valid_callback = False
+        valid_callback = bool(
+            callback_of and callback_of != key and callback_of in seen_ids
+            and mode in {'hyperframes_block', 'onetake_clip'}
+        )
         for path, source_start, play_span in video_windows:
             if not path.is_file():
                 missing.append(key)
@@ -1092,7 +1095,10 @@ def sfx_diversity_and_sync_gate(timeline, duration):
         previous.append((source, mark.get('playback_rate', 1.)))
         if len(previous) >= 3 and previous[-1] == previous[-2] == previous[-3]:
             violations.append(dict(at=at,reason='identical_three_in_a_row',file=source))
-        shot = next((s for s in timeline['shots'] if s['start'] <= at < s['end']), None)
+        shot = (
+            next((s for s in timeline['shots'] if s['start'] - 1e-3 <= at < s['end'] - 1e-4), None)
+            or next((s for s in timeline['shots'] if s['start'] - 1e-3 <= at <= s['end'] + 1e-3), None)
+        )
         if shot is None:
             violations.append(dict(at=at,reason='outside_shots'))
             continue
@@ -1293,6 +1299,38 @@ def precheck_narrative_gate(timeline, project, duration):
     return dict(ok=not violations, required=True, violations=violations)
 
 
+def recipe_monotony_and_workbench_gate(timeline, duration):
+    from collections import Counter
+    required = bool(timeline.get('version') == 'v15.0' and timeline.get('episode_kind') == 'tool_tutorial' and duration >= 90)
+    if not required:
+        return dict(ok=True, required=False, violations=[])
+    shots = timeline.get('shots') or []
+    counts = Counter()
+    asterisk_bento = []
+    for shot in shots:
+        spec = shot.get('spatial_spec') or shot.get('onetake_spec') or {}
+        rec = spec.get('recipe') or shot.get('recipe')
+        if rec:
+            counts[rec] += 1
+        if rec == 'logo_bento_stage' and isinstance(shot.get('spatial_spec'), dict):
+            mods = (shot['spatial_spec'].get('data') or {}).get('modules') or []
+            has_real_logo = any(isinstance(it, dict) and it.get('logo') for m in mods for it in (m.get('items') or []))
+            if not has_real_logo:
+                asterisk_bento.append(shot['id'])
+    violations = []
+    cap = max(3, int(len(shots) * 0.06))
+    for diagram in ('logo_bento_stage', 'step_tree_focus', 'roadmap_thread_camera', 'handdrawn_sketch_stage'):
+        if counts[diagram] > cap:
+            violations.append(dict(reason='overused_diagram_recipe', recipe=diagram, count=counts[diagram], max_allowed=cap))
+    if len(asterisk_bento) > 1:
+        violations.append(dict(reason='logo_bento_missing_real_logos', shots=asterisk_bento,
+                               hint='无真实 SVG/PNG 标志时严禁反复套用默认星号白框 logo_bento_stage，请提供真实 logo 或改用带真画面的 progressive_sim_cards / perspective_video_fan'))
+    if duration >= 120 and counts['prompt_iter_workbench'] < 2:
+        violations.append(dict(reason='insufficient_prompt_iter_workbench', count=counts['prompt_iter_workbench'], minimum=2,
+                               hint='实操长教程至少须有 2 个镜头真实使用 prompt_iter_workbench 展示提示词胶囊与前后画面对比'))
+    return dict(ok=not violations, required=True, recipe_counts=dict(counts), violations=violations)
+
+
 def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
     shots = timeline['shots']
     richness = visual_richness_gate(timeline,project,rendered)
@@ -1307,6 +1345,7 @@ def v9_gates(timeline, project, rendered, duration, errors, *, v10=False):
     if v10:
         from audit_spatial import capture_stage_backgrounds, spatial_frame_gates, spatial_measurements, subpage_repeats, three_mode_symphony_gate
         result['precheck_narrative_gate'] = precheck_narrative_gate(timeline, project, duration)
+        result['recipe_monotony_and_workbench_gate'] = recipe_monotony_and_workbench_gate(timeline, duration)
         editorial = any('case_tag' in shot or shot.get('stage_look') in {'swiss_paper', 'cinema_black'}
                         or any(o.get('kind') == 'editorial_punch' for o in shot.get('overlays', []))
                         for shot in shots)

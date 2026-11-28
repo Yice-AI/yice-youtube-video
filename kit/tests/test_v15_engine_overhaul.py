@@ -194,3 +194,50 @@ def test_fan_exit_removes_frame_and_fills_canvas(tmp_path, aspect):
     """
     rect = json.loads(subprocess.check_output(['node','-e',js,str(entry)],text=True))
     assert rect == pytest.approx([0,0,1920,1080],abs=1)
+
+
+def test_v15_sfx_uniqueness_recipe_monotony_and_boundary_guards(tmp_path):
+    import hashlib
+    from kit.editorial.audio_mix import ASSETS_DIR
+    from audit_v7 import recipe_monotony_and_workbench_gate, sfx_diversity_and_sync_gate, timeline_gates
+
+    sfx_files = [p for p in (ASSETS_DIR / 'sfx').iterdir() if p.suffix in {'.mp3', '.wav'}]
+    digests = {hashlib.sha256(p.read_bytes()).hexdigest() for p in sfx_files}
+    assert len(sfx_files) == 27 and len(digests) == 27
+
+    bad_tl = dict(
+        version='v15.0', episode_kind='tool_tutorial',
+        shots=[dict(id=f's{i}', start=i*30., end=(i+1)*30.,
+                    spatial_spec=dict(recipe='logo_bento_stage', data=dict(modules=[dict(items=['A'])])))
+               for i in range(5)]
+    )
+    gate = recipe_monotony_and_workbench_gate(bad_tl, 150.)
+    assert not gate['ok']
+    reasons = {v['reason'] for v in gate['violations']}
+    assert {'overused_diagram_recipe', 'logo_bento_missing_real_logos', 'insufficient_prompt_iter_workbench'} <= reasons
+
+    good_tl = dict(
+        version='v15.0', episode_kind='tool_tutorial',
+        shots=[
+            dict(id='s0', start=0., end=45., spatial_spec=dict(recipe='prompt_iter_workbench', data={})),
+            dict(id='s1', start=45., end=90., spatial_spec=dict(recipe='prompt_iter_workbench', data={})),
+            dict(id='s2', start=90., end=130., spatial_spec=dict(recipe='logo_bento_stage', data=dict(modules=[dict(items=[dict(name='A', logo='a.svg')])]))),
+        ]
+    )
+    assert recipe_monotony_and_workbench_gate(good_tl, 130.)['ok']
+
+    # Shot-boundary floating-point rounding (109.03333 vs 109.03334) must land in s2, not s1
+    s1 = dict(id='s1', start=105., end=109.03334, beats=[0.])
+    s2 = dict(id='s2', start=109.03334, end=115., beats=[0.], camera_action_times=[0.])
+    marks = [dict(kind='zoom_swoosh', at=109.03333, gain=.60)]
+    assert sfx_diversity_and_sync_gate(dict(shots=[s1, s2], sound_marks=marks), 10.)['ok']
+
+    # callback_of on hyperframes_block referencing earlier shot is valid
+    cues = [dict(id='c1', firstCharTime=0.), dict(id='c2', firstCharTime=5.)]
+    cb_shots = [
+        dict(id='open', start=0., end=5., anchor_cue_id='c1', stage_mode='hyperframes_block'),
+        dict(id='close', start=5., end=10., anchor_cue_id='c2', stage_mode='hyperframes_block', callback_of='open'),
+    ]
+    tl_res = timeline_gates(dict(cues=cues, shots=cb_shots), tmp_path, 10., real_range=(0., 1.))
+    assert not tl_res['invalid_callbacks']
+
