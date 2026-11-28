@@ -1,13 +1,13 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v16.0。动笔前用 precheck-episode 三关硬拦截温吞/设门槛窄标题、标题正文脱节、大模型和稀泥叠甲词、制作端自嗨台词、密集小数堆砌和素材单一；按脑科学「前 10 秒砸预期摆抽屉 + 2 分钟防走神爆点 + 门槛递减 + 片尾截屏速查表」编排，支持横竖屏零裁切与克制动作音效。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v17.0。先写连续散文口播母稿 narration.md，定稿后一字不改拆成 script.md 分镜表；动笔前用 precheck-episode 三关硬拦截温吞/设门槛窄标题、标题正文脱节、大模型和稀泥叠甲词、无依据吹牛词、制作端自嗨台词、密集小数堆砌和素材单一；按脑科学「前 10 秒砸预期摆抽屉 + 2 分钟防走神爆点 + 门槛递减 + 片尾截屏速查表」编排，支持横竖屏零裁切与克制动作音效。
 ---
 
-# 一策 YouTube 视频制作 v16.0
+# 一策 YouTube 视频制作 v17.0
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。作品与操作用全屏暗场，方法拆解、选型与过场切到 `swiss_paper` 暖白点阵、黑色硬框和信号橙或克莱因蓝。
 
-先按[破圈选题与包装](references/00-破圈选题与包装铁律.md)定标题与封面，再按[爆款逐字稿四遍炼金法](references/03-爆款逐字稿四遍炼金法.md)与[高留存叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)打磨逐字稿，按[一手高光素材与代码造画](references/02-一手高光素材与代码造画母法.md)备素材。
+先按[破圈选题与包装](references/00-破圈选题与包装铁律.md)定标题与封面，再按[散文母稿与长视频四条母法](references/03-散文母稿与长视频四条母法.md)写口播母稿，定稿拆表后按[高留存叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)配镜头，按[一手高光素材与代码造画](references/02-一手高光素材与代码造画母法.md)备素材。
 
 ## 前置三关：没过关不许往下走
 
@@ -18,10 +18,10 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 | 关卡 | 不过关就不许 | 拦截项 |
 | --- | --- | --- |
 | `packaging` | 写分镜 | `bland_explanatory_title`（怎么选、使用指南、浅谈等说明文腔）；`narrow_gatekeeping_title`（“什么是大模型 / XX 架构拆解”这类给外行设门槛的窄标题，过不了前 2 秒四问：跟我有关吗/在乎吗/反直觉吗/一秒懂吗）；`promise_body_drift`（标题正文承诺脱节）；`thumbnail_candidates_insufficient`（封面候选不足 3 张或缺联系表）；并检查 `target_keywords` 搜索动作词埋点 |
-| `script` | 跑配音 | `maker_plumbing_leak`（截图等几秒、无头浏览器、临时目录等内部细节）；`llm_hedging_fluff`（“一般来说、见仁见智、因人而异”等大模型和稀泥叠甲词）；`decimal_overload`（单幕堆砌 ≥4 个冷冰冰精确小数，须改成“省一半 / 六分之一”体感账）；`slow_or_meta_opener`（报幕、“不知道你有没有过这种经历”电视购物慢热铺垫、或前 60 秒念命令）；`flat_catalog_transitions`（平铺报菜名转场）；`chapter_closure_stop_signal`（章尾“XX搞定了/省心了，要是做另一件事怎么办”催人下车的假衔接结案词）；`unpaired_pain_point_visual`（痛点无真实反例画面）；`missing_hands_on_prompt_loop`（少于 2 章给可照抄提示词与前后变化）；并检查多工具教程是否讲清前置安装底座（`late_or_missing_setup_onboarding`）、是否直说真实边界/短板（`missing_honest_tradeoff`）及是否含空泛导购套话 |
+| `script` | 拆表、配音 | 读 `narration.md` 母稿（已拆表则读 `script.md`，两者口播不一致报 `narration_script_out_of_sync`）；`unverified_hype_claim`（神器、全网最强、吊打付费、效率提升 300%、每天省 3 小时等无依据吹牛词）；`maker_plumbing_leak`（截图等几秒、无头浏览器、临时目录等内部细节）；`llm_hedging_fluff`（“一般来说、见仁见智、因人而异”等大模型和稀泥叠甲词）；`decimal_overload`（单幕堆砌 ≥4 个冷冰冰精确小数，须改成“省一半 / 六分之一”体感账）；`slow_or_meta_opener`（报幕、“不知道你有没有过这种经历”电视购物慢热铺垫、或前 60 秒念命令）；`flat_catalog_transitions`（平铺报菜名转场）；`chapter_closure_stop_signal`（章尾“XX搞定了/省心了，要是做另一件事怎么办”催人下车的假衔接结案词）；`unpaired_pain_point_visual`（痛点无真实反例画面；母稿阶段提醒，拆表后拦截）；`missing_hands_on_prompt_loop`（少于 2 章给可照抄提示词与前后变化）；并检查多工具教程是否讲清前置安装底座（`late_or_missing_setup_onboarding`）、是否直说真实边界/短板（`missing_honest_tradeoff`）及是否含空泛导购套话 |
 | `assets` | 跑 `assemble-episode.sh` | `duplicate_asset_disguise`（同一画面换名存多份）；`insufficient_visual_clusters`（多工具教程独立画面少于 8 组）；`missing_external_showcase`（外部真实来源少于 2 个网站或不足 25%） |
 
-包装写在剧集目录的 `packaging.json` 或 `packaging.md`（`title`、`hook`、`viewer_promise`、`target_keywords`、可选 `episode_kind`）。剧本第 3 列写画面规划，也可在旁白里用 `〔画面：…〕` 注明反例原件。专门教写脚本或自动化的选题在包装里写 `"maker_topic": true` 放行工程术语。返回码 0 通过、1 有拦截、2 参数或文件缺失。
+包装写在剧集目录的 `packaging.json` 或 `packaging.md`（`title`、`hook`、`viewer_promise`、`target_keywords`、可选 `episode_kind`）。母稿里用单独一行的 `〔画面：…〕` / `〔演示：…〕` 写画面提示，`kit/scripts/split-narration.sh narration.md` 拆表时一字不改落入第 3 列。专门教写脚本或自动化的选题在包装里写 `"maker_topic": true` 放行工程术语。返回码 0 通过、1 有拦截、2 参数或文件缺失。
 
 ## 导演与机房分工
 
@@ -36,7 +36,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 4. **实操用提示词迭代台，不用黑底终端。** 讲工具用法时优先 `prompt_iter_workbench`：顶部大白话提示词胶囊逐拍落位，`16:9` 零裁边展示「↺ 默认直出」，到 `iter_at` 换成「✦ 加词精修后」，再推近接下一镜全屏交互。终端只留安装那一下，且放在第一分钟之后。
 5. **素材先外采再自造。** 每期先跑 `harvest-showcase-media.sh --rank-highlights` 抓官网、论文项目页、公开演示原片，`collect-entity.sh` 取标志与 README 演示，`capture-web.mjs` 录官网；本地自造页面只补缺口，同一套页面不许换名字反复播。
 
-叙事与实操按五分钟高完播率「一环扣一环」四道锁编排：① **前 15 秒亮成品立赌约 + 埋跨章悬念扣**（禁报幕与“不知道你有没有过…”慢热铺垫）：第一秒亮出桌面上**同一个工作文件夹**生出来的全套成品，用 3 格任务抽屉减负，并埋下留到后半程揭晓的红线悬念；② **前置 25 秒打通零基础底座 + 单文件夹一鱼多吃通关**：进第 1 个工具前先演清建空文件夹、粘链接装好并敲 `/` 调用；全片死咬同一份日常底料连续闯关（上一步的产出直接变成下一步的输入，严禁每章换无关新案例）；③ **章尾危机硬咬合（禁写“搞定了/省心了”结案休止符）**：每章结尾必须是上一环成品当场撞上下一环的现实死结（如手机竖图没法投会议室横屏电视、干录静态翻页发短视频没人看），`precheck` 硬查 `chapter_closure_stop_signal` 与 `flat_catalog_transitions`；④ **每 45 秒微观翻车秒修 + 第 2 分钟强爽点**：每个工具走完「拖入具体素材 → 具体结构/动作指令 → **V1 真瑕疵当场修成 V2**（如第 2 分钟实录按 `T` 秒切 36 套配色、按 `S` 弹隐藏提词器，或截图修第 4 秒错位高亮）→ 能力死角与协议红线」，砍光导购空话与叠甲词；⑤ **同文件夹大验收闭环 + 截屏速查表**：片尾拉回同一个文件夹核验全套成品首尾闭合，再用 `saveable_cheat_sheet` 停稳拉收藏，交稿前必过盲评五问。
+口播按[散文母稿与长视频四条母法](references/03-散文母稿与长视频四条母法.md)写：① 前 15 秒把观众最熟的翻车结果和做好后的样子并排直给，一句话说清这期解决什么；② 进第一个工具前用生活类比讲透底层原因，给 3–4 条以后遇到任何新工具都用得上的判断或调教方法；③ 高频工具当主角，拿普通人每周真在干的事跑一遍“第一版哪里不行 → 多说哪一句 → 第二版”，窄众工具当配角一段讲清，段与段接住观众自然会问的下一句；④ 每个说法读源仓库核实，每个工具说清一个真毛病或协议边界，母稿末尾附《事实与仓库核对表》。片尾用 `saveable_cheat_sheet` 停稳一页速查表。
 
 ## 多卡与跨镜衔接（v15.0）
 
@@ -56,7 +56,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 ## 制片入口
 
 0. **定题与包装。** 按[破圈选题与包装](references/00-破圈选题与包装铁律.md)三圈交叉选题、五维提案卡拍板，写好 `packaging.json`。封面优先用**片中真实成品原图多图参考** `kit/scripts/thumbnail.sh --project . --title "主标题" --summary "一句精炼副标" --ref 成品1.png --ref 成品2.png --ref 成品3.png` 并行出 3 张高活力真图封面（超大数字电光蓝撞色、科技亮底扇形、暗调发光视窗，兼顾冲击力与呼吸感，严禁脑补假软件图标或塞死板坐标长约束）；尚未产生成品图时可用默认零约束直出。**运行 `precheck-episode.sh --stage packaging`，过关才写分镜。**
-1. **四遍炼稿 + 前 30 秒双钩子盲测。** 严格执行[爆款逐字稿四遍炼金法](references/03-爆款逐字稿四遍炼金法.md)：先立「闯关实战线」或「破案算账线」单主脊椎（严禁平行报菜名），先出 2 版前 30 秒短句钩子择优，再对初稿连削四刀（卖产品痛感前置 → 写小说章尾留扣与 2 分钟爆点 → 脑科学抽屉节拍 → 出声砍三成水分压到 8–15 字短句）。剧本第 3 列写清每幕画面，痛点幕写明反例原件。**运行 `--stage script`（拦截 `flat_catalog_transitions` 平铺转场、`llm_hedging_fluff` 等），过关才配音。**
+1. **先写散文母稿，定稿再拆表。** 按[散文母稿与长视频四条母法](references/03-散文母稿与长视频四条母法.md)写 `narration.md`：只写连续口播段落、单独成行的 `〔画面/演示：…〕` 提示、包装三件套与《事实与仓库核对表》，写稿阶段不画表格、不写配方名。初稿自砍一遍、出声通读、与参考爆款稿和同题直出稿并排盲评。**运行 `--stage script` 过关后**，`kit/scripts/split-narration.sh narration.md` 一字不改拆成 `script.md`，再按[高留存叙事与三态画面](references/01-高留存叙事与三态画面铁律.md)给每幕配镜头；之后改稿只改母稿再重拆。
 2. **素材与造画。** 入口均在 `kit/scripts/`，全部登记 `asset-ledger.jsonl`：
    - `harvest-showcase-media.sh --rank-highlights` 抓 `*.github.io`、官网、公开演示的高清 `.mp4`，自动切 4.5s 高光（非 16:9 自动 `blur_dark` 同源暗底）；`collect-entity.sh` 取标志与 README 演示；`capture-web.mjs` / `record-web-cam.sh` 录公开网页。
    - `rec-demo.sh` 录本机连续实操；`image2` + `cutout.sh` 造剪纸与壁画，喂 `cutout_parallax_stage`、`documentary_ken_burns`；`scout-video-scenes.sh long.mp4 --output scout` 从长片挑段；`find-media.sh`、`people-add.sh` 取实物与人物。

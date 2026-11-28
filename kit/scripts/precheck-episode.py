@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """制片前置三关：包装（标题承诺）、口播稿、素材池。任何一关不过，不进入下一步。
 
+口播关先读散文母稿 narration.md（还没拆表时），已拆好的 script.md 分镜表也照样能查。
+
   packaging  未通过严禁写分镜
   script     未通过严禁跑配音
   assets     未通过严禁跑 assemble-episode.sh
@@ -15,6 +17,9 @@ import re
 import subprocess
 import sys
 from urllib.parse import urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import narration_to_script  # noqa: E402
 
 STAGES = ('packaging', 'script', 'assets')
 
@@ -75,12 +80,12 @@ CONTRAST_RECIPES = {'split_wipe_compare', 'split_compare_wipe', 'prompt_iter_wor
                     'literal_action_stage', 'bitmap_lock_glitch'}
 CONTRAST_TAGS = re.compile(r'反例|改前|修改前|before|翻车|对比|丑|bad', re.I)
 QUOTED = re.compile(r'[「“"『‘]([^」”"』’]{4,})[」”"』’]')
-PROMPT_VERBS = re.compile(r'输入|提示词|指令|加上一句|加一句|改成|告诉它|对它说|喂给它|丢给它|让它')
+PROMPT_VERBS = re.compile(r'输入|提示词|指令|加上一句|加一句|又加了一句|改成|告诉它|对它说|跟它说|喂给它|丢给它|让它|说了一句|回了?(?:个|一句)|写的是|我写|说是')
 CHANGE_WORDS = re.compile(r'前后|改前|改后|之前|之后|秒变|变成|直出|默认|精修|对比|反差|立刻|马上')
 LLM_HEDGING_RE = re.compile(r'一般来说|见仁见智|仁者见仁|因人而异|各有千秋吧?|平分秋色吧?|看个人喜好吧?|某种程度上来说|仅供参考哈?')
 FLAT_CATALOG_OPENER_RE = re.compile(
     r'^(?:先说|再说|接着说|下面说|接下来(?:我们)?(?:说|看|讲|介绍|是)|最后(?:是|说|看|讲|一个)|'
-    r'第[一二三四五六七八九十1-9][个款项](?:工具|神器|Skill|是|要讲))'
+    r'第[一二三四五六七八九十1-9][个款](?:工具|神器|Skill))'
 )
 CHAPTER_CLOSURE_STOP_RE = re.compile(
     r'(?:省心了|搞定了|做完了|讲完了|齐活了|齐了|都有了)[，,。！？!?\s]*(?:可要是|要是|如果|那要是|那如果|接下来|下面)'
@@ -91,6 +96,10 @@ BROCHURE_FLUFF_RE = re.compile(r'用的时候特别省事|用起来特别省事|
 SETUP_ONBOARDING_RE = re.compile(r'安装|装上|装好|新建.*文件夹|工作目录|打开\s*(?:Codex|Claude)', re.I)
 VERSION_DECIMAL_RE = re.compile(r'(?:[vV]\d+\.\d+(?:\.\d+)?|(?:Claude|GPT|Gemini|Qwen|DeepSeek|Python|Node|Apache|MIT|Web)\s*[-A-Za-z]*\s*\d+\.\d+|\b\d+\s*[:：比]\s*\d+\b)', re.I)
 RAW_DECIMAL_RE = re.compile(r'\b\d+\.\d+%?')
+UNVERIFIED_HYPE_RE = re.compile(
+    r'地表最强|全网最强|史上最强|宇宙最强|吊打(?:所有|一切|付费|同行)?|完爆|秒杀(?:所有|一切)|碾压(?:所有|一切|付费)|神器|'
+    r'(?:效率|效能|生产力)(?:提升|提高|翻)\s*[\d一二三四五六七八九十百]+\s*(?:%|倍)|提效\s*\d+\s*%|'
+    r'每天(?:能)?省下?\s*[\d一二三四五六七八九十]+\s*(?:个)?小时')
 HONEST_TRADEOFF_RE = re.compile(r'缺点|毛病|短板|坑|局限|不适合|别用|但要注意|只允许|非商业|非商用|需要授权|不能直接|没法直接|弱点|代价')
 
 # ---------- 素材 ----------
@@ -178,7 +187,7 @@ def load_packaging(project, script):
         if manifest.get('title'):
             data['title'], source = manifest['title'], source or 'episode-manifest.json'
         elif script and script['title']:
-            data['title'], source = script['title'], source or 'script.md'
+            data['title'], source = script['title'], source or script.get('source', 'script.md')
     return data, source
 
 
@@ -209,6 +218,33 @@ def parse_script(path):
                                       chapter=len(chapters)))
     return dict(title=title, chapters=chapters,
                 scenes=[s for c in chapters for s in c['scenes']])
+
+
+def parse_narration(path):
+    """把散文母稿按拆表规则切成幕，幕号与日后拆出的 script.md 一致。"""
+    doc = narration_to_script.parse_narration(path)
+    chapters = []
+    for index, chapter in enumerate(narration_to_script.split_rows(doc), 1):
+        scenes = [dict(id=rid, text=text, visual=visual, chapter=index) for rid, text, visual in chapter['rows']]
+        chapters.append(dict(title=chapter['title'], scenes=scenes))
+    return dict(title=doc['title'], chapters=chapters, scenes=[s for c in chapters for s in c['scenes']],
+                source='narration.md')
+
+
+def load_script(project):
+    """先认已拆好的 script.md；只有母稿时直接读 narration.md。两者都有时核对口播是否一致。"""
+    script_path, narration_path = project/'script.md', project/'narration.md'
+    if script_path.is_file():
+        script = parse_script(script_path)
+        script['source'] = 'script.md'
+        if narration_path.is_file():
+            mother = re.sub(r'\s', '', narration_to_script.spoken_text(narration_to_script.parse_narration(narration_path)))
+            table = re.sub(r'\s', '', ''.join(s['text'] for s in script['scenes']))
+            script['out_of_sync'] = mother != table
+        return script
+    if narration_path.is_file():
+        return parse_narration(narration_path)
+    return None
 
 
 def shot_signals(project):
@@ -293,7 +329,7 @@ def stage_packaging(project, script, require_thumbnails):
     packaging, source = load_packaging(project, script)
     title = (packaging.get('title') or '').strip()
     if not title:
-        raise InputError('找不到标题：请在项目里写 packaging.json 或 packaging.md（含 title），或给 script.md 写一级标题')
+        raise InputError('找不到标题：请在项目里写 packaging.json 或 packaging.md（含 title），或给 narration.md / script.md 写一级标题')
     errors, warnings = [], []
     if source not in ('packaging.json', 'packaging.md'):
         warnings.append(issue('packaging_file_missing', f'没有 packaging.json/md，标题暂取自 {source}；建议补齐钩子、观众承诺和关键词。'))
@@ -378,10 +414,16 @@ def stage_script(project, script):
             continue
         if COUNTER_VISUAL.search(scene['visual']) or signals.get(scene['id']):
             continue
-        errors.append(issue('unpaired_pain_point_visual',
-                            f'{scene["id"]} 幕口播说「{found.group(0)}」，但没规划对应的真实反例画面。在第 3 列写清放哪张难看原件或改前画面，或给这一幕配对比镜头。',
+        target = warnings if script.get('source') == 'narration.md' else errors
+        target.append(issue('unpaired_pain_point_visual',
+                            f'{scene["id"]} 幕口播说「{found.group(0)}」，但没规划对应的真实反例画面。母稿里在这段前加一行〔画面：…〕写清放哪张难看原件，拆表后落进第 3 列；或给这一幕配对比镜头。',
                             scene_id=scene['id'], word=found.group(0)))
     for scene in script['scenes']:
+        hype = UNVERIFIED_HYPE_RE.search(scene['text'])
+        if hype:
+            errors.append(issue('unverified_hype_claim',
+                                f'{scene["id"]} 幕用了无依据的吹牛营销词「{hype.group(0)}」。换成你亲手试出来的具体结果，比如“同一份笔记改一句话，版式从白底三框变成网格大字”。',
+                                scene_id=scene['id'], phrase=hype.group(0)))
         hedge = LLM_HEDGING_RE.search(scene['text'])
         if hedge:
             errors.append(issue('llm_hedging_fluff',
@@ -397,22 +439,6 @@ def stage_script(project, script):
             warnings.append(issue('decimal_overload',
                                   f'{scene["id"]} 幕出现 3 个精确小数（{"、".join(decimals)}），建议换成更易记的体感分数。',
                                   scene_id=scene['id'], decimals=decimals))
-    long_clauses = []
-    clause_lengths = []
-    for scene in script['scenes']:
-        stripped = QUOTED.sub('「词」', scene['text'])
-        for clause in re.split(r'[，,。！？!?；;：:——…]', stripped):
-            c = clause.strip()
-            cjk_n = len(re.findall(r'[\u4e00-\u9fff]', c))
-            if cjk_n > 0:
-                clause_lengths.append(cjk_n)
-            if cjk_n >= 28:
-                long_clauses.append((scene['id'], c[:36]))
-    avg_clause = round(sum(clause_lengths) / len(clause_lengths), 1) if clause_lengths else 0.0
-    if len(long_clauses) >= 3 or avg_clause > 16.5:
-        warnings.append(issue('long_winded_clauses',
-                              f'口播短句锤击感不足（全稿分句均长 {avg_clause} 字，超 28 字长句 {len(long_clauses)} 处）。对标爆款每句宜 8–15 字一锤，请拆短长句、砍掉铺垫词。',
-                              avg_clause_cjk=avg_clause, examples=[f'{sid}:{txt}' for sid, txt in long_clauses[:4]]))
     catalog_openers = []
     for ch in script['chapters'][1:]:
         if ch['scenes']:
@@ -422,7 +448,7 @@ def stage_script(project, script):
                 catalog_openers.append(f'{s0["id"]}「{m.group(0)}」')
     if len(catalog_openers) >= 3:
         errors.append(issue('flat_catalog_transitions',
-                            f'连续 {len(catalog_openers)} 章用客服报菜名式开头（{"、".join(catalog_openers[:4])}），观众每章听完容易划走。请按《03-爆款逐字稿四遍炼金法》改成“上一章遗留痛点/悬念转折扣”自然推入下一章。',
+                            f'连续 {len(catalog_openers)} 章用客服报菜名式开头（{"、".join(catalog_openers[:4])}），观众每章听完容易划走。请按《03-散文母稿与长视频四条母法》改成接住观众听完上一章自然会问的那句话，或他接着会撞上的真麻烦。',
                             hits=catalog_openers))
     closure_stops = []
     for ch in script['chapters'][:-1]:
@@ -433,7 +459,7 @@ def stage_script(project, script):
                 closure_stops.append(f'{last_s["id"]}「{m.group(0)}」')
     if len(closure_stops) >= 2:
         errors.append(issue('chapter_closure_stop_signal',
-                            f'多章结尾出现“XX搞定了/省心了，要是做另一件事怎么办”的假衔接结案词（{"、".join(closure_stops[:4])}），等于每章提醒观众下车。请改成同一文件夹主线中“上一环产出当场撞上下一环死结”的真因果咬合。',
+                            f'多章结尾出现“XX搞定了/省心了，要是做另一件事怎么办”的假衔接结案词（{"、".join(closure_stops[:4])}），等于每章提醒观众下车。请改成接住观众的下一个追问，或上一步做出来的东西接着会撞上的真麻烦。',
                             hits=closure_stops))
     elif len(closure_stops) == 1:
         warnings.append(issue('chapter_closure_stop_signal',
@@ -478,7 +504,10 @@ def stage_script(project, script):
             if not SETUP_ONBOARDING_RE.search(early_ch_text) and SETUP_ONBOARDING_RE.search(tail_ch_text):
                 warnings.append(issue('late_or_missing_setup_onboarding',
                                       '多工具长教程把“在哪儿打开、怎么装好”拖到了最后一章才提，纯新手前几分钟容易看懵。建议在拉开第一个工具前用 20 秒先把通用底座和装法打通。'))
-    metrics = dict(chapters=len(script['chapters']), scenes=len(script['scenes']),
+    if script.get('out_of_sync'):
+        warnings.append(issue('narration_script_out_of_sync',
+                              'script.md 里的口播和 narration.md 母稿对不上。改稿只改母稿，再用 split-narration.sh 重新拆表。'))
+    metrics = dict(chapters=len(script['chapters']), scenes=len(script['scenes']), source=script.get('source', 'script.md'),
                    tutorial=tutorial, maker_topic=maker_topic, prompt_loop_chapters=loops)
     return dict(ok=not errors, errors=errors, warnings=warnings, metrics=metrics)
 
@@ -648,10 +677,9 @@ def run(project, stage='all', require_thumbnails=False, distance=DHASH_DISTANCE,
     if not project.is_dir():
         raise InputError(f'项目目录不存在：{project}')
     wanted = STAGES if stage == 'all' else (stage,)
-    script_path = project/'script.md'
-    if 'script' in wanted and not script_path.is_file():
-        raise InputError('缺少 script.md，第二关无法检查')
-    script = parse_script(script_path) if script_path.is_file() else None
+    script = load_script(project)
+    if 'script' in wanted and script is None:
+        raise InputError('缺少 narration.md 口播母稿（或已拆好的 script.md），第二关无法检查')
     stages = {}
     if 'packaging' in wanted:
         stages['packaging'] = stage_packaging(project, script, require_thumbnails)
