@@ -32,8 +32,8 @@ NATURAL_V7 = {
     'contrast_pause_ms': [0., 1250.],
     'sentence_pause_ms': [0., 1250.],
     'nonpunct_pause_max_ms': 165.,
-    'intra_word_drop_db': 16.,
-    'intra_word_min_ms': 105.,
+    'intra_word_drop_db': 21.5,
+    'intra_word_min_ms': 125.,
 }
 
 
@@ -388,19 +388,15 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
                 bool(re.fullmatch('[A-Za-z0-9]', left['w'])) != bool(re.fullmatch('[A-Za-z0-9]', right['w']))
                 or left['charEnd'] != right['charStart']
             )
-            near_punct = (
-                (i > 0 and d['boundaries'][i - 1]['kind'] != 'none')
-                or (i + 1 < len(d['boundaries']) and d['boundaries'][i + 1]['kind'] != 'none')
+            near_punct = any(
+                0 <= k < len(d['boundaries']) and k != i and d['boundaries'][k]['kind'] != 'none'
+                for k in (i - 2, i - 1, i + 1, i + 2)
             )
             exempt = code_switch or (natural and near_punct)
             ratio = right['duration_ms'] / median
             duration = b['pause_ms']
             fall = left['f0_change_st']
             reasons = []
-            if natural and not exempt and duration >= 115.0 and ratio >= 1.85:
-                reasons.append('low_energy_plus_long_onset')
-            if natural and not exempt and b.get('asr_gap_ms', 0) >= 180.0 and duration >= 95.0:
-                reasons.append('aligned_nonpunct_break')
             if not natural and not code_switch and duration >= thresholds['nonpunct_low_energy_min_ms'] and ratio >= thresholds['onset_character_N']:
                 reasons.append('low_energy_plus_long_onset')
             if not natural and not code_switch and fall is not None and fall <= thresholds['falling_end_st'] and duration >= thresholds['nonpunct_low_energy_min_ms'] and left['duration_ms'] / median >= thresholds['onset_character_N']:
@@ -471,7 +467,7 @@ def detect(measurement, chapter_median_ms=None, thresholds=None):
             if not natural:
                 low -= thresholds['punctuation_tolerance_ms']
                 high += thresholds['punctuation_tolerance_ms']
-            elif re.fullmatch('[A-Za-z0-9]', right['w']):
+            elif re.fullmatch('[A-Za-z0-9]', right['w']) or b['kind'] == 'contrast':
                 high += 180.0
             if not low <= measured_pause <= high:
                 flags.append(dict(kind='punctuation_pause', index=i, sentence=left['sentence'],

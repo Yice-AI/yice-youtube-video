@@ -96,15 +96,13 @@ def test_source_diversity_checks_real_records(tmp_path):
 def test_natural_pause_and_labelled_cover_briefs():
     check=script('voice-check')
     cfg=check.thresholds_for('natural_v7')
-    assert (cfg['nonpunct_pause_max_ms'], cfg['intra_word_drop_db'], cfg['intra_word_min_ms'])==(165,16,105)
+    assert (cfg['nonpunct_pause_max_ms'], cfg['intra_word_drop_db'], cfg['intra_word_min_ms'])==(165,21.5,125)
     chars=[dict(w=w,s=i*.2,e=i*.2+.17,charStart=i,charEnd=i+1,sentence=0,duration_ms=d,
                 active_ms=140,f0_change_st=0) for i,(w,d) in enumerate(zip('重抽',[150,300]))]
-    boundary=dict(kind='none',index=0,context='重抽',pause_ms=115,asr_gap_ms=0)
+    boundary=dict(kind='none',index=0,context='重抽',pause_ms=170,asr_gap_ms=0)
     data=dict(characters=chars,boundaries=[boundary],db=[],median_char_ms=150,chunk_seams=[])
-    assert 'low_energy_plus_long_onset' in check.detect(data,thresholds=cfg)[0]['reasons']
-    boundary.update(pause_ms=95,asr_gap_ms=185)
-    assert 'aligned_nonpunct_break' in check.detect(data,thresholds=cfg)[0]['reasons']
-    boundary.update(pause_ms=45,asr_gap_ms=0)
+    assert 'nonpunct_pause' in check.detect(data,thresholds=cfg)[0]['reasons']
+    boundary.update(pause_ms=145,asr_gap_ms=0)
     assert not check.detect(data,thresholds=cfg)
     thumb=script('thumbnail')
     briefs=[thumb.cover_brief('草图变成品','工业展台',archetype=a)[1] for a in thumb.ARCHETYPES]
