@@ -92,33 +92,71 @@ def cover_brief(title, summary, hook=None, badge=None, archetype='treasure_fan')
     return hook, description
 
 
-def generate_with_refs(python, script, title, summary, refs, file):
+REF_STYLES = (
+    (
+        "punchy_dark_number",
+        "深邃蓝黑电光质感背景配细腻景深光效，既有爆款视觉冲击力又留有呼吸空间、不拥挤不呆板。"
+        "左侧以超大立体电光蓝数字或核心词搭配纯白与亮黄撞色粗黑主标题，辅以一枚发光胶囊副标；"
+        "右侧将参考图中的真实作品界面带细腻高光边框立体错落叠放，层次鲜活抓人眼球。",
+    ),
+    (
+        "punchy_light_burst",
+        "明亮通透的浅蓝白科技感渐变背景带轻快光束动势（拒绝死板灰白墙）。"
+        "左侧高对比黑蓝撞色重磅主标题配醒目蓝底白字副标胶囊，版面松紧有度；"
+        "右侧将参考图中的真实作品呈强透视破框扇形飞出，光影鲜活。",
+    ),
+    (
+        "cinema_glow_fan",
+        "暗调科技发布会光影背景，左侧超醒目白黄撞色重磅大字与极简副标条，干净有力不堆砌底部长句；"
+        "右侧将参考图中的真实作品原件以发光悬浮视窗倾斜展开，主次分明。",
+    ),
+)
+
+
+def generate_with_refs(python, script, title, summary, refs, batch, count):
     helper = (
-        "import base64, io, json, pathlib, sys, time, requests\n"
+        "import base64, concurrent.futures, io, json, pathlib, sys, time, requests\n"
         "from PIL import Image, ImageOps\n"
-        "script_path, title, summary, out_path, *ref_paths = sys.argv[1:]\n"
-        "sys.path.insert(0, str(pathlib.Path(script_path).parent))\n"
+        "payload = json.loads(sys.stdin.read())\n"
+        "sys.path.insert(0, str(pathlib.Path(payload['script']).parent))\n"
         "import image2\n"
-        "t0 = time.perf_counter()\n"
         "creds = image2.load_credentials()\n"
-        "prompt = (\n"
-        "  'YouTube 16:9 视频缩略图，干净通透的浅白灰极简摄影棚背景，留白充足、富有呼吸感，不拥挤。'\n"
-        "  f'左侧干净大字排版主标题：{title}；副标简练：' + summary[:120] + ' '\n"
-        "  '右侧将参考图中的真实作品原件以轻盈立体的悬浮卡片错落展示，保持参考图真实版式与细节，右下角留出时长净空区。'\n"
-        ")\n"
-        "files = [('image[]', (pathlib.Path(p).name, pathlib.Path(p).read_bytes(), 'image/png')) for p in ref_paths]\n"
-        "resp = requests.post(f'{creds.base_url}/images/edits', headers={'Authorization': f'Bearer {creds.api_key}'},\n"
-        "                     data={'model': creds.model, 'prompt': prompt, 'n': '1', 'size': '1792x1024'}, files=files, timeout=(30, 240))\n"
-        "if not resp.ok:\n"
-        "  raise SystemExit(image2.redact(f'HTTP {resp.status_code}: {resp.text[:240]}', creds.sensitive_values))\n"
-        "item = resp.json()['data'][0]\n"
-        "raw = base64.b64decode(item['b64_json']) if item.get('b64_json') else requests.get(item['url'], timeout=60).content\n"
-        "with Image.open(io.BytesIO(raw)) as src:\n"
-        "  ImageOps.fit(ImageOps.exif_transpose(src), (1920, 1080), method=Image.Resampling.LANCZOS).save(out_path, format='PNG')\n"
-        "print(json.dumps({'outputs': [{'output': out_path, 'width': 1920, 'height': 1080, 'model': creds.model, 'elapsed_seconds': round(time.perf_counter()-t0, 2)}], 'attempts': 1}))\n"
+        "blobs = [(pathlib.Path(p).name, pathlib.Path(p).read_bytes(), 'image/png') for p in payload['refs']]\n"
+        "def one(job):\n"
+        "  t0 = time.perf_counter()\n"
+        "  style_name, style_desc, out_path = job['style'], job['desc'], job['out']\n"
+        "  prompt = (\n"
+        "    '高点击率 YouTube 科技视频 16:9 缩略图。' + style_desc + ' '\n"
+        "    f'左侧主标题文字为：「{payload[\"title\"]}」，副标精炼为：「{payload[\"summary\"][:80]}」。'\n"
+        "    '严格保持参考图中真实作品的版式、配色与文字细节；严禁凭空脑补任何未出现在参考图里的第三方软件图标或无关品牌 Logo，砍掉底部多余长句，右下角留出时长净空区。'\n"
+        "  )\n"
+        "  files = [('image[]', b) for b in blobs]\n"
+        "  resp = requests.post(f'{creds.base_url}/images/edits', headers={'Authorization': f'Bearer {creds.api_key}'},\n"
+        "                       data={'model': creds.model, 'prompt': prompt, 'n': '1', 'size': '1792x1024'}, files=files, timeout=(30, 240))\n"
+        "  if not resp.ok:\n"
+        "    raise RuntimeError(image2.redact(f'HTTP {resp.status_code}: {resp.text[:240]}', creds.sensitive_values))\n"
+        "  item = resp.json()['data'][0]\n"
+        "  raw = base64.b64decode(item['b64_json']) if item.get('b64_json') else requests.get(item['url'], timeout=60).content\n"
+        "  with Image.open(io.BytesIO(raw)) as src:\n"
+        "    ImageOps.fit(ImageOps.exif_transpose(src), (1920, 1080), method=Image.Resampling.LANCZOS).save(out_path, format='PNG')\n"
+        "  return {'output': out_path, 'width': 1920, 'height': 1080, 'model': creds.model, 'archetype': style_name, 'elapsed_seconds': round(time.perf_counter()-t0, 2)}\n"
+        "with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(payload['jobs']))) as ex:\n"
+        "  res = list(ex.map(one, payload['jobs']))\n"
+        "print(json.dumps({'outputs': res, 'attempts': len(res)}))\n"
     )
-    out = run_command([python, "-c", helper, str(script), title, summary, str(file), *(str(r) for r in refs)])
-    return json.loads(out)
+    jobs = []
+    for idx in range(1, count + 1):
+        sname, sdesc = REF_STYLES[(idx - 1) % len(REF_STYLES)]
+        jobs.append({"style": sname, "desc": sdesc, "out": str(batch / f"candidate-{idx}.png")})
+    proc = subprocess.run(
+        [python, "-c", helper],
+        input=json.dumps({"script": str(script), "title": title, "summary": summary, "refs": [str(r) for r in refs], "jobs": jobs}),
+        text=True,
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or "image2 多图参考生成失败").strip())
+    return json.loads(proc.stdout)
 
 
 def generate(args, project, root):
@@ -147,15 +185,21 @@ def generate(args, project, root):
     rows = []
     attempts = 0
     direct_mode = args.archetype == "direct" and not args.hook and not args.badge
-    if not direct_mode and not refs:
-        hook, _ = cover_brief(args.title, summary, args.hook, args.badge)
-    for index in range(1, args.candidates+1):
-        file = batch / f'candidate-{index}.png'
-        if refs:
-            archetype = "real_refs_airy"
-            generated = generate_with_refs(python, script, args.title.strip(), summary.strip(), refs, file)
-            item = generated["outputs"][0]
-        else:
+    if refs:
+        generated = generate_with_refs(python, script, args.title.strip(), summary.strip(), refs, batch, args.candidates)
+        attempts += generated.get("attempts", len(generated["outputs"]))
+        for item in generated["outputs"]:
+            file = Path(item["output"])
+            with Image.open(file) as image:
+                size = image.size
+                image.load()
+            rows.append({**item, "file": file.name, "width": size[0], "height": size[1],
+                         **watermark_result(file, size)})
+    else:
+        if not direct_mode:
+            hook, _ = cover_brief(args.title, summary, args.hook, args.badge)
+        for index in range(1, args.candidates+1):
+            file = batch / f'candidate-{index}.png'
             if direct_mode:
                 archetype = "direct"
                 call_title, call_summary = args.title.strip(), summary.strip()
@@ -175,12 +219,12 @@ def generate(args, project, root):
                 raise ValueError(f'image2 返回了非预期的候选路径：{index}')
             source.rename(file)
             item.update(output=str(file), archetype=archetype)
-        attempts += generated.get('attempts', 1)
-        with Image.open(file) as image:
-            size = image.size
-            image.load()
-        rows.append({**item, "file": file.name, "width": size[0], "height": size[1],
-                     **watermark_result(file, size)})
+            attempts += generated.get('attempts', 1)
+            with Image.open(file) as image:
+                size = image.size
+                image.load()
+            rows.append({**item, "file": file.name, "width": size[0], "height": size[1],
+                         **watermark_result(file, size)})
     sheet = contact_sheet(batch, rows)
     result = {"batch": str(batch), "path": str(sheet), "candidates": len(rows),
               "attempts": attempts, "outputs": rows}

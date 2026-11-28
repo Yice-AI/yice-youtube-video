@@ -55,7 +55,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 
 ## 制片入口
 
-0. **定题与包装。** 按[破圈选题与包装](references/00-破圈选题与包装铁律.md)三圈交叉选题、五维提案卡拍板，写好 `packaging.json`。封面用 `kit/scripts/thumbnail.sh --project . --title "标题" --summary "摘要" --archetype diverse` 一次出 3 张不同构图候选（`treasure_fan` 多成果 3D 扇形、`versus_shock` 丑稿对惊艳、`power_desk` 一句话指令驱动成果台）。**运行 `precheck-episode.sh --stage packaging`，过关才写分镜。**
+0. **定题与包装。** 按[破圈选题与包装](references/00-破圈选题与包装铁律.md)三圈交叉选题、五维提案卡拍板，写好 `packaging.json`。封面优先用**片中真实成品原图多图参考** `kit/scripts/thumbnail.sh --project . --title "主标题" --summary "一句精炼副标" --ref 成品1.png --ref 成品2.png --ref 成品3.png` 并行出 3 张高活力真图封面（超大数字电光蓝撞色、科技亮底扇形、暗调发光视窗，兼顾冲击力与呼吸感，严禁脑补假软件图标或塞死板坐标长约束）；尚未产生成品图时可用默认零约束直出。**运行 `precheck-episode.sh --stage packaging`，过关才写分镜。**
 1. **五拍拆稿。** 依[本机 Skill 协同表](references/01-高留存叙事与三态画面铁律.md#本机-skill-协同表)用 hyperframes-creative 排证据、humanizer-zh 审口播、cheat-score 查钩子。剧本第 3 列写清每幕画面，痛点幕写明反例原件。**运行 `--stage script`，过关才配音。**
 2. **素材与造画。** 入口均在 `kit/scripts/`，全部登记 `asset-ledger.jsonl`：
    - `harvest-showcase-media.sh --rank-highlights` 抓 `*.github.io`、官网、公开演示的高清 `.mp4`，自动切 4.5s 高光（非 16:9 自动 `blur_dark` 同源暗底）；`collect-entity.sh` 取标志与 README 演示；`capture-web.mjs` / `record-web-cam.sh` 录公开网页。
@@ -63,7 +63,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
    - **运行 `--stage assets`，过关才装片。**
 3. **配音并验帧。** `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`（可用 `--tts-model` 换云端开源语音底座），`natural_v7` 拦截句内无标点停顿超 165ms、词内能量塌陷 ≥ 16dB（110–260ms）与句中拖音，异常分段自动换 seed 重抽最多 3 轮。清单写好后跑 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify` 逐镜核对首中尾帧。
 4. **装配与审片。** `kit/scripts/assemble-episode.sh episode-manifest.json --output out`（默认 2 个低优先级进程，`--draft` 快速试片），再跑 `kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
-5. **封面定稿。** `thumbnail.sh --select` 导出 `< 2 MB` JPG 并入账。钩子加可选数字胶囊合计 ≤ 10 个汉字或词组，右下角 `x>78%, y>80%` 留给时长，按 168px 手机预览挑最清楚的一张。
+5. **封面定稿。** 成片或样稿齐备后用 `thumbnail.sh --ref ...` 带入真实作品截图定稿，再用 `thumbnail.sh --select` 导出 `< 2 MB` JPG 并入账；选图必查**全图零错别字、零脑补假软件图标、右下角时长区无遮挡、168px 手机缩图一眼抓人**。
 
 ## 视觉路由
 
