@@ -23,6 +23,10 @@ BLAND_TITLE_PATTERNS = (
     '怎么选', '如何选择', '对比评测', '评测对比', '两种格式', '使用指南', '入门教程', '浅谈', '初探',
     '简介', '介绍一下', '学习笔记', '心得体会', '一文读懂', '详解', '概述', '总结一下',
 )
+NARROW_GATEKEEP_RE = re.compile(
+    r'^(?:什么是|一文看懂|深入理解)\s*[A-Za-z0-9\u4e00-\u9fa5_-]{2,14}[？?]?$|源码剖析|架构拆解|底层原理解析|协议规范详解|API\s*参数详解'
+)
+OUTCOME_RESCUE_RE = re.compile(r'做出|搞定|省下|免费|白嫖|一句话|不用写代码|不会写代码|零门槛|秒变|直接用')
 HOOK_PATTERN = re.compile(
     r'\d|[零一二两三四五六七八九十百千万]+(个|款|种|倍|分钟|秒|块|元)|别再|不用|免费|白嫖|省|秒|爆|神器|翻车|踩坑|'
     r'真相|实测|竟然|居然|告别|狠|直接|一句话|再也|终于|必看|彻底|吊打|干掉|丑|惊艳|[!！?？]')
@@ -70,6 +74,10 @@ CONTRAST_TAGS = re.compile(r'反例|改前|修改前|before|翻车|对比|丑|ba
 QUOTED = re.compile(r'[「“"『‘]([^」”"』’]{4,})[」”"』’]')
 PROMPT_VERBS = re.compile(r'输入|提示词|指令|加上一句|加一句|改成|告诉它|对它说|喂给它|丢给它|让它')
 CHANGE_WORDS = re.compile(r'前后|改前|改后|之前|之后|秒变|变成|直出|默认|精修|对比|反差|立刻|马上')
+LLM_HEDGING_RE = re.compile(r'一般来说|见仁见智|仁者见仁|因人而异|各有千秋吧?|平分秋色吧?|看个人喜好吧?|某种程度上来说|仅供参考哈?')
+VERSION_DECIMAL_RE = re.compile(r'(?:[vV]\d+\.\d+(?:\.\d+)?|(?:Claude|GPT|Gemini|Qwen|DeepSeek|Python|Node|Apache|MIT|Web)\s*[-A-Za-z]*\s*\d+\.\d+|\b\d+\s*[:：比]\s*\d+\b)', re.I)
+RAW_DECIMAL_RE = re.compile(r'\b\d+\.\d+%?')
+HONEST_TRADEOFF_RE = re.compile(r'缺点|毛病|短板|坑|局限|不适合|别用|但要注意|只允许|非商业|非商用|需要授权|不能直接|没法直接|弱点|代价')
 
 # ---------- 素材 ----------
 IMAGE_EXT = {'.png', '.jpg', '.jpeg', '.webp'}
@@ -284,7 +292,19 @@ def stage_packaging(project, script, require_thumbnails):
     elif len(compact) < 10 and not HOOK_PATTERN.search(title):
         errors.append(issue('bland_explanatory_title',
                             f'标题「{title}」太短又没有痛点、收益或数字钩子。补上观众能得到的结果或一个数字。', title=title))
-    metrics = dict(title=title, source=source)
+    maker_pkg = bool(packaging.get('maker_topic')) or bool(MAKER_TOPIC.search(title))
+    if not maker_pkg and NARROW_GATEKEEP_RE.search(title) and not OUTCOME_RESCUE_RE.search(title):
+        errors.append(issue('narrow_gatekeeping_title',
+                            f'标题「{title}」给外行设了专业概念门槛，刷到前 2 秒过不了四问（跟我有关吗/在乎吗/反直觉吗/一秒看懂吗）。请改成“普通人处境 + 反常识结果”（例如“不会写代码的我，用 AI 做出了…”）。',
+                            title=title))
+    kws = [str(k).strip() for k in (packaging.get('target_keywords') or []) if str(k).strip()]
+    search_surface = ' '.join(str(packaging.get(k) or '') for k in ('title', 'hook', 'viewer_promise', 'description'))
+    if source in ('packaging.json', 'packaging.md'):
+        if len(kws) < 2 or not any(k.lower() in search_surface.lower() for k in kws):
+            warnings.append(issue('search_keywords_weak',
+                                  'packaging 中建议至少配置 2 个核心搜索动作词（如 AI 视频、AI 做 PPT），并确保至少 1 个自然出现在标题或简介承诺中，方便搜索长尾与商务检索。',
+                                  target_keywords=kws))
+    metrics = dict(title=title, source=source, content_track=packaging.get('content_track', 'wide_funnel'))
     if script:
         drift, drift_metrics = promise_drift(packaging, script)
         metrics.update(drift_metrics)
@@ -347,6 +367,22 @@ def stage_script(project, script):
         errors.append(issue('unpaired_pain_point_visual',
                             f'{scene["id"]} 幕口播说「{found.group(0)}」，但没规划对应的真实反例画面。在第 3 列写清放哪张难看原件或改前画面，或给这一幕配对比镜头。',
                             scene_id=scene['id'], word=found.group(0)))
+    for scene in script['scenes']:
+        hedge = LLM_HEDGING_RE.search(scene['text'])
+        if hedge:
+            errors.append(issue('llm_hedging_fluff',
+                                f'{scene["id"]} 幕出现大模型和稀泥叠甲词「{hedge.group(0)}」。观众不想听两边不得罪的废话，请直接给出明确判断或适用边界。',
+                                scene_id=scene['id'], phrase=hedge.group(0)))
+        scrubbed = VERSION_DECIMAL_RE.sub('', scene['text'])
+        decimals = RAW_DECIMAL_RE.findall(scrubbed)
+        if len(decimals) >= 4:
+            errors.append(issue('decimal_overload',
+                                f'{scene["id"]} 幕单段塞入了 {len(decimals)} 个精确小数（{"、".join(decimals[:4])}），观众听完记不住。请改成“省一半、成本只有六分之一、十道题答对八道”这类体感比值。',
+                                scene_id=scene['id'], decimals=decimals))
+        elif len(decimals) == 3:
+            warnings.append(issue('decimal_overload',
+                                  f'{scene["id"]} 幕出现 3 个精确小数（{"、".join(decimals)}），建议换成更易记的体感分数。',
+                                  scene_id=scene['id'], decimals=decimals))
     tutorial = is_tutorial(project, packaging, script)
     loops = []
     if tutorial and len(script['chapters']) >= 3:
@@ -359,6 +395,11 @@ def stage_script(project, script):
             errors.append(issue('missing_hands_on_prompt_loop',
                                 f'教程只有 {len(loops)} 章给出了观众能照抄的中文提示词和前后变化，至少要 2 章。写出“输入「…」→ 默认直出哪里差 → 加一句「…」后变成什么样”。',
                                 chapters_with_loop=loops))
+        if len(script['chapters']) >= 4:
+            full_text = ' '.join(s['text'] for s in script['scenes'])
+            if not HONEST_TRADEOFF_RE.search(full_text):
+                warnings.append(issue('missing_honest_tradeoff',
+                                      '多工具教程全篇未见任何真实短板/适用边界提醒（如协议限制、不适合场景），全吹成神仙水会损失活人信任感，建议直接点明各工具边界。'))
     metrics = dict(chapters=len(script['chapters']), scenes=len(script['scenes']),
                    tutorial=tutorial, maker_topic=maker_topic, prompt_loop_chapters=loops)
     return dict(ok=not errors, errors=errors, warnings=warnings, metrics=metrics)

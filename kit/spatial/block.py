@@ -17,6 +17,7 @@ RECIPES = (
     'perspective_video_fan', 'logo_bento_stage', 'cutout_parallax_stage',
     'documentary_ken_burns', 'step_tree_focus', 'progressive_sim_cards', 'formula_pill_chain',
     'kinetic_title_bridge', 'triptych_curtain', 'prompt_iter_workbench',
+    'chapter_drawer_grid', 'saveable_cheat_sheet',
 )
 ACTIONS = ('bad_slides_pileup', 'dead_image_locked', 'slot_lock_fill', 'folder_pack_outro')
 LIGHT_LOOKS = {'editorial_paper', 'scroll_paper', 'swiss_paper'}
@@ -70,7 +71,7 @@ def _default_look(recipe, data):
         return explicit
     if recipe == 'cutout_parallax_stage':
         return 'scroll_paper'
-    if recipe in ('kinetic_title_bridge', 'prompt_iter_workbench'):
+    if recipe in ('kinetic_title_bridge', 'prompt_iter_workbench', 'chapter_drawer_grid', 'saveable_cheat_sheet'):
         return 'swiss_paper'
     if recipe == 'triptych_curtain':
         return 'cinema_black'
@@ -545,6 +546,53 @@ def build(spec, source_dir, output, gsap):
                        f'<span class="pill-dst">{dst_pill}</span></header>')
         badge_html = f'<span class="chain-badge">{label(data["badge"])}</span>' if data.get('badge') else ''
         body = f'<div class="chain-frame" data-spatial-subject>{badge_html}{media_tag(data["media"])}</div>'
+    elif recipe == 'chapter_drawer_grid':
+        drawers = items('drawers', 3, 6)
+        active_idx = data.get('active_index', -1)
+        if type(active_idx) is not int or not -1 <= active_idx < len(drawers):
+            raise ValueError('active_index 超出抽屉范围')
+        data['active_index'] = active_idx
+        if active_idx >= 0:
+            data['open_at'] = number(data.get('open_at', round(min(duration * 0.44, 0.9), 3)), 0.12, duration - 0.25, 'open_at')
+        heading_txt = label(data.get('heading') or spec.get('title', '本期核心模块'))
+        header_html = f'<header class="drawer-heading" data-spatial-title data-title-kind="editorial_single">{heading_txt}</header>'
+        cols = 2 if len(drawers) == 4 else 3
+        cells_html = []
+        for idx, dr in enumerate(drawers):
+            number(dr.get('at', 0.1 + idx * 0.14), 0, duration - 0.2, '抽屉时间')
+            no_txt = label(dr.get('no', f'{idx+1:02d}'))
+            sub_html = f'<p class="drawer-sub">{label(dr["sub"])}</p>' if dr.get('sub') else ''
+            cells_html.append(
+                f'<section class="drawer-cell" data-spatial-subject>'
+                f'<div class="drawer-tab"><span class="drawer-no">{no_txt}</span><i class="drawer-handle"></i></div>'
+                f'<h2 class="drawer-title">{label(dr["title"])}</h2>{sub_html}</section>'
+            )
+        body = f'<div class="drawer-grid cols-{cols}">{"".join(cells_html)}</div>'
+    elif recipe == 'saveable_cheat_sheet':
+        rows = items('rows', 3, 6)
+        cols = data.get('columns') or ['模块 / 工具', '一句话记住', '实操 / 避坑检查']
+        if not isinstance(cols, list) or len(cols) != 3:
+            raise ValueError('saveable_cheat_sheet 的 columns 需要 3 列标题')
+        data['badge_at'] = number(data.get('badge_at', round(min(duration * 0.42, 0.85), 3)), 0.1, duration - 0.18, 'badge_at')
+        heading_txt = label(data.get('heading') or spec.get('title', '一页速查表'))
+        save_txt = label(data.get('save_badge', '✦ 截屏保存'))
+        header_html = (f'<header class="cheat-heading" data-spatial-title data-title-kind="editorial_single">'
+                       f'<span>{heading_txt}</span><b class="cheat-save-pill">{save_txt}</b></header>')
+        head_row = (f'<div class="cheat-head-row">'
+                    f'<span class="c-col1">{label(cols[0])}</span>'
+                    f'<span class="c-col2">{label(cols[1])}</span>'
+                    f'<span class="c-col3">{label(cols[2])}</span></div>')
+        body_rows = []
+        for idx, r in enumerate(rows):
+            number(r.get('at', 0.18 + idx * 0.16), 0, duration - 0.15, '表格行时间')
+            no_txt = label(r.get('no', str(idx + 1)))
+            body_rows.append(
+                f'<div class="cheat-row">'
+                f'<div class="c-col1"><b class="cheat-no">{no_txt}</b><strong>{label(r["col1"])}</strong></div>'
+                f'<div class="c-col2">{label(r["col2"])}</div>'
+                f'<div class="c-col3">{label(r["col3"])}</div></div>'
+            )
+        body = f'<section class="cheat-sheet-card" data-spatial-subject data-row-count="{len(rows)}">{head_row}{"".join(body_rows)}</section>'
     else:
         action = data['action']
         if action not in ACTIONS:
@@ -583,17 +631,20 @@ def build(spec, source_dir, output, gsap):
         'focus_index', 'focus_at', 'counter', 'focal_from',
         'focal_to', 'split_at', 'branches', 'focus_sequence', 'reveal_at',
         'card_aspect', 'punch_at', 'words', 'underline_at', 'board',
+        'drawers', 'active_index', 'open_at', 'rows', 'badge_at',
     )
     if 'exit_zoom_index' in data:
         idx = data['exit_zoom_index']
         if recipe != 'progressive_sim_cards' or type(idx) is not int or not 0 <= idx < len(cards):
             raise ValueError('exit_zoom_index 超出卡片范围')
-    if 'exit_zoom_index' in data or data.get('exit_zoom') or data.get('exit_zoom_after'):
+    if data.get('exit_zoom_active') and (recipe != 'chapter_drawer_grid' or data.get('active_index', -1) < 0):
+        raise ValueError('exit_zoom_active 需要 chapter_drawer_grid 指定有效 active_index')
+    if 'exit_zoom_index' in data or data.get('exit_zoom') or data.get('exit_zoom_after') or data.get('exit_zoom_active'):
         tail = .46 if recipe == 'prompt_iter_workbench' else .48
         data['exit_zoom_at'] = number(data.get('exit_zoom_at', round(duration-tail, 3)), .3, duration-.22, 'exit_zoom_at')
         if recipe == 'prompt_iter_workbench' and data['exit_zoom_at'] < data['iter_at'] + .18:
             raise ValueError('exit_zoom_at 须在对比切换后')
-    keep_keys += ('exit_zoom_index', 'exit_zoom_at', 'exit_zoom', 'exit_zoom_after', 'prompt_chips', 'iter_at')
+    keep_keys += ('exit_zoom_index', 'exit_zoom_at', 'exit_zoom', 'exit_zoom_after', 'exit_zoom_active', 'prompt_chips', 'iter_at')
     settings_data = {key: data[key] for key in keep_keys if key in data}
     if 'modules' in data:
         clean_mods = []

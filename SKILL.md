@@ -1,9 +1,9 @@
 ---
 name: yice-youtube-video
-description: 一策 YouTube 中文教程与深度科技视频制片体系 v15.0。动笔前用 precheck-episode 三关硬拦截温吞标题、标题正文脱节、制作端自嗨台词、痛点无反例画面和素材单一；用「大白话提示词 → 默认直出 → 加词精修」教实操，全屏暗场展示作品、瑞士暖白画布讲方法，配 27 款真实动作音效、字幕与成片审计。
+description: 一策 YouTube 中文教程与深度科技视频制片体系 v16.0。动笔前用 precheck-episode 三关硬拦截温吞/设门槛窄标题、标题正文脱节、大模型和稀泥叠甲词、制作端自嗨台词、密集小数堆砌和素材单一；按脑科学「前 10 秒砸预期摆抽屉 + 2 分钟防走神爆点 + 门槛递减 + 片尾截屏速查表」编排，支持横竖屏零裁切与克制动作音效。
 ---
 
-# 一策 YouTube 视频制作 v15.0
+# 一策 YouTube 视频制作 v16.0
 
 以旁白首字安排 1920×1080 实拍、实录与解说画面，使用 `clean_cinema` 字幕并保留 `y ≥ 900` 字幕安全区。作品与操作用全屏暗场，方法拆解、选型与过场切到 `swiss_paper` 暖白点阵、黑色硬框和信号橙或克莱因蓝。
 
@@ -17,8 +17,8 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 
 | 关卡 | 不过关就不许 | 拦截项 |
 | --- | --- | --- |
-| `packaging` | 写分镜 | `bland_explanatory_title`（怎么选、使用指南、浅谈这类说明文标题，或不足 10 字又无痛点、收益、数字）；`promise_body_drift`（标题只承诺一类事，正文过半在讲别的，或前两章没兑现标题）；`thumbnail_candidates_insufficient`（最新一批封面不足 3 张或缺联系表） |
-| `script` | 跑配音 | `maker_plumbing_leak`（批量截图、等几秒再截、无头浏览器、临时目录、字段名这类制作端内部细节）；`slow_or_meta_opener`（前两幕“大家好我是/今天我们来聊”，或前 60 秒念命令和路径）；`unpaired_pain_point_visual`（口播说丑、翻车、模板感，却没规划真实反例画面）；`missing_hands_on_prompt_loop`（三章以上教程少于 2 章给出可照抄的提示词和前后变化） |
+| `packaging` | 写分镜 | `bland_explanatory_title`（怎么选、使用指南、浅谈等说明文腔）；`narrow_gatekeeping_title`（“什么是大模型 / XX 架构拆解”这类给外行设门槛的窄标题，过不了前 2 秒四问：跟我有关吗/在乎吗/反直觉吗/一秒懂吗）；`promise_body_drift`（标题正文承诺脱节）；`thumbnail_candidates_insufficient`（封面候选不足 3 张或缺联系表）；并检查 `target_keywords` 搜索动作词埋点 |
+| `script` | 跑配音 | `maker_plumbing_leak`（截图等几秒、无头浏览器、临时目录等内部细节）；`llm_hedging_fluff`（“一般来说、见仁见智、因人而异”等大模型和稀泥叠甲词）；`decimal_overload`（单幕堆砌 ≥4 个冷冰冰精确小数，须改成“省一半 / 六分之一”体感账）；`slow_or_meta_opener`（报幕或前 60 秒念命令）；`unpaired_pain_point_visual`（痛点无真实反例画面）；`missing_hands_on_prompt_loop`（少于 2 章给可照抄提示词与前后变化）；并提醒多工具教程直说真实边界/短板（`missing_honest_tradeoff`） |
 | `assets` | 跑 `assemble-episode.sh` | `duplicate_asset_disguise`（同一画面换名存多份）；`insufficient_visual_clusters`（多工具教程独立画面少于 8 组）；`missing_external_showcase`（外部真实来源少于 2 个网站或不足 25%） |
 
 包装写在剧集目录的 `packaging.json` 或 `packaging.md`（`title`、`hook`、`viewer_promise`、`target_keywords`、可选 `episode_kind`）。剧本第 3 列写画面规划，也可在旁白里用 `〔画面：…〕` 注明反例原件。专门教写脚本或自动化的选题在包装里写 `"maker_topic": true` 放行工程术语。返回码 0 通过、1 有拦截、2 参数或文件缺失。
@@ -36,7 +36,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 4. **实操用提示词迭代台，不用黑底终端。** 讲工具用法时优先 `prompt_iter_workbench`：顶部大白话提示词胶囊逐拍落位，`16:9` 零裁边展示「↺ 默认直出」，到 `iter_at` 换成「✦ 加词精修后」，再推近接下一镜全屏交互。终端只留安装那一下，且放在第一分钟之后。
 5. **素材先外采再自造。** 每期先跑 `harvest-showcase-media.sh --rank-highlights` 抓官网、论文项目页、公开演示原片，`collect-entity.sh` 取标志与 README 演示，`capture-web.mjs` 录官网；本地自造页面只补缺口，同一套页面不许换名字反复播。
 
-叙事走三步：① 普通人真痛点 + 反常识钩子，开场用 `triptych_curtain` 三列成品幕布或 `editorial_punch` 无框结论大字；② 一棵傻瓜选型树当主线，`progressive_sim_cards` 立住体感优势，`logo_bento_stage` 按交付对象并列工具（`expected_items` 核对数量），实际步骤才用 `step_tree_focus`；③ 字到画到，子卡片 `at` 绑死词级时间戳，`0.18s` 急停落定。严禁虚构发布会路演或“第 1 个工具…第 5 个工具”报菜名。
+叙事按脑科学减负排四步：① **前 10 秒砸预期摆抽屉**：第一句直接砸碎观众常见误区并甩出总结论，用 `triptych_curtain` 或新增 `chapter_drawer_grid`（3–6 格章节抽屉柜）把全片模块摆清楚，观众后面只管往抽屉装干货、不费脑记结构；② **单模块固定三拍且敢说真毛病**：每个工具固定「一句人话定死干嘛的 → 真实干活体感/成品证据 → 直接点明一个短板或协议边界」，并按「硬核实力垫底 → **第 2 分钟走神点放最具反差/最热风口拉回注意力** → 零门槛免费即用收尾」排序；③ **三刀砍废稿**：初稿出声念，砍掉非结论/非例子/非做法的铺垫句与和稀泥词，英文术语当场翻成动作人话，小数点换成体感比值；④ **片尾压一张可截屏速查表**：总结章用新增 `saveable_cheat_sheet` 把各工具「适用场景 × 一句话抄作业提示词 × 避坑边界」压成一页高清总表（右上带 `✦ 截屏保存` 胶囊），停稳拉升收藏率与完播率。
 
 ## 多卡与跨镜衔接（v15.0）
 
@@ -70,7 +70,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
 | 镜头任务 | 路由（详见[双擎高阶视觉路由](references/10-双擎高阶视觉路由.md)） |
 | --- | --- |
 | 连续变形、前后擦除、竞速、手绘线沸 | `onetake_clip`：`split_wipe_compare`、`handdrawn_sketch_stage`、`duplicate_laser_sweep`、`bitmap_lock_glitch`、`energy_roadmap_dive`、`live_control_sync`、`capsule_archive_seal`（默认 180° 快门积分） |
-| 提示词迭代、多视频 3D 阵、剪纸视差、焦点树、渐进卡 | `hyperframes_block`：`prompt_iter_workbench`、`triptych_curtain`、`kinetic_title_bridge`、`perspective_video_fan`、`logo_bento_stage`、`cutout_parallax_stage`、`documentary_ken_burns`、`step_tree_focus`、`progressive_sim_cards`、`formula_pill_chain`、`carousel_3d_select`、`layer_explode_3d`、`roadmap_thread_camera`、`literal_action_stage` |
+| 提示词迭代、章节抽屉、截屏速查表、多视频 3D 阵、剪纸视差、焦点树、渐进卡 | `hyperframes_block`：`prompt_iter_workbench`、`chapter_drawer_grid`、`saveable_cheat_sheet`、`triptych_curtain`、`kinetic_title_bridge`、`perspective_video_fan`、`logo_bento_stage`、`cutout_parallax_stage`、`documentary_ken_burns`、`step_tree_focus`、`progressive_sim_cards`、`formula_pill_chain`、`carousel_3d_select`、`layer_explode_3d`、`roadmap_thread_camera`、`literal_action_stage` |
 | 真实网页与录屏实证 | `fullbleed_rig` / `callout_rig` 配 `focus_push` 或分段 `camera_moves` |
 
 目标每镜 4–6 秒，全片均值 ≤ 6.5 秒；满屏占实录时长 ≥ 70%，斜框 ≤ 全片 15%，带框镜头不相邻。亮场桥 `kinetic_title_bridge` 用 1.2–1.8 秒、按口播触发的 `words: [{text, at}]` 与 `underline_at`。三联幕布每次三条不同视频，85 秒内最多两次。

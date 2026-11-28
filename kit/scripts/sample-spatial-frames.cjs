@@ -156,7 +156,7 @@ async function measure(page, {entry,seconds}) {
           }
           return null;
         };
-        const boxSelectors = '.tree-branch,.tree-child,.node,.bento-item,.workbench-chip,.workbench-label,.pill-src,.pill-dst,.chain-badge,.fan-badge,.fan-label,.hanging-plaque,.torn-main,.slidecard,.station,.stamp,.compare-pill,.compare-summary-card';
+        const boxSelectors = '.tree-branch,.tree-child,.node,.bento-item,.workbench-chip,.workbench-label,.pill-src,.pill-dst,.chain-badge,.fan-badge,.fan-label,.hanging-plaque,.torn-main,.slidecard,.station,.stamp,.compare-pill,.compare-summary-card,.drawer-cell,.cheat-save-pill,.cheat-sheet-card';
         for (const el of document.querySelectorAll(boxSelectors)) {
           if (!visible(el)) continue;
           const br = el.getBoundingClientRect();
@@ -205,7 +205,7 @@ async function measure(page, {entry,seconds}) {
         enumeratedItems: Array.from(root.querySelectorAll('.bento-item-name,.sim-label,.tree-branch,.chain-badge'))
           .filter(visible).map(el=>el.innerText.trim()).filter(Boolean),
         unsafeCoreText: root.dataset.stageLook === 'swiss_paper' ? Array.from(root.querySelectorAll(
-          'header,.sim-label,.bento-item-name,.bento-cat,.tree-branch,.tree-child,.display-word,.chain-badge,.workbench-chip,.workbench-label,.workbench-heading'
+          'header,.sim-label,.bento-item-name,.bento-cat,.tree-branch,.tree-child,.display-word,.chain-badge,.workbench-chip,.workbench-label,.workbench-heading,.drawer-title,.cheat-row'
         )).filter(el=>visible(el) && el.textContent.trim() && el.getBoundingClientRect().bottom >= 860)
           .map(el=>el.innerText.trim()) : [],
         stageLook: root?.dataset?.stageLook || null,

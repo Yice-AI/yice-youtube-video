@@ -326,4 +326,49 @@ def test_v15_3_box_containment_and_portrait_aspect_gates(tmp_path):
     tl_good = dict(shots=[dict(id='good-xhs', spoken_topic='把笔记做成小红书 3:4 套图')])
     assert portrait_aspect_integrity_gate(tl_good, tmp_path)['ok']
 
+    # 4. v16 chapter_drawer_grid & saveable_cheat_sheet render cleanly above y=860 with 0 textBoxViolations
+    drawer_entry = build(dict(
+        id='drawers', recipe='chapter_drawer_grid', stage_look='swiss_paper', duration=4.,
+        data=dict(
+            heading='五个视觉工具 · 按场景开抽屉',
+            active_index=2,
+            open_at=0.9,
+            drawers=[
+                dict(no='01', title='产品宣传片', sub='HyperFrames · 免费商用', at=0.1),
+                dict(no='02', title='一镜到底演示', sub='OneTake · 非商用需授权', at=0.22),
+                dict(no='03', title='发布会大屏 PPT', sub='HTML PPT · 按 T 换主题', at=0.34),
+                dict(no='04', title='杂志瑞士网页 PPT', sub='归藏 PPT · AGPL 开源', at=0.46),
+                dict(no='05', title='小红书 3:4 套图', sub='归藏社交卡片 · 真文字', at=0.58),
+            ],
+        )
+    ), tmp_path, tmp_path / 'drawers', gsap)
+
+    cheat_entry = build(dict(
+        id='cheat', recipe='saveable_cheat_sheet', stage_look='swiss_paper', duration=5.,
+        data=dict(
+            heading='发片与选型一页速查表',
+            save_badge='✦ 截屏保存',
+            columns=['工具名称', '一句话抄作业提示词', '商用与避坑提醒'],
+            rows=[
+                dict(no='1', col1='HyperFrames', col2='做一条 15 秒深色科技宣传片', col3='Apache 2.0 可商用 · 本地渲染', at=0.15),
+                dict(no='2', col1='OneTake', col2='做一镜到底丝滑推拉产品演示', col3='仅非商用免费 · 商用需联系作者', at=0.30),
+                dict(no='3', col1='HTML PPT Studio', col2='做发布会 PPT，换成赛博霓虹主题', col3='MIT 可商用 · 按 T 现场切主题', at=0.45),
+                dict(no='4', col1='归藏网页 PPT', col2='把大纲做成瑞士网格横向翻页 PPT', col3='AGPL 协议 · 内部汇报直接用', at=0.60),
+                dict(no='5', col1='归藏社交卡片', col2='把笔记做成小红书 3:4 瑞士风套图', col3='再加一句帮我检查字有没有溢出', at=0.75),
+            ],
+        )
+    ), tmp_path, tmp_path / 'cheat', gsap)
+
+    v16_sampled = json.loads(subprocess.check_output(
+        ['node', str(sampler)],
+        input=json.dumps({'drawers': dict(entry=str(drawer_entry), seconds=4.), 'cheat': dict(entry=str(cheat_entry), seconds=5.)}),
+        text=True, env=env,
+    ))
+    for k in ('drawers', 'cheat'):
+        assert 'frames' in v16_sampled[k], v16_sampled[k]
+        for frame in v16_sampled[k]['frames']:
+            assert frame.get('textBoxViolations') == [], (k, frame['phase'], frame.get('textBoxViolations'))
+            assert frame.get('unsafeCoreText') == [], (k, frame['phase'], frame.get('unsafeCoreText'))
+            assert frame.get('overlaps') == [], (k, frame['phase'], frame.get('overlaps'))
+
 

@@ -17,10 +17,13 @@ def composition_motion(source, declared=None):
     recipe = re.search(r'<[a-zA-Z][^<>]*?\sdata-spatial-recipe=[\'"]([\w-]+)', source)
     process_recipes = (
         'literal_action_stage', 'roadmap_thread_camera',
-        'step_tree_focus', 'progressive_sim_cards', 'formula_pill_chain', 'kinetic_title_bridge', 'prompt_iter_workbench',
+        'step_tree_focus', 'progressive_sim_cards', 'formula_pill_chain', 'kinetic_title_bridge',
+        'prompt_iter_workbench', 'chapter_drawer_grid', 'saveable_cheat_sheet',
     )
     process = recipe and recipe[1] in process_recipes
     native_action = re.search(r'OM\.(?:shake|spring|gather|morphRect|zoomThrough)\(|SKETCH\.', scripts)
+    if declared == 'M1' and recipe and recipe[1] == 'chapter_drawer_grid' and 'preserve-3d' in source and tween:
+        return True, 'M1'
     if declared == 'M3' and '__seek' in scripts and (native_action or camera):
         return spatial, 'M3'
     if declared == 'M1' and '__seek' in scripts and 'data-onetake-recipe="split_wipe_compare"' in source:

@@ -645,10 +645,19 @@ def _spatial_sound_marks(sp_spec, span):
     elif recipe == 'documentary_ken_burns':
         if isinstance(data.get('split_at'), (int, float)):
             add('page_flip', data['split_at'], 0.26)
+    elif recipe == 'chapter_drawer_grid':
+        drawers = data.get('drawers') or []
+        if drawers:
+            add(land, float(drawers[0].get('at', 0.1)), 0.24)
+        if data.get('active_index', -1) >= 0:
+            add('card_thock', float(data.get('open_at', min(span * 0.44, 0.9))), 0.28)
+    elif recipe == 'saveable_cheat_sheet':
+        add('page_flip', 0.08, 0.26)
+        add('ping', float(data.get('badge_at', min(span * 0.42, 0.85))), 0.22)
     else:
         add('pop', 0.08, 0.24)
 
-    if 'exit_zoom_index' in data or data.get('exit_zoom') or data.get('exit_zoom_after'):
+    if 'exit_zoom_index' in data or data.get('exit_zoom') or data.get('exit_zoom_after') or data.get('exit_zoom_active'):
         exit_at = data.get('exit_zoom_at', round(span - (.46 if data.get('exit_zoom_after') else .48), 3))
         cues = [cue for cue in cues if cue[1] not in ('click', 'click_soft', 'zoom_swoosh') or abs(cue[0]-exit_at) >= .18]
         add('click_soft', exit_at, .26)
@@ -806,9 +815,9 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
         if recipe_spec:
             row['recipe'] = recipe_spec.get('recipe')
             data = recipe_spec.get('data') or {}
-            if row['recipe'] in {'triptych_curtain','kinetic_title_bridge','progressive_sim_cards','prompt_iter_workbench','logo_bento_stage','step_tree_focus'}:
+            if row['recipe'] in {'triptych_curtain','kinetic_title_bridge','progressive_sim_cards','prompt_iter_workbench','logo_bento_stage','step_tree_focus','chapter_drawer_grid','saveable_cheat_sheet'}:
                 action_times = [0.]
-                for group in ('words','cards','modules','branches','focus_sequence','prompt_chips'):
+                for group in ('words','cards','modules','branches','focus_sequence','prompt_chips','drawers','rows'):
                     for item in data.get(group,[]):
                         if not isinstance(item,dict):
                             continue
@@ -822,12 +831,16 @@ def build_act(shots, root, folder, title, run, *, force_render=False, gsap=None,
                                 action_times.append(child['at'])
                 if row['recipe'] == 'prompt_iter_workbench':
                     action_times.append(data.get('iter_at', round(span*.46, 3)))
+                if row['recipe'] == 'chapter_drawer_grid' and data.get('active_index', -1) >= 0:
+                    action_times.append(data.get('open_at', round(min(span*.44, .9), 3)))
+                if row['recipe'] == 'saveable_cheat_sheet':
+                    action_times.append(data.get('badge_at', round(min(span*.42, .85), 3)))
                 if 'underline_at' in data:
                     action_times.append(data['underline_at'])
                 if row['recipe']=='step_tree_focus':
                     action_times.extend(max(.03,b['at']-.16) for b in data['branches'][1:] if 'at' in b)
                 row['visual_action_times'] = sorted(set(action_times))
-            if 'exit_zoom_index' in data or data.get('exit_zoom') or data.get('exit_zoom_after'):
+            if 'exit_zoom_index' in data or data.get('exit_zoom') or data.get('exit_zoom_after') or data.get('exit_zoom_active'):
                 at = data.get('exit_zoom_at', round(span - (.46 if data.get('exit_zoom_after') else .48), 3))
                 row['camera_action_times'] = [at]
                 row['visual_action_times'] = sorted(set([*row.get('visual_action_times', row.get('beats', [])), at]))

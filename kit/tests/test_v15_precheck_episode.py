@@ -257,6 +257,17 @@ class ScriptTests(TempCase):
         root = make_project(self.tmp/'ep', script=dry, images=0)
         self.assertIn('missing_hands_on_prompt_loop', codes(precheck.run(root, 'script'), 'script'))
 
+    def test_v16_narrow_title_hedging_fluff_and_decimal_overload_are_caught(self):
+        root_narrow = make_project(self.tmp/'narrow', script=GOOD_SCRIPT, images=0,
+                                   packaging={'title': '什么是大模型？底层原理解析'})
+        self.assertIn('narrow_gatekeeping_title', codes(precheck.run(root_narrow, 'packaging'), 'packaging'))
+
+        hedged = GOOD_SCRIPT.replace('全程不花订阅费。', '这两个工具一般来说见仁见智，看个人喜好吧，实测分数分别是 91.4%、88.7%、76.3% 和 64.2%。')
+        root_hedge = make_project(self.tmp/'hedge', script=hedged, images=0)
+        sc_codes = codes(precheck.run(root_hedge, 'script'), 'script')
+        self.assertIn('llm_hedging_fluff', sc_codes)
+        self.assertIn('decimal_overload', sc_codes)
+
 
 class AssetTests(TempCase):
     def test_renamed_duplicate_media_is_blocked(self):
