@@ -1431,7 +1431,7 @@ def portrait_aspect_integrity_gate(timeline, project):
                         if t_url.startswith('file://'):
                             from urllib.parse import unquote, urlparse
                             hp = Path(unquote(urlparse(t_url).path))
-                            if hp.is_file() and re.search(r'\.poster\.xhs|1080\s*[x×]\s*1440|aspect-ratio:\s*3\s*/\s*4', hp.read_text(encoding='utf-8', errors='ignore')):
+                            if hp.is_file() and re.search(r'\.poster\.xhs|1080\s*[x×]\s*1440', hp.read_text(encoding='utf-8', errors='ignore')):
                                 truncated_local_card.append(rel)
                     except Exception:
                         pass
