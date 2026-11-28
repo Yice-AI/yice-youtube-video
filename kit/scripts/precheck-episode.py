@@ -383,6 +383,17 @@ def stage_script(project, script):
             warnings.append(issue('decimal_overload',
                                   f'{scene["id"]} 幕出现 3 个精确小数（{"、".join(decimals)}），建议换成更易记的体感分数。',
                                   scene_id=scene['id'], decimals=decimals))
+    long_clauses = []
+    for scene in script['scenes']:
+        stripped = QUOTED.sub('「词」', scene['text'])
+        for clause in re.split(r'[，,。！？!?；;：:——…]', stripped):
+            c = clause.strip()
+            if len(re.findall(r'[\u4e00-\u9fff]', c)) >= 30:
+                long_clauses.append((scene['id'], c[:36]))
+    if len(long_clauses) >= 3:
+        warnings.append(issue('long_winded_clauses',
+                              f'全稿有 {len(long_clauses)} 处单分句超过 30 个汉字不断气（如 {long_clauses[0][0]}「{long_clauses[0][1]}…」），听感偏书面导购腔。请按对标口语改成 8–16 字一锤的短句。',
+                              examples=[f'{sid}:{txt}' for sid, txt in long_clauses[:4]]))
     tutorial = is_tutorial(project, packaging, script)
     loops = []
     if tutorial and len(script['chapters']) >= 3:
