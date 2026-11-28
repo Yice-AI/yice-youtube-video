@@ -191,7 +191,7 @@ def prepare_shots(raw, root, cues):
             raise ValueError(f'镜头 {key} 需要 {expected} 条素材源')
         if expected:
             for path in media:
-                validate_media(path,media_start+end-start,durations,allow_image=mode=='evidence_spotlight')
+                validate_media(path,media_start+end-start,durations,allow_image=(mode=='evidence_spotlight' or src.get('framing')=='portrait_card'))
         if mode in {'fullbleed_rig','callout_rig'} and media and 'interactions' not in src:
             track = locate(root,src['cursor_track']) if src.get('cursor_track') else (
                 media[0].with_name('cursor-track.json') if media[0].name=='video.mp4' else None)

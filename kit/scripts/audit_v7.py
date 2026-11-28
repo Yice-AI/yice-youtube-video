@@ -604,6 +604,11 @@ def framing_and_variety_gate(shots, duration):
 def effective_frame(frame, shot, rendered=False):
     from PIL import ImageOps
     width, height = frame.size
+    if shot.get('framing') == 'portrait_card':
+        if rendered:
+            return frame.crop((round(width*682/1920), round(height*102/1080),
+                               round(width*1238/1920), round(height*844/1080)))
+        return frame
     if shot.get('framing') in WINDOWED:
         if rendered:
             return frame.crop((round(width*136/1920), round(height*142/1080),
@@ -730,6 +735,8 @@ def visual_richness_gate(timeline, project, rendered):
         try:
             scores = [frame_scores(capture_frame(shot,project,rendered,t)) for t in (pad,span/2,span-pad)]
             metrics = shell_metrics(scores)
+            if shot.get('framing') == 'portrait_card':
+                metrics['low_density'] = metrics['edge_density'] < .004
             checked[shot['id']] = dict(samples=scores, **metrics)
             if metrics['low_density']:
                 violations.append(dict(shot=shot['id'],reason='low_density_shell_capture',**metrics))
@@ -800,7 +807,11 @@ def dual_engine_craft_gate(shots, project, manifest_root=None, *, v10=False):
             if v10:
                 from audit_spatial import composition_motion
                 spatial, modes[shot['id']] = composition_motion(source, shot.get('visual_mode'))
-            if len(images) >= 2 and not spatial:
+            animated_deck = bool(re.search(
+                r'data-spatial-recipe=["\'](?:prompt_iter_workbench|progressive_sim_cards)["\']|data-onetake-recipe=["\']split_wipe_compare["\']',
+                source,
+            )) and bool(modes.get(shot['id']))
+            if len(images) >= 2 and not spatial and not animated_deck:
                 violations.append(dict(shot=shot['id'], reason='static_raster_gallery', images=checked[shot['id']]))
             if mode == 'onetake_clip':
                 zooms = {float(n) for n in re.findall(r'\bzoom\s*:\s*([\d.]+)',source)}
