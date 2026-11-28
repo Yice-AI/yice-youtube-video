@@ -113,7 +113,15 @@ REF_STYLES = (
 )
 
 
-def generate_with_refs(python, script, title, summary, refs, batch, count):
+ASPECT_TARGETS = {
+    "16:9": ((1920, 1080), "1792x1024", "YouTube 16:9 横版缩略图，左右分栏构图"),
+    "4:3": ((1440, 1080), "1536x1152", "抖音 4:3 横封面，紧凑左右构图，左右两侧均留足 8% 安全边距防裁字"),
+    "3:4": ((1080, 1440), "1152x1536", "抖音/小红书 3:4 竖封面，上下结构（上半区居中放大主标题，下半区立体叠放真实作品界面），左右两侧均留足 8% 安全边距绝不贴边裁字"),
+}
+
+
+def generate_with_refs(python, script, title, summary, refs, batch, count, aspect="16:9"):
+    target_wh, req_size, layout_hint = ASPECT_TARGETS[aspect]
     helper = (
         "import base64, concurrent.futures, io, json, pathlib, sys, time, requests\n"
         "from PIL import Image, ImageOps\n"
@@ -122,24 +130,26 @@ def generate_with_refs(python, script, title, summary, refs, batch, count):
         "import image2\n"
         "creds = image2.load_credentials()\n"
         "blobs = [(pathlib.Path(p).name, pathlib.Path(p).read_bytes(), 'image/png') for p in payload['refs']]\n"
+        "tw, th = payload['target_wh']\n"
         "def one(job):\n"
         "  t0 = time.perf_counter()\n"
         "  style_name, style_desc, out_path = job['style'], job['desc'], job['out']\n"
         "  prompt = (\n"
-        "    '高点击率 YouTube 科技视频 16:9 缩略图。' + style_desc + ' '\n"
-        "    f'左侧主标题文字为：「{payload[\"title\"]}」，副标精炼为：「{payload[\"summary\"][:80]}」。'\n"
-        "    '严格保持参考图中真实作品的版式、配色与文字细节；严禁凭空脑补任何未出现在参考图里的第三方软件图标或无关品牌 Logo，砍掉底部多余长句，右下角留出时长净空区。'\n"
+        "    f'高点击率科技视频封面（{payload[\"layout_hint\"]}）。' + style_desc + ' '\n"
+        "    f'主标题文字为：「{payload[\"title\"]}」，副标精炼为：「{payload[\"summary\"][:80]}」（数字不要重复写两遍）。'\n"
+        "    '严格保持参考图中真实作品的版式、配色与文字细节；严禁脑补未出现在参考图里的第三方软件图标，严禁在右下角画任何时长数字（如 07:32）或占位框，右下角留净空。'\n"
         "  )\n"
-        "  files = [('image[]', b) for b in blobs]\n"
-        "  resp = requests.post(f'{creds.base_url}/images/edits', headers={'Authorization': f'Bearer {creds.api_key}'},\n"
-        "                       data={'model': creds.model, 'prompt': prompt, 'n': '1', 'size': '1792x1024'}, files=files, timeout=(30, 240))\n"
+        "  for sz in ([payload['req_size'], '1024x1536'] if tw < th else [payload['req_size'], '1536x1024', '1792x1024']):\n"
+        "    resp = requests.post(f'{creds.base_url}/images/edits', headers={'Authorization': f'Bearer {creds.api_key}'},\n"
+        "                         data={'model': creds.model, 'prompt': prompt, 'n': '1', 'size': sz}, files=[('image[]', b) for b in blobs], timeout=(30, 240))\n"
+        "    if resp.ok: break\n"
         "  if not resp.ok:\n"
         "    raise RuntimeError(image2.redact(f'HTTP {resp.status_code}: {resp.text[:240]}', creds.sensitive_values))\n"
         "  item = resp.json()['data'][0]\n"
         "  raw = base64.b64decode(item['b64_json']) if item.get('b64_json') else requests.get(item['url'], timeout=60).content\n"
         "  with Image.open(io.BytesIO(raw)) as src:\n"
-        "    ImageOps.fit(ImageOps.exif_transpose(src), (1920, 1080), method=Image.Resampling.LANCZOS).save(out_path, format='PNG')\n"
-        "  return {'output': out_path, 'width': 1920, 'height': 1080, 'model': creds.model, 'archetype': style_name, 'elapsed_seconds': round(time.perf_counter()-t0, 2)}\n"
+        "    ImageOps.fit(ImageOps.exif_transpose(src), (tw, th), method=Image.Resampling.LANCZOS).save(out_path, format='PNG')\n"
+        "  return {'output': out_path, 'width': tw, 'height': th, 'model': creds.model, 'archetype': style_name, 'aspect': payload['aspect'], 'elapsed_seconds': round(time.perf_counter()-t0, 2)}\n"
         "with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(payload['jobs']))) as ex:\n"
         "  res = list(ex.map(one, payload['jobs']))\n"
         "print(json.dumps({'outputs': res, 'attempts': len(res)}))\n"
@@ -150,7 +160,8 @@ def generate_with_refs(python, script, title, summary, refs, batch, count):
         jobs.append({"style": sname, "desc": sdesc, "out": str(batch / f"candidate-{idx}.png")})
     proc = subprocess.run(
         [python, "-c", helper],
-        input=json.dumps({"script": str(script), "title": title, "summary": summary, "refs": [str(r) for r in refs], "jobs": jobs}),
+        input=json.dumps({"script": str(script), "title": title, "summary": summary, "refs": [str(r) for r in refs],
+                          "aspect": aspect, "target_wh": list(target_wh), "req_size": req_size, "layout_hint": layout_hint, "jobs": jobs}),
         text=True,
         capture_output=True,
     )
@@ -186,7 +197,7 @@ def generate(args, project, root):
     attempts = 0
     direct_mode = args.archetype == "direct" and not args.hook and not args.badge
     if refs:
-        generated = generate_with_refs(python, script, args.title.strip(), summary.strip(), refs, batch, args.candidates)
+        generated = generate_with_refs(python, script, args.title.strip(), summary.strip(), refs, batch, args.candidates, aspect=args.aspect)
         attempts += generated.get("attempts", len(generated["outputs"]))
         for item in generated["outputs"]:
             file = Path(item["output"])
@@ -285,7 +296,8 @@ def main():
     brief.add_argument("--content-file", type=Path)
     parser.add_argument("--candidates", type=int, default=3)
     parser.add_argument("--archetype", choices=("direct", "diverse", *ARCHETYPES), default="direct")
-    parser.add_argument("--ref", action="append", help="传入 1–3 张片中真实成品截图，走 image2 多图参考极简留白生成")
+    parser.add_argument("--aspect", choices=("16:9", "4:3", "3:4"), default="16:9", help="封面画幅：YouTube 16:9，抖音横封面 4:3、竖封面 3:4")
+    parser.add_argument("--ref", action="append", help="传入 1–4 张片中真实成品截图，走 image2 多图参考生成")
     parser.add_argument("--batch")
     parser.add_argument("--image2-script", type=Path)
     parser.add_argument("--select", type=int)

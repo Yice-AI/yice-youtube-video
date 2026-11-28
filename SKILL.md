@@ -63,7 +63,7 @@ kit/scripts/precheck-episode.sh --project <剧集目录> --stage <packaging|scri
    - **运行 `--stage assets`，过关才装片。**
 3. **配音并验帧。** `kit/scripts/voice.sh script.md --output voice --backend kaggle --speed 1.0`（可用 `--tts-model` 换云端开源语音底座），`natural_v7` 拦截句内无标点停顿超 165ms、词内能量塌陷 ≥ 16dB（110–260ms）与句中拖音，异常分段自动换 seed 重抽最多 3 轮。清单写好后跑 `kit/scripts/scout-video-scenes.sh --verify-manifest episode-manifest.json --output verify` 逐镜核对首中尾帧。
 4. **装配与审片。** `kit/scripts/assemble-episode.sh episode-manifest.json --output out`（默认 2 个低优先级进程，`--draft` 快速试片），再跑 `kit/scripts/audit-v3.sh --v10 --project out --timeline out/shot-timeline.json --rendered out/episode.mp4`，并目检、听审。
-5. **封面定稿。** 成片或样稿齐备后用 `thumbnail.sh --ref ...` 带入真实作品截图定稿，再用 `thumbnail.sh --select` 导出 `< 2 MB` JPG 并入账；选图必查**全图零错别字、零脑补假软件图标、右下角时长区无遮挡、168px 手机缩图一眼抓人**。
+5. **封面定稿与多平台画幅适配。** 成片或样稿齐备后用 `thumbnail.sh --ref ...` 带入真实作品截图定稿（YouTube 默认 `--aspect 16:9`；同步发抖音中视频必须另外跑 `--aspect 3:4` 竖封面与 `--aspect 4:3` 横封面原生重排，严禁把 `16:9` 横图硬裁成 `3:4` 切掉左右大字），再用 `thumbnail.sh --select` 导出 `< 2 MB` JPG 并入账；选图必查**全图零错别字、零脑补假软件图标、右下角无伪造时长框、缩略图一眼抓人**。
 
 ## 视觉路由
 
