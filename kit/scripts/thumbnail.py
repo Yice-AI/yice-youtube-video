@@ -92,10 +92,48 @@ def cover_brief(title, summary, hook=None, badge=None, archetype='treasure_fan')
     return hook, description
 
 
+def generate_with_refs(python, script, title, summary, refs, file):
+    helper = (
+        "import base64, io, json, pathlib, sys, time, requests\n"
+        "from PIL import Image, ImageOps\n"
+        "script_path, title, summary, out_path, *ref_paths = sys.argv[1:]\n"
+        "sys.path.insert(0, str(pathlib.Path(script_path).parent))\n"
+        "import image2\n"
+        "t0 = time.perf_counter()\n"
+        "creds = image2.load_credentials()\n"
+        "prompt = (\n"
+        "  'YouTube 16:9 视频缩略图，干净通透的浅白灰极简摄影棚背景，留白充足、富有呼吸感，不拥挤。'\n"
+        "  f'左侧干净大字排版主标题：{title}；副标简练：' + summary[:120] + ' '\n"
+        "  '右侧将参考图中的真实作品原件以轻盈立体的悬浮卡片错落展示，保持参考图真实版式与细节，右下角留出时长净空区。'\n"
+        ")\n"
+        "files = [('image[]', (pathlib.Path(p).name, pathlib.Path(p).read_bytes(), 'image/png')) for p in ref_paths]\n"
+        "resp = requests.post(f'{creds.base_url}/images/edits', headers={'Authorization': f'Bearer {creds.api_key}'},\n"
+        "                     data={'model': creds.model, 'prompt': prompt, 'n': '1', 'size': '1792x1024'}, files=files, timeout=(30, 240))\n"
+        "if not resp.ok:\n"
+        "  raise SystemExit(image2.redact(f'HTTP {resp.status_code}: {resp.text[:240]}', creds.sensitive_values))\n"
+        "item = resp.json()['data'][0]\n"
+        "raw = base64.b64decode(item['b64_json']) if item.get('b64_json') else requests.get(item['url'], timeout=60).content\n"
+        "with Image.open(io.BytesIO(raw)) as src:\n"
+        "  ImageOps.fit(ImageOps.exif_transpose(src), (1920, 1080), method=Image.Resampling.LANCZOS).save(out_path, format='PNG')\n"
+        "print(json.dumps({'outputs': [{'output': out_path, 'width': 1920, 'height': 1080, 'model': creds.model, 'elapsed_seconds': round(time.perf_counter()-t0, 2)}], 'attempts': 1}))\n"
+    )
+    out = run_command([python, "-c", helper, str(script), title, summary, str(file), *(str(r) for r in refs)])
+    return json.loads(out)
+
+
 def generate(args, project, root):
     summary = args.content_file.read_text(encoding="utf-8") if args.content_file else args.summary
     if not (args.title and args.title.strip() and summary and summary.strip()):
         raise ValueError("生成需要 --title 和 --summary 或 --content-file")
+    refs = []
+    for raw_ref in (args.ref or ()):
+        rp = Path(raw_ref).expanduser()
+        rp = (rp if rp.is_absolute() else project / rp).resolve()
+        if not rp.is_file():
+            raise ValueError(f"参考图不存在：{raw_ref}")
+        refs.append(rp)
+    if len(refs) > 4:
+        raise ValueError("参考图最多传 4 张核心成品原图，避免画面拥挤")
     name = args.batch or datetime.now().strftime("batch-%Y%m%d-%H%M%S")
     if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*", name):
         raise ValueError("生成批次需要单个目录名")
@@ -109,29 +147,34 @@ def generate(args, project, root):
     rows = []
     attempts = 0
     direct_mode = args.archetype == "direct" and not args.hook and not args.badge
-    if not direct_mode:
+    if not direct_mode and not refs:
         hook, _ = cover_brief(args.title, summary, args.hook, args.badge)
     for index in range(1, args.candidates+1):
-        if direct_mode:
-            archetype = "direct"
-            call_title, call_summary = args.title.strip(), summary.strip()
-        else:
-            archetype = tuple(ARCHETYPES)[(index-1) % len(ARCHETYPES)] if args.archetype == 'diverse' else args.archetype
-            _, call_summary = cover_brief(args.title, summary, hook, args.badge, archetype)
-            call_title = hook
         file = batch / f'candidate-{index}.png'
-        output = run_command([python, str(script), '--title', call_title, '--summary', call_summary, '--role', 'thumbnail',
-                              '--guard', 'light', '--thumb-guard', 'r_plus', '--candidates', '1',
-                              '-o', str(file), '--json'])
-        generated = json.loads(output)
-        if len(generated['outputs']) != 1:
-            raise ValueError('image2 返回的候选数量不符')
-        item = generated['outputs'][0]
-        source = Path(item['output']).resolve()
-        if source != file.with_stem(file.stem + '-1').resolve():
-            raise ValueError(f'image2 返回了非预期的候选路径：{index}')
-        source.rename(file)
-        item.update(output=str(file), archetype=archetype)
+        if refs:
+            archetype = "real_refs_airy"
+            generated = generate_with_refs(python, script, args.title.strip(), summary.strip(), refs, file)
+            item = generated["outputs"][0]
+        else:
+            if direct_mode:
+                archetype = "direct"
+                call_title, call_summary = args.title.strip(), summary.strip()
+            else:
+                archetype = tuple(ARCHETYPES)[(index-1) % len(ARCHETYPES)] if args.archetype == 'diverse' else args.archetype
+                _, call_summary = cover_brief(args.title, summary, hook, args.badge, archetype)
+                call_title = hook
+            output = run_command([python, str(script), '--title', call_title, '--summary', call_summary, '--role', 'thumbnail',
+                                  '--guard', 'light', '--thumb-guard', 'r_plus', '--candidates', '1',
+                                  '-o', str(file), '--json'])
+            generated = json.loads(output)
+            if len(generated['outputs']) != 1:
+                raise ValueError('image2 返回的候选数量不符')
+            item = generated['outputs'][0]
+            source = Path(item['output']).resolve()
+            if source != file.with_stem(file.stem + '-1').resolve():
+                raise ValueError(f'image2 返回了非预期的候选路径：{index}')
+            source.rename(file)
+            item.update(output=str(file), archetype=archetype)
         attempts += generated.get('attempts', 1)
         with Image.open(file) as image:
             size = image.size
@@ -198,6 +241,7 @@ def main():
     brief.add_argument("--content-file", type=Path)
     parser.add_argument("--candidates", type=int, default=3)
     parser.add_argument("--archetype", choices=("direct", "diverse", *ARCHETYPES), default="direct")
+    parser.add_argument("--ref", action="append", help="传入 1–3 张片中真实成品截图，走 image2 多图参考极简留白生成")
     parser.add_argument("--batch")
     parser.add_argument("--image2-script", type=Path)
     parser.add_argument("--select", type=int)
